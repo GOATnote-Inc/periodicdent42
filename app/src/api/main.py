@@ -16,6 +16,7 @@ from src.api.security import (
     RateLimiterMiddleware,
     SecurityHeadersMiddleware,
 )
+from src.utils.compliance import generate_request_id
 from src.utils.settings import settings
 from src.reasoning.dual_agent import DualModelAgent
 from src.services.vertex import init_vertex, is_initialized
@@ -183,8 +184,13 @@ async def query_with_feedback(body: QueryRequest, request: Request):
     
     prompt = body.query
     context = body.context
-    
-    logger.info(f"Query received: {prompt[:100]}...")
+
+    request_id = generate_request_id()
+    logger.info(
+        "Query received [request_id=%s, query_length=%d]",
+        request_id,
+        len(prompt),
+    )
     
     async def event_stream():
         """Stream SSE events for Flash then Pro."""
@@ -200,7 +206,11 @@ async def query_with_feedback(body: QueryRequest, request: Request):
                 "message": "⚡ Quick preview - computing verified response..."
             })
             
-            logger.info(f"Flash response sent: {flash_response['latency_ms']}ms")
+            logger.info(
+                "Flash response sent [request_id=%s, latency_ms=%s]",
+                request_id,
+                flash_response.get("latency_ms"),
+            )
             
             # Stream Pro response when ready
             pro_response = await pro_task
@@ -209,7 +219,11 @@ async def query_with_feedback(body: QueryRequest, request: Request):
                 "message": "✅ Verified response ready"
             })
             
-            logger.info(f"Pro response sent: {pro_response['latency_ms']}ms")
+            logger.info(
+                "Pro response sent [request_id=%s, latency_ms=%s]",
+                request_id,
+                pro_response.get("latency_ms"),
+            )
         
         except Exception as e:
             logger.error(f"Error in event stream: {e}")
@@ -218,7 +232,7 @@ async def query_with_feedback(body: QueryRequest, request: Request):
                 code="stream_failure"
             )
     
-    return StreamingResponse(
+    response = StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
@@ -226,6 +240,10 @@ async def query_with_feedback(body: QueryRequest, request: Request):
             "Connection": "keep-alive",
         }
     )
+
+    response.headers.setdefault("X-Request-ID", request_id)
+
+    return response
 
 
 @app.get("/")
