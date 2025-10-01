@@ -11,6 +11,7 @@ from datetime import datetime
 import logging
 from typing import Optional
 
+from src.utils.compliance import sanitize_payload
 from src.utils.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -123,10 +124,10 @@ def log_experiment_run(
     try:
         run = ExperimentRun(
             id=experiment_id,
-            query=query,
-            context=context,
-            flash_response=flash_response,
-            pro_response=pro_response,
+            query=sanitize_payload(query),
+            context=sanitize_payload(context),
+            flash_response=sanitize_payload(flash_response),
+            pro_response=sanitize_payload(pro_response),
             flash_latency_ms=flash_response.get("latency_ms"),
             pro_latency_ms=pro_response.get("latency_ms"),
         )
