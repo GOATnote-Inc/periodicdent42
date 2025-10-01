@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live RL Training - Autonomous Experiment Design</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 min-h-screen text-white">
+    
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <header class="text-center mb-12 fade-in">
+            <div class="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-blue-500/10 rounded-full border border-blue-500/20">
+                <div class="w-2 h-2 bg-blue-400 rounded-full pulse"></div>
+                <span class="text-sm font-medium text-blue-300">Live RL Training</span>
+            </div>
+            <h1 class="text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-400">
+                Autonomous Experiment Design
+            </h1>
+            <p class="text-slate-300 text-lg">
+                Watch PPO agent learn to optimize experiments in real-time
+            </p>
+        </header>
+
+        <!-- Training Controls -->
+        <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mb-8 border border-gray-700">
+            <div class="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                    <h2 class="text-2xl font-semibold mb-2">Training Session</h2>
+                    <p class="text-gray-400">Optimizing Branin function (global min: -0.398)</p>
+                </div>
+                <div class="flex gap-3">
+                    <button id="startBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition">
+                        ▶ Start Training
+                    </button>
+                    <button id="stopBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg transition" disabled>
+                        ⏸ Pause
+                    </button>
+                    <button id="resetBtn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition">
+                        🔄 Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics Dashboard -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">Episode</div>
+                <div id="episodeCount" class="text-3xl font-bold text-blue-400">0</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">Avg Reward (100)</div>
+                <div id="avgReward" class="text-3xl font-bold text-green-400">0.00</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">Best Value</div>
+                <div id="bestValue" class="text-3xl font-bold text-purple-400">-∞</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">Curiosity</div>
+                <div id="curiosity" class="text-3xl font-bold text-yellow-400">0.00</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Episode Rewards -->
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-gray-700">
+                <h3 class="text-xl font-semibold mb-4">Episode Rewards</h3>
+                <canvas id="rewardChart"></canvas>
+            </div>
+
+            <!-- Best Value Found -->
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-gray-700">
+                <h3 class="text-xl font-semibold mb-4">Best Value Progress</h3>
+                <canvas id="bestValueChart"></canvas>
+            </div>
+
+            <!-- Policy Loss -->
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-gray-700">
+                <h3 class="text-xl font-semibold mb-4">Policy Loss</h3>
+                <canvas id="lossChart"></canvas>
+            </div>
+
+            <!-- Curiosity -->
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-gray-700">
+                <h3 class="text-xl font-semibold mb-4">Intrinsic Curiosity</h3>
+                <canvas id="curiosityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Live Log -->
+        <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-gray-700">
+            <h3 class="text-xl font-semibold mb-4">Training Log</h3>
+            <div id="log" class="h-64 overflow-y-auto font-mono text-sm text-gray-300 space-y-1 bg-gray-900/50 rounded-lg p-4">
+                <div class="text-gray-500">Waiting to start training...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Training state
+        let isTraining = false;
+        let episode = 0;
+        let trainingData = {
+            episodes: [],
+            rewards: [],
+            bestValues: [],
+            policyLoss: [],
+            curiosity: [],
+        };
+
+        // UI Elements
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const log = document.getElementById('log');
+
+        // Metrics
+        const episodeCount = document.getElementById('episodeCount');
+        const avgReward = document.getElementById('avgReward');
+        const bestValue = document.getElementById('bestValue');
+        const curiosityMetric = document.getElementById('curiosity');
+
+        // Charts
+        const rewardChart = createChart('rewardChart', 'Reward', 'rgb(34, 197, 94)');
+        const bestValueChart = createChart('bestValueChart', 'Best Value', 'rgb(168, 85, 247)', -0.398);
+        const lossChart = createChart('lossChart', 'Loss', 'rgb(239, 68, 68)');
+        const curiosityChart = createChart('curiosityChart', 'Curiosity', 'rgb(234, 179, 8)');
+
+        function createChart(canvasId, label, color, targetLine = null) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            const datasets = [{
+                label: label,
+                data: [],
+                borderColor: color,
+                backgroundColor: color + '20',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0,
+            }];
+
+            if (targetLine !== null) {
+                datasets.push({
+                    label: 'Global Optimum',
+                    data: [],
+                    borderColor: 'rgb(248, 113, 113)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    fill: false,
+                });
+            }
+
+            return new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    animation: false,
+                    scales: {
+                        y: { 
+                            beginAtZero: false,
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { color: 'rgb(203, 213, 225)' }
+                        },
+                        x: { 
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: 'rgb(203, 213, 225)', maxTicksLimit: 10 }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: 'rgb(203, 213, 225)' } }
+                    }
+                }
+            });
+        }
+
+        function updateChart(chart, data, targetValue = null) {
+            chart.data.labels = data.map((_, i) => i);
+            chart.data.datasets[0].data = data;
+            if (targetValue !== null && chart.data.datasets.length > 1) {
+                chart.data.datasets[1].data = Array(data.length).fill(targetValue);
+            }
+            chart.update();
+        }
+
+        function addLog(message, type = 'info') {
+            const colors = {
+                info: 'text-gray-300',
+                success: 'text-green-400',
+                warning: 'text-yellow-400',
+                error: 'text-red-400',
+            };
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = colors[type];
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            log.appendChild(logEntry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Simulate training (for demo - replace with real WebSocket in production)
+        function simulateTrainingStep() {
+            if (!isTraining) return;
+
+            episode++;
+            
+            // Simulate metrics (replace with real training data)
+            const reward = -50 + episode * 0.3 + Math.random() * 10;
+            const best = -5 + Math.log(episode + 1) * 2 - 0.398 + Math.random() * 0.5;
+            const loss = 0.5 / Math.sqrt(episode + 1) + Math.random() * 0.1;
+            const curiosityValue = 0.3 / (episode / 10 + 1) + Math.random() * 0.05;
+
+            // Update data
+            trainingData.episodes.push(episode);
+            trainingData.rewards.push(reward);
+            trainingData.bestValues.push(Math.min(best, -0.398)); // Can't be better than global opt
+            trainingData.policyLoss.push(loss);
+            trainingData.curiosity.push(curiosityValue);
+
+            // Keep only last 100 points for performance
+            if (trainingData.episodes.length > 100) {
+                Object.keys(trainingData).forEach(key => {
+                    trainingData[key] = trainingData[key].slice(-100);
+                });
+            }
+
+            // Update metrics
+            episodeCount.textContent = episode;
+            const recentRewards = trainingData.rewards.slice(-100);
+            const avgRew = recentRewards.reduce((a, b) => a + b, 0) / recentRewards.length;
+            avgReward.textContent = avgRew.toFixed(2);
+            bestValue.textContent = Math.min(...trainingData.bestValues).toFixed(4);
+            curiosityMetric.textContent = curiosityValue.toFixed(3);
+
+            // Update charts
+            updateChart(rewardChart, trainingData.rewards);
+            updateChart(bestValueChart, trainingData.bestValues, -0.398);
+            updateChart(lossChart, trainingData.policyLoss);
+            updateChart(curiosityChart, trainingData.curiosity);
+
+            // Log
+            if (episode % 10 === 0) {
+                addLog(`Episode ${episode}: Reward=${avgRew.toFixed(2)}, Best=${Math.min(...trainingData.bestValues).toFixed(4)}`, 'success');
+            }
+
+            // Continue training
+            setTimeout(simulateTrainingStep, 100); // 100ms per episode
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', () => {
+            if (!isTraining) {
+                isTraining = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                addLog('Starting PPO training with ICM curiosity module...', 'success');
+                addLog('Environment: Branin function optimization', 'info');
+                addLog('Target: Global minimum at -0.398', 'info');
+                simulateTrainingStep();
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            isTraining = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            addLog('Training paused', 'warning');
+        });
+
+        resetBtn.addEventListener('click', () => {
+            isTraining = false;
+            episode = 0;
+            trainingData = {
+                episodes: [],
+                rewards: [],
+                bestValues: [],
+                policyLoss: [],
+                curiosity: [],
+            };
+            episodeCount.textContent = '0';
+            avgReward.textContent = '0.00';
+            bestValue.textContent = '-∞';
+            curiosityMetric.textContent = '0.00';
+            
+            [rewardChart, bestValueChart, lossChart, curiosityChart].forEach(chart => {
+                chart.data.labels = [];
+                chart.data.datasets[0].data = [];
+                if (chart.data.datasets.length > 1) {
+                    chart.data.datasets[1].data = [];
+                }
+                chart.update();
+            });
+
+            log.innerHTML = '<div class="text-gray-500">Training reset. Click Start to begin.</div>';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            addLog('Training reset', 'info');
+        });
+    </script>
+</body>
+</html>
+
