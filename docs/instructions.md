@@ -2,14 +2,14 @@
 
 ## Objective
 
-Build an **Autonomous R&D Intelligence Layer** that transforms physical experimentation challenges into strategic competitive advantages. This platform serves as a co-pilot (evolving to autopilot) for materials science, chemistry, and physics research, combining AI-driven experimental design with safety-critical execution.
+Build an **Autonomous R&D Intelligence Layer** for materials science, chemistry, and physics research, combining AI-driven experimental design with safety-critical execution.
 
 ## Core Moats (Strategic Advantages)
 
 ### 1. Execution Moat
 **Challenge**: Physical experiments require reliable hardware control, real-time orchestration, and fault tolerance.  
 **Solution**: 
-- Rust-based safety kernel for instrument control with microsecond-level interlocks
+- Rust-based safety kernel for instrument control with low-latency interlocks
 - Robust driver abstraction layer supporting diverse equipment (XRD, NMR, synthesis reactors)
 - Priority-based queue management with preemption and resource allocation
 - Automatic retry logic, graceful degradation, and error recovery

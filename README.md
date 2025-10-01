@@ -6,7 +6,7 @@
 
 ## Overview
 
-An autonomous experimentation platform that transforms physical R&D challenges into strategic advantages. This system acts as a co-pilot (evolving to autopilot) for materials science, chemistry, and physics research by combining AI reasoning, safety-critical execution, and glass-box interpretability.
+An autonomous experimentation platform designed for materials science, chemistry, and physics research. This system combines AI reasoning, safety-critical execution, and interpretable decision-making to support laboratory workflows.
 
 ## Key Moats
 
@@ -94,10 +94,10 @@ periodicdent42/
 ## Key Features
 
 ✅ **Safety-First Design**: Rust-based interlocks, dry-run compilation, policy enforcement  
-✅ **Glass-Box AI**: Every decision logged with rationale, explainable plans  
-✅ **EIG Optimization**: Bayesian experimental design for maximum learning/hour  
+✅ **Interpretable AI**: Decision logging with rationale and explainable plans  
+✅ **EIG Optimization**: Bayesian experimental design approach  
 ✅ **Physics-Aware**: Domain ontologies, unit validation, uncertainty propagation  
-✅ **Provenance Tracking**: Complete audit trails from raw data to insights  
+✅ **Provenance Tracking**: Audit trails from raw data to insights  
 ✅ **Tiered Autonomy**: Human-in-loop → co-pilot → autopilot progression  
 
 ## Documentation
@@ -114,10 +114,10 @@ periodicdent42/
 - [Cloud Documentation Index](docs/README_CLOUD.md) - Navigation guide for all cloud docs
 
 ### Key Features (Cloud)
-- ⚡ **Dual-Model AI**: Gemini 2.5 Flash (<2s) + Pro (10-30s) for instant feedback + verified accuracy
-- 🚀 **Serverless Deployment**: Cloud Run auto-scaling (1-10 instances)
-- 🔒 **Enterprise Security**: GDC for on-premises, HIPAA-ready
-- 💰 **Cost-Optimized**: ~$321/month for development, $3.7K/month for production
+- ⚡ **Dual-Model AI**: Gemini 2.5 Flash + Pro for preliminary and detailed responses
+- 🚀 **Serverless Deployment**: Cloud Run with configurable auto-scaling
+- 🔒 **Enterprise Security**: Options for on-premises deployment (contact for details)
+- 💰 **Cost Estimates**: Vary based on usage (contact for pricing)
 
 ## Testing
 
@@ -135,9 +135,9 @@ pytest tests/safety/ --strict
 cargo test --package safety-kernel --all-features
 ```
 
-## Contributing
+## Collaboration
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, code standards, and PR guidelines.
+This is proprietary software. For collaboration inquiries, see [docs/contact.md](docs/contact.md) or contact B@thegoatnote.com.
 
 ## 📄 License
 

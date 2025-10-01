@@ -181,7 +181,7 @@ We recognize security researchers who help make this project safer:
 
 This project aims to comply with:
 - **NIST Cybersecurity Framework**: Core security practices
-- **ISO 27001**: Information security management
+- **ISO 27001**: Information security management (not currently certified, contact for roadmap)
 - **Laboratory Safety Standards**: OSHA, ANSI guidelines
 
 For compliance questions: B@thegoatnote.com

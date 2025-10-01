@@ -226,7 +226,7 @@ periodicdent42/
 
 ### 3. Enterprise-Ready Features
 - **Security**: IAM, VPC, encryption, audit logs
-- **Compliance**: HIPAA via GDC, GDPR data residency
+- **Compliance**: Consult legal counsel for regulatory requirements (HIPAA, GDPR)
 - **Monitoring**: Cloud Monitoring, custom metrics, alerts
 - **Scalability**: Auto-scaling 1-10+ instances
 

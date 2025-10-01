@@ -443,7 +443,7 @@ def train_on_tpu():
 
 ### When to Use GDC
 
-✅ **Regulatory compliance** (HIPAA, GDPR, export control)  
+✅ **Regulatory considerations** (consult legal counsel for HIPAA, GDPR, export control requirements)  
 ✅ **Sensitive data** (proprietary formulations, patents)  
 ✅ **Air-gapped environments** (defense, high-security labs)  
 ✅ **Low-latency requirements** (real-time instrument control)

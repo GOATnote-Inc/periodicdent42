@@ -2,7 +2,7 @@
 
 ## Vision
 
-Transform the fundamental challenges of autonomous physical experimentation into durable competitive advantages, enabling AI-driven discovery at 10x the velocity of traditional manual workflows while maintaining scientific rigor and safety.
+Address challenges of autonomous physical experimentation through AI-driven discovery approaches while maintaining scientific rigor and safety.
 
 ## Strategic Moats
 
@@ -10,7 +10,7 @@ Our platform's value derives from five interlocking moats:
 
 ### 1. Execution Moat
 **Challenge**: Physical experiments demand millisecond-level control, diverse hardware, and fault tolerance.  
-**Our Advantage**: Rust-based safety kernel + robust driver layer + intelligent queueing → 99.9% uptime.
+**Our Approach**: Rust-based safety kernel + robust driver layer + intelligent queueing for improved reliability.
 
 ### 2. Data Moat  
 **Challenge**: Scientific data is noisy, heterogeneous, and requires domain expertise to interpret.  
@@ -21,8 +21,8 @@ Our platform's value derives from five interlocking moats:
 **Our Advantage**: Glass-box AI + policy-as-code + audit trails → regulatory approval + researcher confidence.
 
 ### 4. Time Moat
-**Challenge**: Lab time is expensive; random exploration wastes months.  
-**Our Advantage**: Bayesian EIG optimization + parallel scheduling → 10x faster learning.
+**Challenge**: Lab time is expensive; random exploration wastes resources.  
+**Our Approach**: Bayesian EIG optimization + parallel scheduling for improved efficiency.
 
 ### 5. Interpretability Moat
 **Challenge**: Black-box AI lacks credibility in scientific contexts.  

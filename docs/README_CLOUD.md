@@ -239,9 +239,9 @@ See [google_cloud_deployment.md#10-cost-estimate](google_cloud_deployment.md#10-
 💰 Review **cost allocation** monthly  
 
 ### Compliance
-📋 **HIPAA**: Use GDC for sensitive health data  
-📋 **Export Control**: Air-gapped GDC for restricted research  
-📋 **GDPR**: Configure data residency in EU regions  
+📋 **HIPAA**: Consult legal counsel. Options may include Google Distributed Cloud.  
+📋 **Export Control**: Air-gapped GDC available for restricted research (contact for details)  
+📋 **GDPR**: Consult legal counsel. Data residency configuration available.  
 
 ---
 
