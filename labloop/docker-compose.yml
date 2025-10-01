@@ -1,0 +1,21 @@
+version: "3.9"
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: docker/orchestrator.Dockerfile
+    environment:
+      - REAL_DEVICE=${REAL_DEVICE:-false}
+      - INSTRUMENT_RESOURCE=${INSTRUMENT_RESOURCE:-SIM}
+    ports:
+      - "8000:8000"
+  ui:
+    build:
+      context: .
+      dockerfile: docker/ui.Dockerfile
+    environment:
+      - NEXT_PUBLIC_ORCHESTRATOR=http://orchestrator:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - orchestrator
