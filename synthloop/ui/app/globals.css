@@ -1,0 +1,33 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-pass {
+  background-color: #0f766e;
+  color: white;
+}
+
+.badge-warn {
+  background-color: #d97706;
+  color: white;
+}
+
+.badge-fail {
+  background-color: #b91c1c;
+  color: white;
+}
