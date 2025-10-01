@@ -40,6 +40,33 @@
             </p>
         </header>
 
+        <!-- Early Results Notice -->
+        <div class="bg-yellow-500/10 border-l-4 border-yellow-500 rounded-xl p-6 mb-8">
+            <div class="flex items-start gap-4">
+                <div class="text-3xl">⚠️</div>
+                <div class="flex-1">
+                    <h3 class="text-xl font-bold text-yellow-400 mb-2">Early Validation Results</h3>
+                    <p class="text-gray-300 mb-3">
+                        Initial testing suggests <strong>RL (PPO+ICM) may outperform Bayesian Optimization in high-noise environments</strong> (σ≥1.0). 
+                        At σ=2.0: PPO+ICM = -1.31 ± 0.90 vs BO = 0.74 ± 0.77 (p=0.0001, n=10 trials).
+                    </p>
+                    <div class="bg-gray-900/50 rounded-lg p-4 mb-3">
+                        <p class="text-sm text-gray-400 mb-2"><strong>Limitations (requires further validation):</strong></p>
+                        <ul class="text-sm text-gray-400 space-y-1 ml-4">
+                            <li>• Only tested on 2D Branin function (low-dimensional)</li>
+                            <li>• Simulated noise, not real hardware measurements</li>
+                            <li>• Limited to 100 experiments per trial</li>
+                            <li>• No comparison to advanced BO variants (e.g., robust BO)</li>
+                            <li>• Hardware validation pending (XRD, NMR, UV-Vis)</li>
+                        </ul>
+                    </div>
+                    <a href="/static/breakthrough.html" class="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-semibold">
+                        View full validation results →
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <!-- Training Controls -->
         <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mb-8 border border-gray-700">
             <div class="flex justify-between items-center flex-wrap gap-4">
