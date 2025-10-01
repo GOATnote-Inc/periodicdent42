@@ -1,0 +1,28 @@
+pilot_name: "Lab A Cycle Time Pilot"
+partner: "Lab A"
+scope:
+  workflow: "High-throughput assay validation"
+  objectives:
+    - "Reduce cycle time by 20%"
+    - "Improve first-pass yield by 10%"
+success_criteria:
+  cycle_time_reduction_pct: 20
+  yield_increase_pct: 10
+  mde_cycle_time_pct: 15
+  sample_size: 80
+timeline:
+  kickoff: "2025-01-05"
+  baseline_start: "2025-01-05"
+  pilot_start: "2025-01-12"
+  pilot_end: "2025-02-09"
+risks:
+  - "Data integration delays"
+  - "Operator change management"
+comms_plan:
+  weekly_sync: "Fridays 10am"
+  exec_update: "Bi-weekly email"
+  channel: "Slack #lab-a-pilot"
+legal:
+  company_name: "Periodic Labs"
+  partner_name: "Lab A Inc."
+  effective_date: "2025-01-05"
