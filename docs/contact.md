@@ -6,9 +6,7 @@
 ---
 
 ## 🚀 Mission
-Accelerate scientific discovery through autonomous experimentation and AI-driven research.
-
-Transform the pace of materials R&D from years to months, from months to weeks.
+Support scientific discovery through autonomous experimentation and AI-driven research.
 
 ---
 
@@ -18,9 +16,9 @@ Transform the pace of materials R&D from years to months, from months to weeks.
 
 **Collaboration Opportunities**:
 - Research partnerships
-- Pilot programs (defense, space, semiconductors)
+- Experimental programs (defense, space, semiconductors)
 - Academic collaborations
-- Open source contributions
+- Technology contributions
 
 ---
 
@@ -29,10 +27,10 @@ Transform the pace of materials R&D from years to months, from months to weeks.
 We're building this platform **for the scientific community**.
 
 **Interested in**:
-- ✅ Testing the platform in your lab?
-- ✅ Collaborating on autonomous R&D?
-- ✅ Contributing to open source components?
-- ✅ Sharing instrument drivers or protocols?
+- Testing the platform in your lab?
+- Collaborating on autonomous R&D research?
+- Contributing instrument drivers or protocols?
+- Exploring research applications?
 
 **Reach out**: B@thegoatnote.com
 
@@ -40,40 +38,35 @@ We're building this platform **for the scientific community**.
 
 ## 🏢 For Industry Partners
 
-**Target Industries**:
-- Defense (hypersonic materials, armor, stealth)
-- Aerospace (satellite components, propulsion, thermal protection)
-- Semiconductors (advanced node materials, packaging)
-- Energy (batteries, solar, grid storage)
-- Advanced manufacturing (additive, composites)
+**Focus Areas**:
+- Defense (materials research)
+- Aerospace (satellite components, propulsion)
+- Semiconductors (materials characterization)
+- Energy (batteries, solar)
+- Advanced manufacturing
 
-**Pilot Programs**: 6-month engagements, $150-250K
-- Autonomous materials discovery
-- 5-10x speedup vs. manual R&D
-- Full provenance and safety validation
-
-**Contact**: B@thegoatnote.com
+**Contact**: B@thegoatnote.com for discussion of potential collaboration
 
 ---
 
 ## 🎓 For Universities & National Labs
 
 **Collaboration Models**:
-1. **Research Partnership**: Co-develop autonomous lab capabilities
-2. **Instrument Integration**: Connect your XRD, NMR, UV-Vis to our AI
+1. **Research Partnership**: Explore autonomous lab capabilities
+2. **Instrument Integration**: Connect characterization equipment to AI systems
 3. **Student Projects**: Internships, theses, capstone projects
-4. **Publication Opportunities**: Co-author papers on autonomous R&D
+4. **Publication Opportunities**: Collaborate on autonomous R&D research
 
-**Academic Discount**: 50% off pilot pricing for .edu domains
+**Contact**: B@thegoatnote.com
 
 ---
 
-## 💻 For Open Source Contributors
+## 💻 For Contributors
 
 **We welcome contributions**:
 - Instrument drivers (XRD, NMR, FTIR, SEM, etc.)
 - Safety policies and validation protocols
-- Materials databases and ontologies
+- Materials databases
 - Simulation integrations (DFT, MD, FEA)
 - Documentation improvements
 
@@ -103,21 +96,9 @@ For **safety incidents** or concerns with autonomous operation:
 ## 📍 Location
 
 **Periodic Labs**  
-Part of GOATnote Inc.  
-(Location TBD based on first pilot customer)
+Part of GOATnote Inc.
 
 **Remote-First**: Our team works globally
-
----
-
-## 📅 Office Hours (Virtual)
-
-Want to chat about autonomous R&D?
-
-**Weekly Office Hours**: Fridays 2-4 PM Pacific  
-**Calendar**: https://calendly.com/periodiclabs (coming soon)
-
-Or email to schedule: B@thegoatnote.com
 
 ---
 
@@ -133,11 +114,11 @@ Subject: "Media Inquiry - [Your Publication]"
 
 Interested in having us present at your conference or seminar?
 
-**Topics we cover**:
-- Autonomous experimentation and self-driving labs
+**Topics**:
+- Autonomous experimentation and laboratory automation
 - AI for materials discovery
-- Bayesian optimization and active learning
-- Safety-critical AI systems
+- Bayesian optimization and experimental design
+- Safety systems for autonomous laboratories
 - Hardware-software integration for R&D
 
 **Email**: B@thegoatnote.com  
@@ -150,21 +131,14 @@ Interested in having us present at your conference or seminar?
 - **Main Repository**: https://github.com/GOATnote-Inc/periodicdent42
 - **Live Demo**: https://ard-backend-293837893611.us-central1.run.app
 - **Documentation**: https://github.com/GOATnote-Inc/periodicdent42/tree/main/docs
-- **Market Analysis**: See `MARKET_ANALYSIS_OCT2025.md`
-- **Phase 3 Plan**: See `PHASE3_IMPLEMENTATION_PLAN.md`
 
 ---
 
-## ⚡ Quick Response Times
+## ⚠️ Disclaimer
 
-- **General inquiries**: 24-48 hours
-- **Pilot program interest**: Same day
-- **Security vulnerabilities**: Immediate
-- **Safety incidents**: Immediate
+This software is provided "as-is" without warranty of any kind. See LICENSE file for full details. All performance metrics and capabilities described in documentation are based on specific test conditions and may vary. Users are responsible for validation and safety in their own environments.
 
 ---
-
-**Let's accelerate science together.** 🚀
 
 **Email**: B@thegoatnote.com  
 **GitHub**: https://github.com/GOATnote-Inc/periodicdent42
