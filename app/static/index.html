@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous R&D Intelligence Layer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .typing::after {
+            content: '▋';
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 min-h-screen text-white">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                Autonomous R&D Intelligence Layer
+            </h1>
+            <p class="text-gray-300 text-lg">
+                Dual-Model AI: <span class="text-yellow-400">Gemini 2.5 Flash</span> (instant) + 
+                <span class="text-green-400">Gemini 2.5 Pro</span> (verified)
+            </p>
+            <div class="mt-4 flex justify-center items-center gap-4">
+                <div id="status" class="flex items-center gap-2">
+                    <div class="w-3 h-3 bg-gray-500 rounded-full pulse"></div>
+                    <span class="text-sm text-gray-400">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Query Input -->
+        <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-8 mb-8 border border-gray-700">
+            <label for="query" class="block text-sm font-semibold text-gray-300 mb-3">
+                Enter your research question:
+            </label>
+            <textarea 
+                id="query" 
+                rows="4" 
+                class="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                placeholder="e.g., Design an experiment to test perovskite stability under different humidity levels..."
+            ></textarea>
+            
+            <div class="mt-4">
+                <label for="context" class="block text-sm font-semibold text-gray-300 mb-2">
+                    Context (optional):
+                </label>
+                <input 
+                    id="context" 
+                    type="text" 
+                    class="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder='e.g., {"domain": "materials science", "lab": "XRD"}'
+                />
+            </div>
+
+            <button 
+                id="submitBtn"
+                class="mt-6 w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+                🚀 Query AI System
+            </button>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="space-y-6">
+            <!-- Results will appear here -->
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const queryInput = document.getElementById('query');
+        const contextInput = document.getElementById('context');
+        const submitBtn = document.getElementById('submitBtn');
+        const resultsDiv = document.getElementById('results');
+        const statusDiv = document.getElementById('status');
+
+        // Check health on load
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    statusDiv.innerHTML = `
+                        <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span class="text-sm text-green-400">System Online</span>
+                        <span class="text-xs text-gray-500">(${data.project_id})</span>
+                    `;
+                }
+            } catch (err) {
+                statusDiv.innerHTML = `
+                    <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                    <span class="text-sm text-red-400">System Offline</span>
+                `;
+            }
+        }
+        checkHealth();
+
+        submitBtn.addEventListener('click', async () => {
+            const query = queryInput.value.trim();
+            if (!query) {
+                alert('Please enter a question!');
+                return;
+            }
+
+            // Parse context
+            let context = {};
+            if (contextInput.value.trim()) {
+                try {
+                    context = JSON.parse(contextInput.value);
+                } catch (e) {
+                    alert('Invalid JSON in context field!');
+                    return;
+                }
+            }
+
+            // Disable button
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Processing...';
+
+            // Create result containers
+            const timestamp = new Date().toLocaleTimeString();
+            const resultId = `result-${Date.now()}`;
+            
+            const resultHTML = `
+                <div id="${resultId}" class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-gray-700 animate-[fadeIn_0.3s_ease-in]">
+                    <div class="mb-4">
+                        <div class="text-sm text-gray-400 mb-2">Query at ${timestamp}</div>
+                        <div class="text-gray-300 bg-gray-900/50 rounded-lg p-4 mb-4 border border-gray-600">
+                            ${escapeHtml(query)}
+                        </div>
+                    </div>
+                    
+                    <!-- Flash Response -->
+                    <div id="${resultId}-flash" class="mb-6 hidden">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-2 h-2 bg-yellow-400 rounded-full pulse"></div>
+                            <h3 class="text-lg font-semibold text-yellow-400">Preliminary Response (Flash)</h3>
+                            <span id="${resultId}-flash-time" class="text-xs text-gray-500"></span>
+                        </div>
+                        <div id="${resultId}-flash-content" class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 text-gray-200 whitespace-pre-wrap"></div>
+                        <div class="mt-2 text-xs text-gray-500">
+                            ⚠️ This is a fast preliminary response. Waiting for verified answer...
+                        </div>
+                    </div>
+
+                    <!-- Pro Response -->
+                    <div id="${resultId}-pro" class="hidden">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                            <h3 class="text-lg font-semibold text-green-400">Verified Response (Pro)</h3>
+                            <span id="${resultId}-pro-time" class="text-xs text-gray-500"></span>
+                        </div>
+                        <div id="${resultId}-pro-content" class="bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-gray-200 whitespace-pre-wrap"></div>
+                        <div id="${resultId}-reasoning" class="mt-4"></div>
+                    </div>
+
+                    <!-- Loading indicator -->
+                    <div id="${resultId}-loading" class="text-center py-8">
+                        <div class="inline-block w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                        <p class="mt-4 text-gray-400">Querying AI models...</p>
+                    </div>
+                </div>
+            `;
+            
+            resultsDiv.insertAdjacentHTML('afterbegin', resultHTML);
+
+            // Stream results
+            try {
+                const response = await fetch(`${API_BASE}/api/reasoning/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, context })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                let buffer = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (!line.trim() || !line.startsWith('event:')) continue;
+                        
+                        const eventMatch = line.match(/event: (\w+)/);
+                        const dataMatch = line.match(/data: (.+)/);
+                        
+                        if (eventMatch && dataMatch) {
+                            const eventType = eventMatch[1];
+                            const data = JSON.parse(dataMatch[1]);
+                            
+                            document.getElementById(`${resultId}-loading`).classList.add('hidden');
+
+                            if (eventType === 'preliminary') {
+                                const flashDiv = document.getElementById(`${resultId}-flash`);
+                                flashDiv.classList.remove('hidden');
+                                document.getElementById(`${resultId}-flash-content`).textContent = data.response.content;
+                                document.getElementById(`${resultId}-flash-time`).textContent = `(${data.response.latency_ms}ms)`;
+                            } else if (eventType === 'final') {
+                                const proDiv = document.getElementById(`${resultId}-pro`);
+                                proDiv.classList.remove('hidden');
+                                document.getElementById(`${resultId}-pro-content`).textContent = data.response.content;
+                                document.getElementById(`${resultId}-pro-time`).textContent = `(${data.response.latency_ms}ms)`;
+                                
+                                // Show reasoning steps if available
+                                if (data.response.reasoning_steps && data.response.reasoning_steps.length > 0) {
+                                    const reasoningHTML = `
+                                        <div class="text-sm">
+                                            <div class="font-semibold text-gray-400 mb-2">🔍 Reasoning Steps:</div>
+                                            <ol class="list-decimal list-inside space-y-1 text-gray-500">
+                                                ${data.response.reasoning_steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
+                                            </ol>
+                                        </div>
+                                    `;
+                                    document.getElementById(`${resultId}-reasoning`).innerHTML = reasoningHTML;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                document.getElementById(`${resultId}-loading`).innerHTML = `
+                    <div class="text-center py-8 text-red-400">
+                        <p class="font-semibold">❌ Error</p>
+                        <p class="text-sm mt-2">${escapeHtml(err.message)}</p>
+                    </div>
+                `;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 Query AI System';
+            }
+        });
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Allow Enter to submit (with Shift+Enter for newline)
+        queryInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
+

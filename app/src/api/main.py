@@ -5,17 +5,20 @@ Provides dual-model reasoning via Gemini 2.5 Flash + Pro.
 """
 
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Dict, Any
 import logging
 import asyncio
+from pathlib import Path
 
 from src.utils.settings import settings
 from src.reasoning.dual_agent import DualModelAgent
 from src.services.vertex import init_vertex, is_initialized
 from src.utils.sse import sse_event, sse_error
+from src.services.storage import get_storage
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +33,11 @@ app = FastAPI(
     description="Dual-model AI reasoning with Gemini 2.5 Flash + Pro",
     version="0.1.0"
 )
+
+# Mount static files for web UI
+STATIC_DIR = Path(__file__).parent.parent.parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # CORS - permissive for now (TODO: tighten in production)
 app.add_middleware(
@@ -169,16 +177,87 @@ async def query_with_feedback(body: QueryRequest, request: Request):
 
 @app.get("/")
 async def root():
-    """Root endpoint with API info."""
+    """
+    Root endpoint - serves the web UI if available, otherwise returns API info.
+    """
+    # Check if static UI exists
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    
+    # Fallback to JSON response
     return {
         "service": "Autonomous R&D Intelligence Layer",
         "version": "0.1.0",
         "endpoints": {
             "health": "/health",
             "reasoning": "/api/reasoning/query",
-            "docs": "/docs"
+            "docs": "/docs",
+            "ui": "/"
         }
     }
+
+
+# Storage endpoints
+@app.post("/api/storage/experiment")
+async def store_experiment(data: Dict[str, Any]):
+    """
+    Store experiment result in Cloud Storage.
+    
+    Body:
+        {
+            "experiment_id": "exp-123",
+            "result": {...},
+            "metadata": {...}  # optional
+        }
+    """
+    storage = get_storage()
+    if not storage:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Cloud Storage not configured"}
+        )
+    
+    experiment_id = data.get("experiment_id")
+    result = data.get("result")
+    metadata = data.get("metadata", {})
+    
+    if not experiment_id or not result:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "experiment_id and result are required"}
+        )
+    
+    try:
+        uri = storage.store_experiment_result(experiment_id, result, metadata)
+        return {"status": "success", "uri": uri}
+    except Exception as e:
+        logger.error(f"Storage error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+
+@app.get("/api/storage/experiments")
+async def list_experiments():
+    """List all stored experiments."""
+    storage = get_storage()
+    if not storage:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Cloud Storage not configured"}
+        )
+    
+    try:
+        experiments = storage.list_experiments()
+        return {"experiments": experiments, "count": len(experiments)}
+    except Exception as e:
+        logger.error(f"Storage error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 
 
 if __name__ == "__main__":
