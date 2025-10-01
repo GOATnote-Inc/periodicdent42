@@ -32,15 +32,17 @@ jobs:
     
     - name: Run tests
       run: |
+        # Run from app directory
         cd app
-        pytest -v --tb=short
+        export PYTHONPATH=".:${PYTHONPATH}"
+        pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term
     
     - name: Upload coverage
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: app/htmlcov/
+        path: htmlcov/
 
   build-and-deploy:
     needs: test
