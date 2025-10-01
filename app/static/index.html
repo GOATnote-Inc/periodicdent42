@@ -3,10 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <meta name="theme-color" content="#1e3a8a">
+    <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="description" content="Dual-model AI reasoning with Gemini 2.5 Flash + Pro for autonomous R&D">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <title>Autonomous R&D Intelligence Layer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -15,6 +18,9 @@
                 extend: {
                     screens: {
                         'xs': '475px',
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
                     }
                 }
             }
@@ -37,16 +43,23 @@
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 min-h-screen text-white">
-    <div class="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-4xl">
-        <!-- Header -->
-        <header class="text-center mb-6 sm:mb-12">
-            <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 leading-tight">
-                Autonomous R&D Intelligence Layer
+<body class="bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 min-h-screen text-white antialiased">
+    <!-- Background decoration -->
+    <div class="fixed inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiMxZTQwYWYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6bTAgMjRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6TTEyIDM0YzAtMi4yMDktMS43OTEtNC00LTRzLTQgMS43OTEtNCA0IDEuNzkxIDQgNCA0IDQtMS43OTEgNC00em0wIDI0YzAtMi4yMDktMS43OTEtNC00LTRzLTQgMS43OTEtNCA0IDEuNzkxIDQgNCA0IDQtMS43OTEgNC00ek0zNiAxMGMwLTIuMjA5LTEuNzkxLTQtNC00cy00IDEuNzkxLTQgNCAxLjc5MSA0IDQgNCA0LTEuNzkxIDQtNHptMjQgMjRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30 pointer-events-none"></div>
+    
+    <div class="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-5xl relative z-10">
+        <!-- Header with improved hierarchy -->
+        <header class="text-center mb-8 sm:mb-12 fade-in">
+            <div class="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-blue-500/10 rounded-full border border-blue-500/20">
+                <div class="w-2 h-2 bg-blue-400 rounded-full pulse"></div>
+                <span class="text-xs sm:text-sm font-medium text-blue-300">AI-Powered Research Platform</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl md:text-6xl font-bold mb-4 sm:mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-400 leading-tight tracking-tight">
+                Autonomous R&D Intelligence
             </h1>
-            <p class="text-gray-300 text-sm sm:text-base md:text-lg px-2">
-                Dual-Model AI: <span class="text-yellow-400">Gemini 2.5 Flash</span> (instant) + 
-                <span class="text-green-400">Gemini 2.5 Pro</span> (verified)
+            <p class="text-slate-300 text-sm sm:text-base md:text-lg px-2 max-w-2xl mx-auto leading-relaxed">
+                Dual-Model AI System: <span class="text-yellow-400 font-semibold">Gemini 2.5 Flash</span> for instant feedback + 
+                <span class="text-emerald-400 font-semibold">Gemini 2.5 Pro</span> for verified reasoning
             </p>
             <div class="mt-4 flex justify-center items-center gap-4">
                 <div id="status" class="flex items-center gap-2">
