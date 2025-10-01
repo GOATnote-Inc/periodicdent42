@@ -314,9 +314,9 @@ class PPOAgent:
                 ) * advantages_tensor[batch_indices]
                 policy_loss = -torch.min(surr1, surr2).mean()
                 
-                # Value loss
+                # Value loss (ensure shapes match)
                 value_loss = nn.functional.mse_loss(
-                    values, returns_tensor[batch_indices]
+                    values.squeeze(-1), returns_tensor[batch_indices]
                 )
                 
                 # Entropy bonus (for exploration)

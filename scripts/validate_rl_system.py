@@ -89,11 +89,16 @@ class BayesianOptimization:
     
     def __init__(self, bounds):
         self.bounds = bounds
-        kernel = ConstantKernel(1.0) * RBF(length_scale=1.0)
+        # Improved kernel with better defaults for optimization
+        kernel = ConstantKernel(1.0, constant_value_bounds=(1e-3, 1e3)) * RBF(
+            length_scale=0.5, 
+            length_scale_bounds=(1e-2, 10.0)
+        )
         self.gp = GaussianProcessRegressor(
             kernel=kernel,
-            alpha=0.1**2,
+            alpha=1e-6,  # Reduced noise for deterministic functions
             n_restarts_optimizer=10,
+            normalize_y=True,  # Normalize target values for better convergence
         )
     
     def optimize(self, env, n_experiments=100):
