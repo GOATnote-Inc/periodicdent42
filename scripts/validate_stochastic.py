@@ -99,8 +99,7 @@ def run_stochastic_validation(
             # Create environment with noisy objective
             env = ExperimentOptimizationEnv(
                 parameter_bounds=bounds,
-                objective_function=noisy_obj,
-                max_steps=n_experiments
+                objective_function=noisy_obj
             )
             
             # Test each method
@@ -125,8 +124,7 @@ def run_stochastic_validation(
                 env.close()
                 env = ExperimentOptimizationEnv(
                     parameter_bounds=bounds,
-                    objective_function=noisy_obj,
-                    max_steps=n_experiments
+                    objective_function=noisy_obj
                 )
         
         # Compute statistics for this noise level
