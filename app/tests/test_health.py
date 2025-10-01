@@ -44,3 +44,26 @@ def test_root_endpoint():
     
     assert response.status_code == 200
     # May return HTML or JSON depending on whether static files exist
+
+
+def test_health_check_requires_api_key_when_enabled(monkeypatch):
+    """Health endpoint should require API key when authentication is enabled."""
+    monkeypatch.setattr("src.utils.settings.settings.ENABLE_AUTH", True, raising=False)
+    monkeypatch.setattr("src.utils.settings.settings.API_KEY", "secret", raising=False)
+
+    auth_client = TestClient(app)
+    response = auth_client.get("/health")
+
+    assert response.status_code == 401
+
+
+def test_health_check_allows_valid_api_key(monkeypatch):
+    """Health endpoint should return 200 when valid API key is provided."""
+    monkeypatch.setattr("src.utils.settings.settings.ENABLE_AUTH", True, raising=False)
+    monkeypatch.setattr("src.utils.settings.settings.API_KEY", "secret", raising=False)
+
+    auth_client = TestClient(app)
+    response = auth_client.get("/health", headers={"x-api-key": "secret"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
