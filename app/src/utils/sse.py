@@ -38,19 +38,27 @@ def sse_message(message: str) -> str:
     return f"data: {json.dumps({'message': message})}\n\n"
 
 
-def sse_error(error: str, details: str = "") -> str:
+def sse_error(error: str, *, code: str = "", details: str = "") -> str:
     """
     Send error via SSE.
     
     Args:
         error: Error message
-        details: Optional error details
+        code: Optional error code for client-side handling
+        details: Optional error details (internal use only)
     
     Returns:
         Formatted SSE error event
     """
-    return sse_event("error", {
+    payload = {
         "error": error,
-        "details": details
-    })
+    }
+
+    if code:
+        payload["code"] = code
+
+    if details:
+        payload["details"] = details
+
+    return sse_event("error", payload)
 

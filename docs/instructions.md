@@ -317,3 +317,11 @@ After completing Phase 0 and 1, focus areas include:
 
 **Remember**: Every line of code should advance one or more moats. If it doesn't improve execution, data quality, trust, speed, or interpretability, question whether it belongs in the system.
 
+## Deployment Checklist
+
+- [ ] Confirm authentication and authorization are enabled for all production endpoints
+- [ ] Validate CORS configuration matches approved domains and no wildcard origins remain
+- [ ] Check rate limiting and abuse protections are active and tuned for expected load
+- [ ] Review logging/error responses for sensitive data exposure (ensure no stack traces leak to clients)
+- [ ] Ensure HIPAA compliance review is completed for workflows touching PHI
+

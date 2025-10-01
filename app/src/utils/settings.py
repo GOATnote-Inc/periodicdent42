@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     ENABLE_METRICS: bool = True
     ENABLE_TRACING: bool = True
     
+    # Security settings
+    API_KEY: Optional[str] = None  # API key for authentication (set in Secret Manager)
+    ALLOWED_ORIGINS: str = ""  # Comma-separated list of allowed CORS origins
+    ENABLE_AUTH: bool = False  # Enable in production to require API key auth
+    RATE_LIMIT_PER_MINUTE: int = 60  # Max requests per IP per minute
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
@@ -78,6 +84,9 @@ def load_settings() -> Settings:
         
         if not settings.GCS_BUCKET:
             settings.GCS_BUCKET = get_secret_from_manager("gcs-bucket", project_id)
+        
+        if not settings.API_KEY and settings.ENABLE_AUTH:
+            settings.API_KEY = get_secret_from_manager("api-key", project_id)
     
     return settings
 

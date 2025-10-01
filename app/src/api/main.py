@@ -1,19 +1,21 @@
-"""
-FastAPI application for Autonomous R&D Intelligence Layer.
+"""FastAPI application for Autonomous R&D Intelligence Layer."""
 
-Provides dual-model reasoning via Gemini 2.5 Flash + Pro.
-"""
+import asyncio
+import logging
+from pathlib import Path
+from typing import Any, Dict, List
 
-from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Dict, Any
-import logging
-import asyncio
-from pathlib import Path
 
+from src.api.security import (
+    AuthenticationMiddleware,
+    RateLimiterMiddleware,
+    SecurityHeadersMiddleware,
+)
 from src.utils.settings import settings
 from src.reasoning.dual_agent import DualModelAgent
 from src.services.vertex import init_vertex, is_initialized
@@ -34,18 +36,58 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Mount static files for web UI
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# CORS - permissive for now (TODO: tighten in production)
+def _parse_allowed_origins(raw_origins: str) -> List[str]:
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    if origins:
+        return origins
+
+    if settings.ENVIRONMENT.lower() == "development":
+        return [
+            "http://localhost",
+            "http://localhost:3000",
+            "http://127.0.0.1",
+            "http://127.0.0.1:3000",
+        ]
+
+    logger.warning("No CORS origins configured; browser requests will be blocked by default.")
+    return []
+
+
+ALLOWED_ORIGINS = _parse_allowed_origins(settings.ALLOWED_ORIGINS)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Restrict to specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Requested-With",
+        "X-API-Key",
+    ],
+    expose_headers=["X-Request-ID"],
+)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(
+    RateLimiterMiddleware,
+    limit_per_minute=settings.RATE_LIMIT_PER_MINUTE,
+)
+
+AUTH_EXEMPT_PATHS = set()
+AUTH_EXEMPT_PATHS.update({"/docs", "/openapi.json", "/", "/static"})
+
+app.add_middleware(
+    AuthenticationMiddleware,
+    enabled=settings.ENABLE_AUTH,
+    api_key=settings.API_KEY,
+    exempt_paths=AUTH_EXEMPT_PATHS,
 )
 
 # Global agent instance (initialized on startup)
@@ -90,8 +132,17 @@ async def startup_event():
         # Don't crash - allow health check to report status
 
 
+def _verify_health_access(request: Request) -> None:
+    if not settings.ENABLE_AUTH:
+        return
+    api_key = request.headers.get("x-api-key")
+    if not api_key or api_key != settings.API_KEY:
+        logger.warning("Unauthorized health check attempt from %s", request.client)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(request: Request):
     """
     Health check endpoint.
     
@@ -100,6 +151,8 @@ async def health():
     Returns:
         200 OK if service is healthy, including Vertex AI initialization status
     """
+    _verify_health_access(request)
+
     return HealthResponse(
         status="ok",
         vertex_initialized=is_initialized(),
@@ -162,7 +215,7 @@ async def query_with_feedback(body: QueryRequest, request: Request):
             logger.error(f"Error in event stream: {e}")
             yield sse_error(
                 error="Internal server error",
-                details=str(e)
+                code="stream_failure"
             )
     
     return StreamingResponse(
