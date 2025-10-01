@@ -2,9 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#1e3a8a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="Dual-model AI reasoning with Gemini 2.5 Flash + Pro for autonomous R&D">
     <title>Autonomous R&D Intelligence Layer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    screens: {
+                        'xs': '475px',
+                    }
+                }
+            }
+        }
+    </script>
     <style>
         .pulse {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -23,13 +38,13 @@
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 min-h-screen text-white">
-    <div class="container mx-auto px-4 py-8 max-w-4xl">
+    <div class="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-4xl">
         <!-- Header -->
-        <header class="text-center mb-12">
-            <h1 class="text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+        <header class="text-center mb-6 sm:mb-12">
+            <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 leading-tight">
                 Autonomous R&D Intelligence Layer
             </h1>
-            <p class="text-gray-300 text-lg">
+            <p class="text-gray-300 text-sm sm:text-base md:text-lg px-2">
                 Dual-Model AI: <span class="text-yellow-400">Gemini 2.5 Flash</span> (instant) + 
                 <span class="text-green-400">Gemini 2.5 Pro</span> (verified)
             </p>
@@ -42,32 +57,32 @@
         </header>
 
         <!-- Query Input -->
-        <div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-8 mb-8 border border-gray-700">
-            <label for="query" class="block text-sm font-semibold text-gray-300 mb-3">
+        <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8 border border-gray-700">
+            <label for="query" class="block text-xs sm:text-sm font-semibold text-gray-300 mb-2 sm:mb-3">
                 Enter your research question:
             </label>
             <textarea 
                 id="query" 
                 rows="4" 
-                class="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                placeholder="e.g., Design an experiment to test perovskite stability under different humidity levels..."
+                class="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none touch-manipulation"
+                placeholder="e.g., Design an experiment to test perovskite stability..."
             ></textarea>
             
-            <div class="mt-4">
-                <label for="context" class="block text-sm font-semibold text-gray-300 mb-2">
+            <div class="mt-3 sm:mt-4">
+                <label for="context" class="block text-xs sm:text-sm font-semibold text-gray-300 mb-2">
                     Context (optional):
                 </label>
                 <input 
                     id="context" 
                     type="text" 
-                    class="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder='e.g., {"domain": "materials science", "lab": "XRD"}'
+                    class="w-full px-3 sm:px-4 py-2 text-sm sm:text-base bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent touch-manipulation"
+                    placeholder='e.g., {"domain": "materials", "lab": "XRD"}'
                 />
             </div>
 
             <button 
                 id="submitBtn"
-                class="mt-6 w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                class="mt-4 sm:mt-6 w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 active:scale-95 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 text-sm sm:text-base touch-manipulation"
             >
                 🚀 Query AI System
             </button>
@@ -135,42 +150,42 @@
             const resultId = `result-${Date.now()}`;
             
             const resultHTML = `
-                <div id="${resultId}" class="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-gray-700 animate-[fadeIn_0.3s_ease-in]">
-                    <div class="mb-4">
-                        <div class="text-sm text-gray-400 mb-2">Query at ${timestamp}</div>
-                        <div class="text-gray-300 bg-gray-900/50 rounded-lg p-4 mb-4 border border-gray-600">
+                <div id="${resultId}" class="bg-gray-800/50 backdrop-blur-sm rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 border border-gray-700 animate-[fadeIn_0.3s_ease-in]">
+                    <div class="mb-3 sm:mb-4">
+                        <div class="text-xs sm:text-sm text-gray-400 mb-2">Query at ${timestamp}</div>
+                        <div class="text-sm sm:text-base text-gray-300 bg-gray-900/50 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4 border border-gray-600 break-words">
                             ${escapeHtml(query)}
                         </div>
                     </div>
                     
                     <!-- Flash Response -->
-                    <div id="${resultId}-flash" class="mb-6 hidden">
-                        <div class="flex items-center gap-2 mb-3">
-                            <div class="w-2 h-2 bg-yellow-400 rounded-full pulse"></div>
-                            <h3 class="text-lg font-semibold text-yellow-400">Preliminary Response (Flash)</h3>
+                    <div id="${resultId}-flash" class="mb-4 sm:mb-6 hidden">
+                        <div class="flex items-center gap-2 mb-2 sm:mb-3 flex-wrap">
+                            <div class="w-2 h-2 bg-yellow-400 rounded-full pulse flex-shrink-0"></div>
+                            <h3 class="text-base sm:text-lg font-semibold text-yellow-400">Preliminary (Flash)</h3>
                             <span id="${resultId}-flash-time" class="text-xs text-gray-500"></span>
                         </div>
-                        <div id="${resultId}-flash-content" class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 text-gray-200 whitespace-pre-wrap"></div>
+                        <div id="${resultId}-flash-content" class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-3 sm:p-4 text-sm sm:text-base text-gray-200 whitespace-pre-wrap break-words overflow-x-auto"></div>
                         <div class="mt-2 text-xs text-gray-500">
-                            ⚠️ This is a fast preliminary response. Waiting for verified answer...
+                            ⚠️ Fast preview. Awaiting verified answer...
                         </div>
                     </div>
 
                     <!-- Pro Response -->
                     <div id="${resultId}-pro" class="hidden">
-                        <div class="flex items-center gap-2 mb-3">
-                            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                            <h3 class="text-lg font-semibold text-green-400">Verified Response (Pro)</h3>
+                        <div class="flex items-center gap-2 mb-2 sm:mb-3 flex-wrap">
+                            <div class="w-2 h-2 bg-green-400 rounded-full flex-shrink-0"></div>
+                            <h3 class="text-base sm:text-lg font-semibold text-green-400">Verified (Pro)</h3>
                             <span id="${resultId}-pro-time" class="text-xs text-gray-500"></span>
                         </div>
-                        <div id="${resultId}-pro-content" class="bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-gray-200 whitespace-pre-wrap"></div>
-                        <div id="${resultId}-reasoning" class="mt-4"></div>
+                        <div id="${resultId}-pro-content" class="bg-green-900/20 border border-green-700/50 rounded-lg p-3 sm:p-4 text-sm sm:text-base text-gray-200 whitespace-pre-wrap break-words overflow-x-auto"></div>
+                        <div id="${resultId}-reasoning" class="mt-3 sm:mt-4"></div>
                     </div>
 
                     <!-- Loading indicator -->
-                    <div id="${resultId}-loading" class="text-center py-8">
+                    <div id="${resultId}-loading" class="text-center py-6 sm:py-8">
                         <div class="inline-block w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                        <p class="mt-4 text-gray-400">Querying AI models...</p>
+                        <p class="mt-4 text-sm sm:text-base text-gray-400">Querying AI models...</p>
                     </div>
                 </div>
             `;
