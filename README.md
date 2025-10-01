@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-PROPRIETARY-red.svg)](LICENSE)
 
 ## Overview
 
@@ -139,9 +139,17 @@ cargo test --package safety-kernel --all-features
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, code standards, and PR guidelines.
 
-## License
+## 📄 License
 
-MIT License - See [LICENSE](LICENSE) for details.
+**⚠️ PROPRIETARY SOFTWARE - ALL RIGHTS RESERVED**
+
+This software is proprietary and confidential. Unauthorized use, reproduction, or distribution is strictly prohibited.
+
+**For licensing inquiries**: B@thegoatnote.com
+
+See [LICENSE](LICENSE) for full terms.  
+See [AUTHORIZED_USERS.md](AUTHORIZED_USERS.md) for current authorized users.  
+See [LICENSING_GUIDE.md](LICENSING_GUIDE.md) for how to request authorization.
 
 ## Contact
 
