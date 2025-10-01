@@ -1,0 +1,52 @@
+[package]
+name = "core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "periodic_core"
+
+[features]
+default = ["std"]
+std = []
+arrow = ["dep:arrow", "dep:arrow-array", "dep:arrow-ipc", "dep:arrow-schema", "dep:parquet"]
+polars = ["dep:polars"]
+instrument_control = []
+gpu = []
+wasm = []
+pybind = []
+postgres = []
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+indexmap.workspace = true
+itertools.workspace = true
+ndarray.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+serde_with.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-error.workspace = true
+tracing-futures.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+proptest.workspace = true
+arrow = { version = "53", optional = true }
+arrow-array = { version = "53", optional = true }
+arrow-ipc = { version = "53", optional = true }
+arrow-schema = { version = "53", optional = true }
+parquet = { version = "53", optional = true }
+polars = { version = "0.42", optional = true, features = ["lazy", "parquet"] }
+
+[dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

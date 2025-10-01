@@ -197,3 +197,94 @@ This repository contains proprietary and confidential software. Usage is restric
 - Deployment, compliance, or partnership questions: refer to [docs/contact.md](docs/contact.md).
 
 "Honest iteration over perfect demos"—document limitations, iterate quickly, and accelerate science.
+
+## Rust Core Workspace
+
+A production-grade Rust workspace now lives in [`rust/`](rust/), providing deterministic planning logic, network services, Python bindings, and a WASM demo. Highlights:
+
+- `core`: pure domain models and a deterministic planner with tracing spans and property-based tests.
+- `service`: Axum + Tonic application exposing HTTP (OpenAPI docs at `/docs`) and gRPC APIs with SQLx-ready repositories and full telemetry wiring.
+- `pycore`: PyO3 bindings packaged with maturin for Python interoperability.
+- `wasm-demo`: browser planner demo sharing the same core logic compiled to WebAssembly.
+
+### Prerequisites (macOS/Linux)
+
+1. Install Rust 1.80+ via `rustup` and add the `wasm32-unknown-unknown` target.
+2. Install supporting tooling: `cargo-watch`, `cargo-audit`, `cargo-deny`, `maturin`, and `wasm-pack`.
+3. Install `protoc` for protobuf codegen.
+4. (Optional) Install Docker for container builds.
+
+Run `just setup` to automate most of the toolchain installation.
+
+### Local Development
+
+```bash
+# launch both HTTP and gRPC servers with telemetry
+just run
+
+# run unit + property + integration tests
+just test
+
+# build the Python wheel
+just pywheel
+
+# build the WASM demo into rust/wasm-demo/pkg
+just wasm
+```
+
+The service reads configuration from `configs/service.yaml` or environment variables prefixed with `SERVICE__`. Health and readiness probes are exposed at `/healthz` and `/readyz`; Prometheus metrics at `/metrics`.
+
+### Example Calls
+
+#### HTTP
+
+```bash
+curl -s http://localhost:8080/v1/plan \
+  -H 'Content-Type: application/json' \
+  -d '{"objective":{"description":"Quick screen","metrics":[{"name":"yield","target":0.9}]}}'
+```
+
+Response excerpt:
+
+```json
+{
+  "id": "...",
+  "objective": {"description": "Quick screen", "metrics": [{"name": "yield", "target": 0.9}]},
+  "rationale": [{"option": "Optimize yield", "score": 0.92, "why": "Target 0.900 + jitter 0.020"}]
+}
+```
+
+Docs are served at http://localhost:8080/docs.
+
+#### gRPC
+
+```bash
+grpcurl -plaintext localhost:50051 periodic.ExperimentService.Plan \
+  -d '{"objective":{"description":"Quick screen","metrics":[{"name":"yield","target":0.9}]}}'
+```
+
+#### Python
+
+```python
+from pycore import plan
+plan({
+    "description": "Lab automation",
+    "metrics": [{"name": "yield", "target": 0.9}],
+})
+```
+
+#### WASM Demo
+
+Serve `rust/wasm-demo/index.html` with any static file server after running `just wasm` and open it in a browser to see live planning results rendered in under 100ms for small objectives.
+
+### Observability & Security
+
+- Structured JSON logs and OpenTelemetry traces are enabled by default; configure `SERVICE__TELEMETRY__OTLP_ENDPOINT` to export traces to OTLP collectors.
+- Request IDs and rationale traces are embedded in spans for correlation.
+- SQLx repositories provide both in-memory (default) and Postgres feature-gated implementations.
+
+### Design Notes
+
+- **Axum + Tonic**: unified async stack with Tower middleware, matching our tracing story and enabling shared state between HTTP and gRPC.
+- **PyO3 + maturin**: produces ABI3-compatible wheels for Python consumers without duplicating planner logic.
+- **Feature flags** isolate instrumentation, GPU hooks, WASM optimizations, Python bindings, and Postgres connectivity for minimal builds.

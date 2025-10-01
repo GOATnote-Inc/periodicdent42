@@ -72,6 +72,7 @@ npm-debug.log*
 
 # Data files
 data/
+!rust/core/src/data/
 experiments/
 results/
 *.hdf5

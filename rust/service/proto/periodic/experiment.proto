@@ -1,0 +1,56 @@
+syntax = "proto3";
+package periodic;
+
+message ObjectiveMetric {
+  string name = 1;
+  double target = 2;
+}
+
+message Objective {
+  string description = 1;
+  repeated ObjectiveMetric metrics = 2;
+}
+
+message RationaleEntry {
+  string option = 1;
+  double score = 2;
+  string why = 3;
+}
+
+message PlanRequest {
+  Objective objective = 1;
+}
+
+message PlanResponse {
+  string id = 1;
+  Objective objective = 2;
+  repeated RationaleEntry rationale = 3;
+}
+
+message RunRequest {
+  string instrument_id = 1;
+  map<string, string> params = 2;
+}
+
+message RunStatus {
+  string run_id = 1;
+  string state = 2;
+  string message = 3;
+}
+
+message QCRequest {
+  repeated string items = 1;
+  string notes = 2;
+}
+
+message QCResponse {
+  string id = 1;
+  string outcome = 2;
+  repeated string negatives = 3;
+}
+
+service ExperimentService {
+  rpc Plan(PlanRequest) returns (PlanResponse);
+  rpc StartRun(RunRequest) returns (stream RunStatus);
+  rpc SubmitQC(QCRequest) returns (QCResponse);
+}

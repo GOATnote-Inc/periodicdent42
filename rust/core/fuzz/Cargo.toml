@@ -1,0 +1,17 @@
+[package]
+name = "core-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+libfuzzer-sys = "0.4"
+periodic_core = { path = ".." }
+
+[[bin]]
+name = "plan_trace"
+path = "fuzz_targets/plan_trace.rs"
+
+[[bin]]
+name = "objective_parser"
+path = "fuzz_targets/objective_parser.rs"
