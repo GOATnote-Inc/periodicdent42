@@ -1,0 +1,215 @@
+# Execution Moat - Instrument Drivers & Reliability
+
+## Core Principle
+Physical experiments require microsecond-level control, fault tolerance, and graceful degradation. Every driver must be production-ready, not prototype code.
+
+## Design Guidelines
+
+### 1. Adapter Pattern for Drivers
+```python
+# ALL instrument drivers must implement this interface
+from abc import ABC, abstractmethod
+from typing import Dict, Any
+
+class InstrumentDriver(ABC):
+    @abstractmethod
+    async def connect(self) -> bool:
+        """Establish connection, return success status."""
+        pass
+    
+    @abstractmethod
+    async def run_experiment(self, protocol: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute experiment, return results with metadata."""
+        pass
+    
+    @abstractmethod
+    async def get_status(self) -> Dict[str, Any]:
+        """Return instrument health (temperature, errors, etc.)."""
+        pass
+    
+    @abstractmethod
+    async def emergency_stop(self) -> bool:
+        """Immediate safe shutdown."""
+        pass
+```
+
+### 2. Reliability Requirements
+- **Automatic retries**: Transient failures (network glitches) should auto-retry with exponential backoff
+- **Timeout enforcement**: Every I/O operation has a timeout (no infinite waits)
+- **Health checks**: Periodic pings to detect zombie connections
+- **Graceful degradation**: If instrument A fails, queue redirects to instrument B (if compatible)
+
+### 3. Error Handling
+```python
+# Good: Specific exceptions with context
+class InstrumentTimeoutError(Exception):
+    def __init__(self, instrument_id: str, operation: str, timeout_sec: float):
+        self.instrument_id = instrument_id
+        self.operation = operation
+        self.timeout_sec = timeout_sec
+        super().__init__(f"{instrument_id} timed out during {operation} after {timeout_sec}s")
+
+# Bad: Generic exceptions
+raise Exception("Instrument failed")
+```
+
+### 4. Logging & Telemetry
+- **Structured logs**: Use `structlog` or `logging` with JSON formatter
+- **Trace IDs**: Every experiment has a UUID that flows through all logs
+- **Metrics**: Record latency, throughput, error rates (Prometheus format)
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+async def run_xrd_scan(sample_id: str, settings: Dict) -> Dict:
+    logger.info("xrd_scan_started", sample_id=sample_id, settings=settings)
+    try:
+        result = await xrd_driver.scan(settings)
+        logger.info("xrd_scan_completed", sample_id=sample_id, duration_sec=result["duration"])
+        return result
+    except Exception as e:
+        logger.error("xrd_scan_failed", sample_id=sample_id, error=str(e))
+        raise
+```
+
+### 5. Resource Management
+- **Connection pooling**: Reuse connections, don't open/close repeatedly
+- **Context managers**: Use `async with` for automatic cleanup
+- **Locks**: Prevent concurrent access to single-use instruments
+
+```python
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def instrument_lock(instrument_id: str):
+    """Ensure exclusive access to instrument."""
+    lock = get_lock(instrument_id)
+    await lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+```
+
+## Queue Management
+
+### Priority Scheduling
+- **Levels**: Critical (safety checks), High (time-sensitive), Normal, Low (background)
+- **Preemption**: High-priority experiments can preempt low-priority (with safe checkpointing)
+- **Starvation prevention**: Low-priority experiments age into higher priorities
+
+### Resource Allocation
+```python
+class ExperimentQueue:
+    def __init__(self):
+        self.instruments = {}  # instrument_id -> availability
+        self.queue = []  # PriorityQueue of experiments
+    
+    async def schedule_next(self) -> Optional[Experiment]:
+        """Select next experiment that can run with available resources."""
+        for exp in sorted(self.queue, key=lambda e: e.priority, reverse=True):
+            if self.check_resources(exp):
+                return exp
+        return None
+```
+
+## Testing Requirements
+
+### Unit Tests
+- **Mock hardware**: Use `unittest.mock` or `pytest-mock` for drivers
+- **Edge cases**: Test timeouts, connection failures, malformed responses
+- **Performance**: Measure latency, ensure <100ms overhead
+
+### Integration Tests
+- **Dummy instruments**: Simulated hardware for CI/CD
+- **Chaos engineering**: Randomly inject failures (network drops, slow responses)
+
+### Example Test
+```python
+import pytest
+from unittest.mock import AsyncMock, patch
+
+@pytest.mark.asyncio
+async def test_xrd_driver_timeout():
+    """XRD driver should raise TimeoutError if scan exceeds limit."""
+    driver = XRDDriver(timeout_sec=5.0)
+    
+    with patch.object(driver, '_send_command', new=AsyncMock(side_effect=asyncio.TimeoutError)):
+        with pytest.raises(InstrumentTimeoutError):
+            await driver.run_experiment({"scan_range": "20-80"})
+```
+
+## Common Pitfalls
+
+❌ **Don't**: Block the event loop with synchronous I/O  
+✅ **Do**: Use `asyncio` or `threading` for long operations
+
+❌ **Don't**: Ignore partial failures (some data collected, some lost)  
+✅ **Do**: Return structured results with `success: bool`, `partial: bool`, `errors: List[str]`
+
+❌ **Don't**: Assume instruments are always ready  
+✅ **Do**: Check status before dispatching experiments
+
+❌ **Don't**: Hard-code instrument IPs or ports  
+✅ **Do**: Use configuration files or environment variables
+
+## Rust Safety Kernel Integration
+
+### Why Rust?
+- **Memory safety**: No segfaults or buffer overflows
+- **Concurrency**: Fearless parallelism without data races
+- **Real-time**: Predictable performance for interlocks
+
+### Python ↔ Rust Interface
+```rust
+// src/safety/lib.rs
+use pyo3::prelude::*;
+
+#[pyfunction]
+fn check_temperature_limit(current: f64, max: f64) -> PyResult<bool> {
+    Ok(current <= max)
+}
+
+#[pymodule]
+fn safety_kernel(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(check_temperature_limit, m)?)?;
+    Ok(())
+}
+```
+
+```python
+# Python usage
+import safety_kernel
+
+if not safety_kernel.check_temperature_limit(current=120.0, max=100.0):
+    await emergency_stop()
+```
+
+## Performance Targets
+
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| Queue latency | <50ms | Experiments should dispatch immediately |
+| Driver overhead | <100ms | Minimal coordination cost |
+| Health check interval | 10s | Catch failures quickly without spam |
+| Retry backoff | 1s → 32s | Exponential backoff (2^n, max 32s) |
+| Uptime | 99.9% | <9 hours downtime per year |
+
+## Checklist for New Drivers
+
+Before merging, every driver must:
+- [ ] Implement `InstrumentDriver` interface
+- [ ] Handle timeouts with specific exceptions
+- [ ] Include health check method
+- [ ] Support emergency stop
+- [ ] Have unit tests (>80% coverage)
+- [ ] Have integration test with mock hardware
+- [ ] Log structured JSON with trace IDs
+- [ ] Document expected latency and error modes
+- [ ] Be reviewed by domain scientist (validate protocol encoding)
+
+---
+
+**Remember**: The execution moat is about **reliability under chaos**. Physical labs have power glitches, network hiccups, and instrument quirks. Code defensively, test exhaustively, and always have a fallback plan.

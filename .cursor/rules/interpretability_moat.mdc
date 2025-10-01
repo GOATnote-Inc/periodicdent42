@@ -1,0 +1,564 @@
+# Interpretability Moat - Glass-Box AI & Scientific Ontologies
+
+## Core Principle
+Black-box AI is unacceptable in science. Every decision must be **explainable, auditable, and grounded in domain knowledge**. Researchers must trust the system's reasoning, not just its outputs.
+
+## Explainable AI Techniques
+
+### 1. Symbolic Reasoning
+Use logic and domain heuristics before neural networks:
+
+```python
+from typing import List, Tuple
+import sympy as sp
+
+class SymbolicPlanner:
+    """Plan experiments using symbolic logic and domain knowledge."""
+    
+    def __init__(self, rules: List[str]):
+        self.rules = rules  # E.g., ["bandgap > 1.5", "stability > 0.5"]
+    
+    def filter_candidates(self, candidates: List[Dict]) -> List[Dict]:
+        """Apply hard constraints symbolically."""
+        filtered = []
+        for cand in candidates:
+            if all(self.evaluate_rule(rule, cand) for rule in self.rules):
+                filtered.append(cand)
+        return filtered
+    
+    def evaluate_rule(self, rule: str, cand: Dict) -> bool:
+        """Parse and evaluate rule using sympy."""
+        expr = sp.sympify(rule)
+        symbols = {str(s): cand.get(str(s), 0.0) for s in expr.free_symbols}
+        return bool(expr.subs(symbols))
+
+# Example usage
+planner = SymbolicPlanner(rules=["bandgap > 1.5", "stability > 0.5"])
+candidates = [
+    {"bandgap": 2.0, "stability": 0.6},  # Pass
+    {"bandgap": 1.0, "stability": 0.7},  # Fail (bandgap too low)
+]
+filtered = planner.filter_candidates(candidates)
+```
+
+### 2. Decision Logs with Rationale
+Every AI decision includes natural language explanation:
+
+```python
+from dataclasses import dataclass
+from typing import List, Dict, Any
+
+@dataclass
+class Decision:
+    action: str  # E.g., "select_experiment"
+    rationale: str  # Human-readable explanation
+    confidence: float  # 0-1
+    alternatives: List[Dict[str, Any]]  # What else was considered
+    citations: List[str]  # Papers, databases supporting this decision
+    
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "action": self.action,
+            "rationale": self.rationale,
+            "confidence": self.confidence,
+            "alternatives": self.alternatives,
+            "citations": self.citations
+        }
+
+# Example
+decision = Decision(
+    action="Run DFT on composition A0.3B0.7",
+    rationale="This composition is in the high-uncertainty region (GP variance=0.8) and has low synthesis cost (<$10). Expected to reduce bandgap uncertainty by 35%.",
+    confidence=0.87,
+    alternatives=[
+        {"composition": "A0.4B0.6", "eig": 0.72, "reason": "Slightly lower EIG"},
+        {"composition": "A0.5B0.5", "eig": 0.65, "reason": "Already well-explored"}
+    ],
+    citations=["doi:10.1234/bandgap-study", "Materials Project: mp-12345"]
+)
+
+# Store in database for audit
+db.save_decision(decision)
+```
+
+### 3. Attention Visualization
+For neural models, show what the model "looks at":
+
+```python
+import torch
+import matplotlib.pyplot as plt
+
+class InterpretableModel(torch.nn.Module):
+    """Wrapper that logs attention weights."""
+    
+    def __init__(self, base_model):
+        super().__init__()
+        self.base_model = base_model
+        self.attention_weights = None
+    
+    def forward(self, x):
+        # Hook to capture attention
+        def hook(module, input, output):
+            self.attention_weights = output[1]  # Attention weights
+        
+        handle = self.base_model.transformer.register_forward_hook(hook)
+        output = self.base_model(x)
+        handle.remove()
+        
+        return output
+    
+    def visualize_attention(self, tokens: List[str]):
+        """Plot attention heatmap."""
+        if self.attention_weights is None:
+            return
+        
+        attn = self.attention_weights[0].detach().cpu().numpy()
+        
+        plt.figure(figsize=(10, 8))
+        plt.imshow(attn, cmap='hot')
+        plt.xticks(range(len(tokens)), tokens, rotation=90)
+        plt.yticks(range(len(tokens)), tokens)
+        plt.colorbar()
+        plt.title("Attention Weights")
+        plt.savefig("attention_viz.png")
+```
+
+### 4. SHAP Values (Feature Importance)
+```python
+import shap
+
+def explain_prediction(model, X_test: np.ndarray, feature_names: List[str]):
+    """Use SHAP to explain which features drove the prediction."""
+    explainer = shap.Explainer(model, X_test)
+    shap_values = explainer(X_test)
+    
+    # Plot feature importance
+    shap.summary_plot(shap_values, X_test, feature_names=feature_names)
+    
+    return shap_values
+
+# Example
+shap_values = explain_prediction(gp_model, X_test, feature_names=["temperature", "pressure", "composition"])
+# Interpretation: "Temperature contributed +0.3 eV to bandgap prediction"
+```
+
+## Scientific Ontologies
+
+### 1. Materials Ontology
+```python
+from enum import Enum
+
+class CrystalSystem(Enum):
+    CUBIC = "cubic"
+    TETRAGONAL = "tetragonal"
+    HEXAGONAL = "hexagonal"
+    ORTHORHOMBIC = "orthorhombic"
+    MONOCLINIC = "monoclinic"
+    TRICLINIC = "triclinic"
+
+class Material(BaseModel):
+    formula: str  # E.g., "BaTiO3"
+    crystal_system: CrystalSystem
+    space_group: int  # 1-230
+    lattice_params: Dict[str, float]  # a, b, c, alpha, beta, gamma
+    properties: Dict[str, Prediction]  # bandgap, conductivity, etc.
+    
+    @validator("space_group")
+    def validate_space_group(cls, v):
+        if not 1 <= v <= 230:
+            raise ValueError("Space group must be 1-230")
+        return v
+```
+
+### 2. Reaction Ontology
+```python
+class ReactionType(Enum):
+    SYNTHESIS = "synthesis"
+    DECOMPOSITION = "decomposition"
+    SUBSTITUTION = "substitution"
+    OXIDATION_REDUCTION = "oxidation_reduction"
+
+class Reaction(BaseModel):
+    reactants: List[str]  # SMILES strings
+    products: List[str]
+    conditions: Dict[str, float]  # temperature, pressure, time
+    mechanism: Optional[str]  # E.g., "SN2", "E1", "radical"
+    yield_percentage: Optional[float]
+    
+    def is_balanced(self) -> bool:
+        """Check atom conservation."""
+        from rdkit import Chem
+        
+        reactant_atoms = sum([Chem.MolFromSmiles(r).GetNumAtoms() for r in self.reactants])
+        product_atoms = sum([Chem.MolFromSmiles(p).GetNumAtoms() for p in self.products])
+        
+        return reactant_atoms == product_atoms
+```
+
+### 3. Property Ontology
+```python
+class PropertyType(Enum):
+    ELECTRONIC = "electronic"  # Bandgap, conductivity
+    MECHANICAL = "mechanical"  # Hardness, elasticity
+    THERMAL = "thermal"        # Melting point, conductivity
+    OPTICAL = "optical"        # Refractive index, absorbance
+
+class Property(BaseModel):
+    name: str
+    type: PropertyType
+    value: float
+    unit: str
+    measurement_method: str  # E.g., "XRD", "DFT", "ellipsometry"
+    temperature: Optional[float] = 298.15  # Kelvin
+    pressure: Optional[float] = 101325     # Pascal
+```
+
+## Planning Graph Visualization
+
+### 1. NetworkX for Reasoning Chains
+```python
+import networkx as nx
+
+class PlanningGraph:
+    """Directed acyclic graph of experimental steps."""
+    
+    def __init__(self):
+        self.graph = nx.DiGraph()
+    
+    def add_experiment(self, exp_id: str, description: str, rationale: str):
+        self.graph.add_node(exp_id, description=description, rationale=rationale)
+    
+    def add_dependency(self, parent_id: str, child_id: str, reason: str):
+        """Child experiment depends on parent's results."""
+        self.graph.add_edge(parent_id, child_id, reason=reason)
+    
+    def visualize(self, output_path: str = "planning_graph.png"):
+        pos = nx.spring_layout(self.graph)
+        labels = {node: self.graph.nodes[node]["description"] for node in self.graph.nodes}
+        
+        nx.draw(self.graph, pos, labels=labels, node_color='lightblue', 
+                node_size=3000, font_size=8, arrows=True)
+        
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    
+    def get_execution_order(self) -> List[str]:
+        """Topological sort: experiments in dependency order."""
+        return list(nx.topological_sort(self.graph))
+
+# Example usage
+plan = PlanningGraph()
+plan.add_experiment("exp1", "DFT for A0.5B0.5", "Initial composition screening")
+plan.add_experiment("exp2", "XRD for A0.5B0.5", "Validate DFT predictions")
+plan.add_dependency("exp1", "exp2", "XRD needs DFT-predicted structure")
+
+plan.visualize()
+```
+
+### 2. Interactive Provenance Viewer (Next.js UI)
+```typescript
+// ui/components/ProvenanceGraph.tsx
+import React from 'react';
+import { Graph } from 'react-d3-graph';
+
+interface Node {
+  id: string;
+  label: string;
+  rationale: string;
+}
+
+interface Link {
+  source: string;
+  target: string;
+  reason: string;
+}
+
+export const ProvenanceGraph: React.FC<{ nodes: Node[], links: Link[] }> = ({ nodes, links }) => {
+  const graphConfig = {
+    directed: true,
+    nodeHighlightBehavior: true,
+    node: {
+      color: 'lightblue',
+      size: 400,
+      highlightStrokeColor: 'blue',
+    },
+    link: {
+      highlightColor: 'red',
+    },
+  };
+
+  return (
+    <div>
+      <h2>Experiment Provenance</h2>
+      <Graph
+        id="provenance-graph"
+        data={{ nodes, links }}
+        config={graphConfig}
+      />
+    </div>
+  );
+};
+```
+
+## Natural Language Explanations
+
+### 1. Template-Based Generation
+```python
+class ExplanationGenerator:
+    """Generate human-readable summaries of plans."""
+    
+    def explain_experiment_selection(self, exp: Experiment, eig: float, alternatives: List) -> str:
+        template = """
+Selected experiment: {description}
+
+Rationale:
+- Expected Information Gain: {eig:.2f} (top {rank} of {total} candidates)
+- Cost: ${cost:.2f} ({time:.1f} hours)
+- Key hypothesis: {hypothesis}
+
+Alternatives considered:
+{alternatives_text}
+
+This experiment addresses the research question: "{question}"
+by targeting the {uncertainty_region} region of parameter space.
+"""
+        
+        alternatives_text = "\n".join([
+            f"  - {alt['description']}: EIG={alt['eig']:.2f} (not selected because {alt['reason']})"
+            for alt in alternatives
+        ])
+        
+        return template.format(
+            description=exp.description,
+            eig=eig,
+            rank=1,
+            total=len(alternatives) + 1,
+            cost=exp.cost,
+            time=exp.duration_hours,
+            hypothesis=exp.hypothesis,
+            alternatives_text=alternatives_text,
+            question=exp.research_question,
+            uncertainty_region="high-uncertainty"
+        )
+```
+
+### 2. LLM-Based Summarization
+```python
+from openai import OpenAI
+
+def generate_narrative_summary(experiments: List[Experiment], results: List[Result]) -> str:
+    """Use LLM to summarize experimental campaign."""
+    
+    prompt = f"""
+You are a scientific writing assistant. Summarize the following experiments in a narrative format suitable for a paper's methods section.
+
+Experiments:
+{json.dumps([exp.to_dict() for exp in experiments], indent=2)}
+
+Results:
+{json.dumps([res.to_dict() for res in results], indent=2)}
+
+Write a 2-paragraph summary covering:
+1. Experimental design rationale
+2. Key findings and trends
+"""
+    
+    client = OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    return response.choices[0].message.content
+```
+
+## Model Transparency
+
+### 1. Surrogate Model Introspection
+```python
+def explain_gp_model(gp_model, X_train: np.ndarray, feature_names: List[str]):
+    """Extract interpretable info from GP."""
+    
+    # Kernel parameters
+    kernel = gp_model.kernel_
+    print(f"Kernel: {kernel}")
+    print(f"Length scales: {kernel.length_scale}")
+    
+    # Which features have short length scales = high importance
+    importance = 1.0 / kernel.length_scale
+    importance /= importance.sum()
+    
+    for name, imp in zip(feature_names, importance):
+        print(f"{name}: {imp:.2%} importance")
+    
+    # Visualize posterior mean and variance
+    import matplotlib.pyplot as plt
+    
+    X_test = np.linspace(X_train.min(), X_train.max(), 100).reshape(-1, 1)
+    mean, std = gp_model.predict(X_test, return_std=True)
+    
+    plt.fill_between(X_test.ravel(), mean - 2*std, mean + 2*std, alpha=0.3)
+    plt.plot(X_test, mean, label="Posterior mean")
+    plt.scatter(X_train, y_train, color='red', label="Observations")
+    plt.legend()
+    plt.xlabel(feature_names[0])
+    plt.ylabel("Target")
+    plt.title("GP Posterior")
+    plt.savefig("gp_posterior.png")
+```
+
+### 2. Decision Tree Extraction
+```python
+from sklearn.tree import DecisionTreeRegressor, export_text
+
+def extract_decision_tree(model, X_train: np.ndarray, y_train: np.ndarray, feature_names: List[str]):
+    """Approximate complex model with interpretable tree."""
+    
+    # Train decision tree on model's predictions (knowledge distillation)
+    y_pred = model.predict(X_train)
+    tree = DecisionTreeRegressor(max_depth=5)
+    tree.fit(X_train, y_pred)
+    
+    # Export human-readable rules
+    rules = export_text(tree, feature_names=feature_names)
+    print(rules)
+    
+    return tree
+```
+
+## Uncertainty Quantification
+
+### 1. Ensemble Disagreement
+```python
+def ensemble_uncertainty(models: List, X_test: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Uncertainty = variance across ensemble predictions."""
+    
+    predictions = np.array([model.predict(X_test) for model in models])
+    
+    mean = predictions.mean(axis=0)
+    std = predictions.std(axis=0)
+    
+    return mean, std
+```
+
+### 2. Bayesian Neural Networks
+```python
+import torch
+import torch.nn as nn
+
+class BayesianLinear(nn.Module):
+    """Linear layer with weight uncertainty."""
+    
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.weight_mu = nn.Parameter(torch.randn(out_features, in_features))
+        self.weight_sigma = nn.Parameter(torch.randn(out_features, in_features))
+    
+    def forward(self, x):
+        # Sample weights from posterior
+        weight = self.weight_mu + self.weight_sigma * torch.randn_like(self.weight_sigma)
+        return nn.functional.linear(x, weight)
+```
+
+## Citation and Attribution
+
+### 1. Track Knowledge Sources
+```python
+@dataclass
+class KnowledgeSource:
+    type: str  # "paper", "database", "experiment"
+    identifier: str  # DOI, database ID, experiment ID
+    relevance: float  # How much this influenced the decision
+    
+class CitationManager:
+    def __init__(self):
+        self.sources = []
+    
+    def add_source(self, source: KnowledgeSource):
+        self.sources.append(source)
+    
+    def generate_bibliography(self) -> str:
+        """BibTeX format citations."""
+        sorted_sources = sorted(self.sources, key=lambda s: s.relevance, reverse=True)
+        
+        bibliography = ""
+        for src in sorted_sources:
+            if src.type == "paper":
+                bibliography += f"@article{{{src.identifier},\n  note={{Relevance: {src.relevance:.2f}}}\n}}\n"
+        
+        return bibliography
+```
+
+## Common Pitfalls
+
+❌ **Don't**: Use neural networks without interpretability layers  
+✅ **Do**: Add attention, SHAP, or decision tree extraction
+
+❌ **Don't**: Report predictions without uncertainty  
+✅ **Do**: Every prediction includes confidence intervals
+
+❌ **Don't**: Make decisions without logging rationale  
+✅ **Do**: Store Decision objects in database
+
+❌ **Don't**: Use proprietary/closed-source models in critical paths  
+✅ **Do**: Prefer open models + symbolic reasoning
+
+❌ **Don't**: Ignore domain knowledge (physics, chemistry)  
+✅ **Do**: Encode ontologies, constraints, heuristics
+
+## Testing Requirements
+
+```python
+def test_decision_has_rationale():
+    """Every decision must include human-readable explanation."""
+    decision = make_planning_decision()
+    
+    assert decision.rationale is not None
+    assert len(decision.rationale) > 50  # Substantive explanation
+    assert decision.confidence >= 0 and decision.confidence <= 1
+
+def test_planning_graph_is_dag():
+    """Planning graph must be acyclic (no circular dependencies)."""
+    plan = PlanningGraph()
+    plan.add_experiment("A", "First", "Initial")
+    plan.add_experiment("B", "Second", "Follow-up")
+    plan.add_dependency("A", "B", "B needs A")
+    
+    assert nx.is_directed_acyclic_graph(plan.graph)
+
+def test_ontology_validation():
+    """Materials must satisfy ontology constraints."""
+    material = Material(
+        formula="BaTiO3",
+        crystal_system=CrystalSystem.CUBIC,
+        space_group=221,
+        lattice_params={"a": 4.0, "b": 4.0, "c": 4.0, "alpha": 90, "beta": 90, "gamma": 90}
+    )
+    
+    assert material.space_group in range(1, 231)
+```
+
+## Performance Targets
+
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| Explanation latency | <100ms | Real-time UI feedback |
+| Decision log size | <10KB | Compact storage |
+| Visualization render time | <1s | Interactive dashboards |
+| Natural language summary | <5s | Acceptable for reports |
+
+## Checklist for Interpretable AI
+
+- [ ] Every prediction includes uncertainty (std, confidence interval)
+- [ ] Every decision logged with rationale
+- [ ] Planning graphs visualized (NetworkX + UI)
+- [ ] Feature importance computed (SHAP, length scales, etc.)
+- [ ] Alternatives considered documented
+- [ ] Citations to papers/databases included
+- [ ] Natural language summary generated
+- [ ] Ontologies used for validation (materials, reactions, properties)
+- [ ] Symbolic reasoning attempted before neural models
+- [ ] Model complexity justified (Occam's razor)
+
+---
+
+**Remember**: The interpretability moat is about **earning trust through transparency**. Researchers will adopt AI co-pilots only if they understand and trust the reasoning. Glass-box design isn't a nice-to-have—it's the foundation of scientific credibility. When in doubt, explain more, not less.

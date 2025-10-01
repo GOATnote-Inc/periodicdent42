@@ -1,0 +1,461 @@
+# Trust Moat - Safety, Audits & Compliance
+
+## Core Principle
+Autonomous systems in physical labs must be **fail-safe by default** and **transparent in every action**. Trust is earned through rigorous safety enforcement, complete audit trails, and glass-box decision-making.
+
+## Safety-First Design
+
+### 1. Policy-as-Code
+Safety rules are encoded in machine-readable YAML, parsed into Rust for enforcement:
+
+```yaml
+# configs/safety_policies.yaml
+policies:
+  - name: "Temperature limits"
+    rule: "temperature <= 150.0"
+    unit: "celsius"
+    scope: ["synthesis_reactor", "furnace"]
+    action: "shutdown"
+    severity: "critical"
+  
+  - name: "Reagent compatibility"
+    rule: "NOT (uses('water') AND uses('sodium'))"
+    scope: ["all"]
+    action: "reject"
+    severity: "critical"
+  
+  - name: "Human approval for unknowns"
+    rule: "confidence < 0.8"
+    scope: ["all"]
+    action: "pause_for_approval"
+    severity: "medium"
+```
+
+### 2. Rust Safety Kernel
+```rust
+// src/safety/kernel.rs
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+struct SafetyPolicy {
+    name: String,
+    rule: String,  // Parsed into AST
+    scope: Vec<String>,
+    action: Action,
+}
+
+enum Action {
+    Shutdown,
+    Reject,
+    PauseForApproval,
+}
+
+impl SafetyKernel {
+    pub fn check_experiment(&self, exp: &Experiment) -> Result<(), SafetyViolation> {
+        for policy in &self.policies {
+            if policy.scope.iter().any(|s| s == "all" || s == &exp.instrument_id) {
+                if !self.evaluate_rule(&policy.rule, exp) {
+                    return Err(SafetyViolation {
+                        policy_name: policy.name.clone(),
+                        action: policy.action,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+    
+    fn evaluate_rule(&self, rule: &str, exp: &Experiment) -> bool {
+        // Parse rule into AST, evaluate against experiment
+        // Example: "temperature <= 150.0" -> check exp.protocol["temperature"]
+        todo!("Rule engine implementation")
+    }
+}
+```
+
+### 3. Interlocks (Hardware Safeguards)
+- **Dead-man switch**: System sends heartbeat every 5s; if missed, instruments power off
+- **Redundant sensors**: Dual thermocouples; if they disagree >5%, trigger alarm
+- **Emergency stop**: Physical button + software command to halt all instruments
+- **Fail-safe defaults**: Power loss → instruments turn OFF, not stay in unknown state
+
+```rust
+// src/safety/interlock.rs
+use std::time::{Duration, Instant};
+
+struct DeadManSwitch {
+    last_heartbeat: Instant,
+    timeout: Duration,
+}
+
+impl DeadManSwitch {
+    pub fn check(&self) -> bool {
+        self.last_heartbeat.elapsed() < self.timeout
+    }
+    
+    pub fn heartbeat(&mut self) {
+        self.last_heartbeat = Instant::now();
+    }
+}
+
+// Usage: Run in separate thread, check every second
+loop {
+    std::thread::sleep(Duration::from_secs(1));
+    if !dead_man_switch.check() {
+        emergency_shutdown_all_instruments();
+        log_critical_error("Dead-man switch timeout");
+    }
+}
+```
+
+### 4. Dry-Run Mode
+Before executing on hardware, simulate the experiment:
+
+```python
+async def execute_experiment(exp: Experiment, dry_run: bool = True):
+    """Execute experiment with optional dry-run."""
+    if dry_run:
+        # Run in simulator, check for safety violations
+        result = await simulator.run(exp)
+        violations = safety_kernel.check_result(result)
+        if violations:
+            logger.error("Dry-run detected safety violations", violations=violations)
+            raise SafetyViolation(violations)
+        logger.info("Dry-run passed", experiment_id=exp.id)
+        return result
+    else:
+        # Actual hardware execution
+        return await hardware.run(exp)
+```
+
+## Audit Trails
+
+### 1. Event Logging
+Every action is logged with:
+- **Who**: User ID or agent ID
+- **What**: Action type (create, update, execute, approve)
+- **When**: UTC timestamp
+- **Why**: Rationale (for AI decisions)
+- **Context**: Experiment ID, instrument ID, etc.
+
+```python
+from dataclasses import dataclass
+from enum import Enum
+
+class EventType(Enum):
+    EXPERIMENT_CREATED = "experiment_created"
+    EXPERIMENT_EXECUTED = "experiment_executed"
+    EXPERIMENT_APPROVED = "experiment_approved"
+    SAFETY_VIOLATION = "safety_violation"
+    EMERGENCY_STOP = "emergency_stop"
+
+@dataclass
+class AuditEvent:
+    id: str
+    event_type: EventType
+    actor_id: str  # User or agent
+    timestamp: datetime
+    experiment_id: Optional[str]
+    rationale: Optional[str]  # Why this action was taken
+    metadata: Dict[str, Any]
+    signature: str  # HMAC for tamper-proofing
+
+def log_audit_event(event: AuditEvent):
+    """Write to append-only log with cryptographic signature."""
+    event.signature = hmac.new(SECRET_KEY, event.to_json().encode(), hashlib.sha256).hexdigest()
+    db.append_to_audit_log(event)
+```
+
+### 2. Immutable Audit Log
+- **Append-only**: Never delete or modify past events
+- **Cryptographic integrity**: Each event has HMAC signature
+- **Time-stamped**: UTC timestamps for global consistency
+- **Exportable**: Generate compliance reports (CSV, PDF)
+
+```sql
+CREATE TABLE audit_log (
+    id UUID PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    experiment_id UUID,
+    rationale TEXT,
+    metadata JSONB,
+    signature TEXT NOT NULL
+);
+
+-- Make table append-only (no updates/deletes)
+CREATE OR REPLACE FUNCTION prevent_audit_log_modification()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'Audit log is append-only. Cannot modify or delete.';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER audit_log_no_update
+BEFORE UPDATE OR DELETE ON audit_log
+FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_modification();
+```
+
+### 3. Compliance Reports
+```python
+def generate_compliance_report(start_date: datetime, end_date: datetime) -> str:
+    """Generate PDF report for auditors."""
+    events = db.query("""
+        SELECT * FROM audit_log
+        WHERE timestamp BETWEEN %s AND %s
+        ORDER BY timestamp
+    """, (start_date, end_date))
+    
+    report = ComplianceReport(events)
+    report.add_summary()
+    report.add_safety_violations()
+    report.add_approval_metrics()
+    return report.to_pdf()
+```
+
+## Role-Based Access Control (RBAC)
+
+### 1. Roles & Permissions
+```python
+from enum import Enum
+
+class Role(Enum):
+    ADMIN = "admin"
+    RESEARCHER = "researcher"
+    REVIEWER = "reviewer"
+    VIEWER = "viewer"
+
+PERMISSIONS = {
+    Role.ADMIN: [
+        "create_experiment", "execute_experiment", "approve_experiment",
+        "modify_policies", "view_audit_log", "emergency_stop"
+    ],
+    Role.RESEARCHER: [
+        "create_experiment", "view_own_experiments", "request_approval"
+    ],
+    Role.REVIEWER: [
+        "view_all_experiments", "approve_experiment", "reject_experiment"
+    ],
+    Role.VIEWER: [
+        "view_all_experiments"
+    ]
+}
+
+def check_permission(user_id: str, permission: str) -> bool:
+    user = get_user(user_id)
+    return permission in PERMISSIONS[user.role]
+```
+
+### 2. Approval Workflows
+High-risk experiments require human sign-off:
+
+```python
+class ApprovalStatus(Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+@dataclass
+class Approval:
+    experiment_id: str
+    status: ApprovalStatus
+    requested_by: str
+    requested_at: datetime
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    comments: Optional[str] = None
+
+async def request_approval(exp: Experiment, user_id: str):
+    """Submit experiment for human review."""
+    approval = Approval(
+        experiment_id=exp.id,
+        status=ApprovalStatus.PENDING,
+        requested_by=user_id,
+        requested_at=datetime.utcnow()
+    )
+    db.save(approval)
+    notify_reviewers(approval)
+    log_audit_event(AuditEvent(
+        event_type=EventType.APPROVAL_REQUESTED,
+        actor_id=user_id,
+        experiment_id=exp.id,
+        rationale="High-risk experiment flagged by safety checks"
+    ))
+```
+
+## Glass-Box AI Decisions
+
+### 1. Explainable Plans
+Every AI decision includes human-readable rationale:
+
+```python
+@dataclass
+class ExperimentPlan:
+    experiments: List[Experiment]
+    expected_eig: float
+    rationale: str  # Natural language explanation
+    alternatives_considered: List[Dict[str, Any]]
+    confidence: float
+    references: List[str]  # Citations to papers/databases
+
+# Example
+plan = ExperimentPlan(
+    experiments=[...],
+    expected_eig=2.3,
+    rationale="This experiment targets the high-uncertainty region in composition space (x=0.3-0.5), where the GP posterior variance is largest. Expected to reduce uncertainty by 40%.",
+    alternatives_considered=[
+        {"experiments": [...], "eig": 2.1, "reason": "Slightly lower EIG but faster runtime"},
+        {"experiments": [...], "eig": 1.8, "reason": "Explores different region, less optimal"}
+    ],
+    confidence=0.87,
+    references=["doi:10.1234/example", "Materials Project: mp-12345"]
+)
+```
+
+### 2. Decision Logs
+Store every planning step:
+
+```python
+class DecisionLog(BaseModel):
+    id: str
+    timestamp: datetime
+    agent_id: str
+    input_state: Dict[str, Any]  # Current beliefs, constraints
+    action_taken: str  # Which experiment(s) selected
+    reasoning: str  # Why this action
+    alternatives: List[Dict[str, Any]]
+    metrics: Dict[str, float]  # EIG, cost, time, etc.
+
+# Store in database for post-hoc analysis
+db.save_decision_log(log)
+```
+
+### 3. Visualization
+```python
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def visualize_planning_graph(plan: ExperimentPlan):
+    """Show decision tree: root = goal, leaves = selected experiments."""
+    G = nx.DiGraph()
+    G.add_node("Goal", label="Optimize bandgap")
+    for i, exp in enumerate(plan.experiments):
+        G.add_node(f"Exp{i}", label=f"{exp.sample_id}")
+        G.add_edge("Goal", f"Exp{i}", weight=plan.expected_eig)
+    
+    pos = nx.spring_layout(G)
+    nx.draw(G, pos, with_labels=True, node_color='lightblue')
+    plt.savefig("planning_graph.png")
+```
+
+## Shadow Simulations
+
+Run simulations in parallel with hardware to detect anomalies:
+
+```python
+async def execute_with_shadow(exp: Experiment):
+    """Run on hardware + simulator simultaneously."""
+    hardware_task = asyncio.create_task(hardware.run(exp))
+    sim_task = asyncio.create_task(simulator.run(exp))
+    
+    hardware_result, sim_result = await asyncio.gather(hardware_task, sim_task)
+    
+    # Compare results
+    divergence = compare_results(hardware_result, sim_result)
+    if divergence > THRESHOLD:
+        logger.warning("Shadow divergence detected", divergence=divergence)
+        trigger_safety_review(exp, hardware_result, sim_result)
+    
+    return hardware_result
+```
+
+## Testing Requirements
+
+### Red-Team Tests
+Adversarial tests to break safety:
+
+```python
+def test_temperature_limit_bypass_attempt():
+    """Attempt to submit experiment with excessive temperature."""
+    exp = Experiment(
+        protocol={"temperature": 500.0},  # Exceeds 150°C limit
+        sample_id="S001",
+        instrument_id="furnace"
+    )
+    
+    with pytest.raises(SafetyViolation):
+        safety_kernel.check_experiment(exp)
+
+def test_reagent_incompatibility():
+    """Sodium + water should be blocked."""
+    exp = Experiment(
+        protocol={"reagents": ["sodium", "water"]},
+        sample_id="S002",
+        instrument_id="reactor"
+    )
+    
+    with pytest.raises(SafetyViolation):
+        safety_kernel.check_experiment(exp)
+```
+
+### Audit Log Tests
+```python
+def test_audit_log_immutability():
+    """Audit log should reject updates/deletes."""
+    event = AuditEvent(
+        event_type=EventType.EXPERIMENT_CREATED,
+        actor_id="alice",
+        experiment_id="exp-123"
+    )
+    db.append_to_audit_log(event)
+    
+    # Try to modify (should fail)
+    with pytest.raises(Exception):
+        db.update_audit_log(event.id, {"actor_id": "eve"})
+```
+
+## Common Pitfalls
+
+❌ **Don't**: Rely solely on software checks (hardware can fail)  
+✅ **Do**: Redundant sensors + physical interlocks
+
+❌ **Don't**: Use black-box ML without explainability  
+✅ **Do**: Log rationale for every decision
+
+❌ **Don't**: Allow silent failures (errors swallowed)  
+✅ **Do**: Explicit error handling + alerts
+
+❌ **Don't**: Trust user input blindly  
+✅ **Do**: Validate against safety policies before execution
+
+❌ **Don't**: Skip dry-runs for "simple" experiments  
+✅ **Do**: Dry-run EVERYTHING, no exceptions
+
+## Performance Targets
+
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| Safety check latency | <10ms | Fast enough to be always-on |
+| Audit log write | <5ms | Append-only, no joins |
+| Approval notification | <1s | Email/Slack to reviewers |
+| Dead-man switch interval | 5s | Balance responsiveness and false alarms |
+| Uptime (safety kernel) | 99.99% | Critical system, high reliability |
+
+## Compliance Checklist
+
+Before production deployment:
+- [ ] All safety policies reviewed by domain expert
+- [ ] Rust safety kernel has >95% code coverage
+- [ ] Red-team tests pass (>20 adversarial scenarios)
+- [ ] Audit log is append-only (verified with DB constraints)
+- [ ] RBAC roles and permissions documented
+- [ ] Approval workflows tested with sample experiments
+- [ ] Emergency stop button physically installed and tested
+- [ ] Dead-man switch tested (simulate heartbeat failure)
+- [ ] Shadow simulations validated on 10+ experiments
+- [ ] Compliance report generated and reviewed by legal/compliance team
+
+---
+
+**Remember**: The trust moat is about **proving safety, not just claiming it**. Every line of defense (policies, interlocks, audits, approvals) must be tested, documented, and independently verifiable. When in doubt, fail safe and ask for human review.

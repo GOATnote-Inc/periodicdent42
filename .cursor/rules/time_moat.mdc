@@ -1,0 +1,510 @@
+# Time Moat - EIG/Hour Optimization
+
+## Core Principle
+Laboratory time is expensive. Every experiment must maximize **Expected Information Gain (EIG) per unit cost** (time, money, reagents). Smart planning beats brute-force exploration by 10x.
+
+## Bayesian Experimental Design
+
+### 1. Expected Information Gain (EIG)
+EIG measures how much an experiment reduces uncertainty about the underlying function:
+
+```python
+import numpy as np
+from scipy.stats import entropy
+
+def calculate_eig(X_candidate: np.ndarray, X_train: np.ndarray, y_train: np.ndarray, gp_model) -> float:
+    """
+    EIG = H(θ) - E[H(θ|y)]
+    where θ = model parameters, y = new observation
+    
+    High EIG → experiment tells us a lot about the world
+    """
+    # Prior entropy: Uncertainty before experiment
+    prior_samples = gp_model.sample_from_prior(n_samples=1000)
+    H_prior = entropy(np.histogram(prior_samples, bins=50)[0] + 1e-10)
+    
+    # Expected posterior entropy: Uncertainty after experiment (averaged over possible outcomes)
+    y_samples = gp_model.predict_samples(X_candidate, n_samples=100)
+    H_posterior_expected = 0.0
+    
+    for y_new in y_samples:
+        # Update GP with hypothetical observation
+        gp_updated = gp_model.condition_on(X_candidate, y_new)
+        posterior_samples = gp_updated.sample_from_posterior(n_samples=100)
+        H_posterior = entropy(np.histogram(posterior_samples, bins=50)[0] + 1e-10)
+        H_posterior_expected += H_posterior
+    
+    H_posterior_expected /= len(y_samples)
+    
+    return H_prior - H_posterior_expected
+```
+
+### 2. Cost-Aware EIG
+Not all experiments cost the same:
+
+```python
+from typing import Dict
+
+def eig_per_cost(X_candidate: np.ndarray, cost_model: Dict[str, float]) -> float:
+    """
+    Metric: EIG / cost
+    Cost includes: time, reagents, instrument wear, human labor
+    """
+    eig = calculate_eig(X_candidate, X_train, y_train, gp_model)
+    
+    # Cost model
+    time_hours = estimate_experiment_time(X_candidate)
+    reagent_cost = estimate_reagent_cost(X_candidate)
+    instrument_cost = cost_model.get(X_candidate["instrument"], 100.0)
+    
+    total_cost = time_hours * 50 + reagent_cost + instrument_cost / 1000
+    
+    return eig / total_cost if total_cost > 0 else 0.0
+```
+
+### 3. Batch Selection
+Select multiple experiments to run in parallel:
+
+```python
+def select_batch_greedy(X_pool: np.ndarray, batch_size: int, gp_model) -> np.ndarray:
+    """
+    Greedy batch selection: Pick highest EIG, update beliefs, repeat.
+    """
+    selected = []
+    X_remaining = X_pool.copy()
+    
+    for _ in range(batch_size):
+        eigs = [calculate_eig(x, X_train, y_train, gp_model) for x in X_remaining]
+        best_idx = np.argmax(eigs)
+        best_x = X_remaining[best_idx]
+        
+        selected.append(best_x)
+        
+        # Simulate observation (use posterior mean as proxy)
+        y_pred = gp_model.predict(best_x.reshape(1, -1))[0]
+        
+        # Update GP for next iteration
+        gp_model = gp_model.condition_on(best_x.reshape(1, -1), np.array([y_pred]))
+        
+        # Remove selected point
+        X_remaining = np.delete(X_remaining, best_idx, axis=0)
+    
+    return np.array(selected)
+```
+
+## Active Learning Strategies
+
+### 1. Uncertainty Sampling
+Exploit regions where the model is most uncertain:
+
+```python
+def uncertainty_sampling(X_pool: np.ndarray, gp_model, top_k: int = 5) -> np.ndarray:
+    """Select points with highest predictive variance."""
+    _, std = gp_model.predict(X_pool, return_std=True)
+    top_indices = np.argsort(std)[-top_k:]
+    return X_pool[top_indices]
+```
+
+### 2. Thompson Sampling
+Sample from posterior, optimize the sample:
+
+```python
+def thompson_sampling(X_pool: np.ndarray, gp_model, n_samples: int = 10) -> np.ndarray:
+    """Sample functions from GP posterior, find optimum of each."""
+    candidates = []
+    for _ in range(n_samples):
+        f_sample = gp_model.sample_function()
+        x_opt = maximize(f_sample, X_pool)
+        candidates.append(x_opt)
+    
+    # Return most common candidate (or all unique)
+    return np.unique(candidates, axis=0)
+```
+
+### 3. Exploitation-Exploration Trade-off
+```python
+def upper_confidence_bound(X_pool: np.ndarray, gp_model, beta: float = 2.0) -> np.ndarray:
+    """
+    UCB = mean + beta * std
+    beta controls exploration: high beta → explore, low beta → exploit
+    """
+    mean, std = gp_model.predict(X_pool, return_std=True)
+    ucb = mean + beta * std
+    best_idx = np.argmax(ucb)
+    return X_pool[best_idx]
+```
+
+## Design of Experiments (DoE) Primitives
+
+### 1. Controls
+Always include positive, negative, and blank controls:
+
+```python
+from enum import Enum
+
+class ControlType(Enum):
+    POSITIVE = "positive"  # Known good outcome
+    NEGATIVE = "negative"  # Known bad outcome
+    BLANK = "blank"        # No treatment
+    SOLVENT = "solvent"    # Solvent-only
+
+@dataclass
+class ExperimentalDesign:
+    test_conditions: List[Experiment]
+    controls: List[Tuple[Experiment, ControlType]]
+    
+    def validate(self) -> bool:
+        """Ensure at least one positive and one negative control."""
+        control_types = {ct for _, ct in self.controls}
+        return ControlType.POSITIVE in control_types and ControlType.NEGATIVE in control_types
+```
+
+### 2. Replication
+```python
+def add_replicates(experiments: List[Experiment], n_replicates: int = 3) -> List[Experiment]:
+    """Add technical replicates for variance estimation."""
+    replicated = []
+    for exp in experiments:
+        for i in range(n_replicates):
+            rep = exp.copy()
+            rep.id = f"{exp.id}_rep{i}"
+            rep.metadata["replicate_of"] = exp.id
+            rep.metadata["replicate_index"] = i
+            replicated.append(rep)
+    return replicated
+```
+
+### 3. Randomization
+```python
+import random
+
+def randomize_execution_order(experiments: List[Experiment], seed: int = 42) -> List[Experiment]:
+    """Randomize to avoid temporal bias (e.g., instrument drift)."""
+    random.seed(seed)
+    shuffled = experiments.copy()
+    random.shuffle(shuffled)
+    
+    # Log randomization for provenance
+    for i, exp in enumerate(shuffled):
+        exp.metadata["execution_order"] = i
+        exp.metadata["randomization_seed"] = seed
+    
+    return shuffled
+```
+
+### 4. Power Analysis
+```python
+from scipy.stats import ttest_ind
+
+def calculate_required_sample_size(effect_size: float, alpha: float = 0.05, power: float = 0.8) -> int:
+    """
+    Calculate n needed to detect effect_size with given power.
+    Uses Cohen's d for effect size.
+    """
+    from statsmodels.stats.power import ttest_power
+    
+    # Effect size (Cohen's d) = (mean1 - mean2) / pooled_std
+    n = 2  # Start with n=2 per group
+    while ttest_power(effect_size, n, alpha) < power:
+        n += 1
+    
+    return n
+```
+
+## Parallel Scheduling
+
+### 1. Resource Allocation
+```python
+@dataclass
+class Resource:
+    id: str
+    type: str  # "instrument", "reagent", "compute"
+    capacity: float
+    available: float
+
+class Scheduler:
+    def __init__(self, resources: List[Resource]):
+        self.resources = {r.id: r for r in resources}
+    
+    def can_schedule(self, exp: Experiment) -> bool:
+        """Check if resources are available for experiment."""
+        for resource_id, amount in exp.resource_requirements.items():
+            if self.resources[resource_id].available < amount:
+                return False
+        return True
+    
+    def allocate(self, exp: Experiment):
+        """Reserve resources for experiment."""
+        for resource_id, amount in exp.resource_requirements.items():
+            self.resources[resource_id].available -= amount
+    
+    def release(self, exp: Experiment):
+        """Free resources after experiment completes."""
+        for resource_id, amount in exp.resource_requirements.items():
+            self.resources[resource_id].available += amount
+```
+
+### 2. Parallel Execution
+```python
+import asyncio
+
+async def execute_batch_parallel(experiments: List[Experiment], max_concurrent: int = 5):
+    """Run experiments in parallel, respecting resource limits."""
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def run_with_limit(exp: Experiment):
+        async with semaphore:
+            if scheduler.can_schedule(exp):
+                scheduler.allocate(exp)
+                try:
+                    result = await execute_experiment(exp)
+                    return result
+                finally:
+                    scheduler.release(exp)
+            else:
+                # Wait for resources to free up
+                await asyncio.sleep(1.0)
+                return await run_with_limit(exp)
+    
+    results = await asyncio.gather(*[run_with_limit(exp) for exp in experiments])
+    return results
+```
+
+## Adaptive Planning
+
+### 1. Online Updates
+Re-plan as new data arrives:
+
+```python
+class AdaptivePlanner:
+    def __init__(self, initial_plan: List[Experiment]):
+        self.plan = initial_plan
+        self.executed = []
+        self.results = []
+    
+    async def execute_adaptive(self):
+        """Execute plan, update after each result."""
+        while self.plan:
+            # Execute next experiment
+            exp = self.plan.pop(0)
+            result = await execute_experiment(exp)
+            
+            self.executed.append(exp)
+            self.results.append(result)
+            
+            # Update model with new data
+            gp_model.update(exp.to_features(), result.target_value)
+            
+            # Re-plan remaining experiments
+            self.plan = self.replan(self.plan)
+    
+    def replan(self, remaining: List[Experiment]) -> List[Experiment]:
+        """Re-optimize plan based on updated beliefs."""
+        # Generate new candidate pool
+        X_pool = generate_candidate_pool()
+        
+        # Select best experiments by EIG
+        X_new = select_batch_greedy(X_pool, batch_size=len(remaining), gp_model)
+        
+        return [Experiment.from_features(x) for x in X_new]
+```
+
+### 2. Early Stopping
+```python
+def should_stop_early(results: List[Result], convergence_threshold: float = 0.01) -> bool:
+    """Stop if uncertainty reduction plateaus."""
+    if len(results) < 5:
+        return False
+    
+    # Check if recent experiments reduced uncertainty by <1%
+    recent_uncertainty = [r.posterior_variance for r in results[-5:]]
+    reduction = (recent_uncertainty[0] - recent_uncertainty[-1]) / recent_uncertainty[0]
+    
+    return reduction < convergence_threshold
+```
+
+## Surrogate Models
+
+### 1. Gaussian Processes
+```python
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, Matern
+
+def build_gp_model(X_train: np.ndarray, y_train: np.ndarray):
+    """Train GP surrogate for expensive function."""
+    kernel = Matern(nu=2.5, length_scale=1.0)
+    gp = GaussianProcessRegressor(kernel=kernel, alpha=1e-6, normalize_y=True)
+    gp.fit(X_train, y_train)
+    return gp
+```
+
+### 2. Multi-Fidelity
+Use cheap simulations to guide expensive experiments:
+
+```python
+def multi_fidelity_eig(X_candidate: np.ndarray, cheap_model, expensive_model) -> float:
+    """
+    Use cheap model (e.g., force-field) to pre-screen,
+    expensive model (e.g., DFT) for final validation.
+    """
+    # Cheap evaluation
+    y_cheap = cheap_model.predict(X_candidate)
+    
+    # Only run expensive if cheap result is promising
+    if y_cheap > threshold:
+        y_expensive = expensive_model.predict(X_candidate)
+        return calculate_eig(X_candidate, expensive_model)
+    else:
+        return 0.0  # Low EIG, skip expensive evaluation
+```
+
+## KPI Tracking
+
+### 1. Learning Velocity
+```python
+class LearningMetrics:
+    def __init__(self):
+        self.history = []
+    
+    def log(self, iteration: int, uncertainty: float, cost: float):
+        self.history.append({
+            "iteration": iteration,
+            "uncertainty": uncertainty,
+            "cost": cost,
+            "eig_per_cost": self.calculate_eig_per_cost()
+        })
+    
+    def calculate_eig_per_cost(self) -> float:
+        if len(self.history) < 2:
+            return 0.0
+        
+        prev = self.history[-2]
+        curr = self.history[-1]
+        
+        eig = prev["uncertainty"] - curr["uncertainty"]
+        cost = curr["cost"] - prev["cost"]
+        
+        return eig / cost if cost > 0 else 0.0
+    
+    def plot_learning_curve(self):
+        import matplotlib.pyplot as plt
+        
+        iterations = [h["iteration"] for h in self.history]
+        uncertainty = [h["uncertainty"] for h in self.history]
+        
+        plt.plot(iterations, uncertainty)
+        plt.xlabel("Iteration")
+        plt.ylabel("Uncertainty")
+        plt.title("Learning Curve")
+        plt.savefig("learning_curve.png")
+```
+
+### 2. Comparison to Baselines
+```python
+def benchmark_against_random(n_experiments: int, n_trials: int = 10) -> Dict[str, float]:
+    """Compare EIG-driven vs. random sampling."""
+    eig_results = []
+    random_results = []
+    
+    for _ in range(n_trials):
+        # EIG-driven
+        X_eig = select_batch_greedy(X_pool, n_experiments, gp_model)
+        y_eig = run_experiments(X_eig)
+        final_uncertainty_eig = gp_model.posterior_variance()
+        eig_results.append(final_uncertainty_eig)
+        
+        # Random baseline
+        X_random = np.random.choice(X_pool, n_experiments, replace=False)
+        y_random = run_experiments(X_random)
+        final_uncertainty_random = gp_model.posterior_variance()
+        random_results.append(final_uncertainty_random)
+    
+    return {
+        "eig_mean": np.mean(eig_results),
+        "random_mean": np.mean(random_results),
+        "speedup": np.mean(random_results) / np.mean(eig_results)
+    }
+```
+
+## Common Pitfalls
+
+❌ **Don't**: Use EIG without cost adjustment (wastes expensive experiments)  
+✅ **Do**: Optimize EIG/cost, not just EIG
+
+❌ **Don't**: Ignore batch effects (parallel experiments aren't independent)  
+✅ **Do**: Use batch selection algorithms (greedy, submodular optimization)
+
+❌ **Don't**: Over-explore (keep sampling after convergence)  
+✅ **Do**: Implement early stopping based on uncertainty reduction
+
+❌ **Don't**: Trust GP extrapolation far from training data  
+✅ **Do**: Use acquisition functions that penalize uncertainty (UCB, EI)
+
+❌ **Don't**: Skip controls and replicates to save time  
+✅ **Do**: Include controls in EIG calculation (they reduce systematic bias)
+
+## Testing Requirements
+
+```python
+def test_eig_decreases_uncertainty():
+    """EIG-selected experiments should reduce posterior variance more than random."""
+    X_train = np.random.rand(10, 2)
+    y_train = np.sin(X_train[:, 0]) + np.random.randn(10) * 0.1
+    
+    gp = build_gp_model(X_train, y_train)
+    
+    # EIG selection
+    X_pool = np.random.rand(100, 2)
+    X_eig = select_batch_greedy(X_pool, batch_size=5, gp_model=gp)
+    
+    # Simulate observations
+    y_eig = np.sin(X_eig[:, 0])
+    gp_updated = gp.condition_on(X_eig, y_eig)
+    
+    # Check uncertainty reduction
+    variance_before = gp.posterior_variance(X_pool)
+    variance_after = gp_updated.posterior_variance(X_pool)
+    
+    assert variance_after < variance_before
+
+def test_batch_selection_diversity():
+    """Batch should cover diverse regions, not cluster."""
+    X_train = np.random.rand(10, 2)
+    y_train = np.sin(X_train[:, 0])
+    
+    gp = build_gp_model(X_train, y_train)
+    X_pool = np.random.rand(100, 2)
+    
+    X_batch = select_batch_greedy(X_pool, batch_size=10, gp_model=gp)
+    
+    # Check pairwise distances
+    from scipy.spatial.distance import pdist
+    distances = pdist(X_batch)
+    
+    assert np.min(distances) > 0.1  # No two points too close
+```
+
+## Performance Targets
+
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| EIG calculation | <100ms | Fast enough for real-time planning |
+| Batch selection (n=10) | <1s | Interactive use |
+| Learning velocity | 10x vs random | Key value proposition |
+| Convergence | <50 experiments | For typical problems (5D, smooth) |
+| Speedup (vs grid search) | 100x | Grid search scales exponentially |
+
+## Checklist for New Planning Algorithms
+
+- [ ] Implements EIG or equivalent information-theoretic metric
+- [ ] Accounts for experiment cost (time, reagents, etc.)
+- [ ] Supports batch selection (parallel experiments)
+- [ ] Includes controls and replicates in plan
+- [ ] Tests against random baseline (>2x improvement)
+- [ ] Visualizes uncertainty reduction over time
+- [ ] Handles edge cases (empty pool, singular covariance)
+- [ ] Documents assumptions (smoothness, additivity, etc.)
+
+---
+
+**Remember**: The time moat is about **intelligent prioritization**. Every experiment should answer the most pressing question. If you can't articulate why an experiment is next-best, don't run it. EIG formalizes intuition into math, ensuring every lab hour advances science maximally.

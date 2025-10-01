@@ -1,0 +1,79 @@
+# Safety Policies for Autonomous Experimentation
+#
+# These policies are enforced by the Rust safety kernel to protect
+# hardware, personnel, and ensure compliance with lab regulations.
+#
+# Moat: TRUST - Safety-first design with explicit, auditable rules.
+
+policies:
+  # Temperature limits
+  - name: "Maximum temperature limit"
+    rule: "temperature <= 150.0"
+    unit: "celsius"
+    scope: ["synthesis_reactor", "furnace", "all"]
+    action: "Shutdown"
+    severity: "critical"
+  
+  - name: "Minimum temperature limit"
+    rule: "temperature >= -50.0"
+    unit: "celsius"
+    scope: ["all"]
+    action: "Shutdown"
+    severity: "critical"
+  
+  # Pressure limits
+  - name: "Maximum pressure limit"
+    rule: "pressure <= 10.0"
+    unit: "bar"
+    scope: ["reactor", "all"]
+    action: "Shutdown"
+    severity: "critical"
+  
+  - name: "Vacuum limit"
+    rule: "pressure >= 0.001"
+    unit: "bar"
+    scope: ["vacuum_chamber"]
+    action: "Warn"
+    severity: "medium"
+  
+  # Reagent safety
+  - name: "Maximum reagent volume"
+    rule: "volume <= 500.0"
+    unit: "mL"
+    scope: ["synthesis_reactor"]
+    action: "Reject"
+    severity: "medium"
+  
+  # Timing constraints
+  - name: "Maximum experiment duration"
+    rule: "duration <= 72.0"
+    unit: "hours"
+    scope: ["all"]
+    action: "PauseForApproval"
+    severity: "medium"
+  
+  # Confidence thresholds for AI decisions
+  - name: "Low confidence requires approval"
+    rule: "confidence >= 0.8"
+    unit: "probability"
+    scope: ["all"]
+    action: "PauseForApproval"
+    severity: "medium"
+  
+  # Power limits
+  - name: "Maximum power consumption"
+    rule: "power <= 5000.0"
+    unit: "watts"
+    scope: ["furnace", "synthesis_reactor"]
+    action: "Shutdown"
+    severity: "critical"
+
+# Incompatible reagent pairs (checked separately in Python layer)
+reagent_incompatibilities:
+  - pair: ["sodium", "water"]
+    reason: "Violent exothermic reaction"
+  - pair: ["ammonia", "bleach"]
+    reason: "Produces toxic chloramine gas"
+  - pair: ["acids", "cyanides"]
+    reason: "Produces toxic hydrogen cyanide"
+

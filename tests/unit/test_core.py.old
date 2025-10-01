@@ -1,0 +1,250 @@
+"""
+Unit tests for Experiment OS core functionality.
+
+Tests queue management, driver abstraction, and resource allocation.
+"""
+
+import pytest
+import asyncio
+from datetime import datetime
+
+from src.experiment_os.core import (
+    ExperimentQueue,
+    ExperimentOS,
+    DummyXRDDriver,
+    Resource,
+    ResourceType,
+    InstrumentTimeoutError
+)
+from configs.data_schema import (
+    Experiment,
+    Protocol,
+    Sample,
+    ExperimentStatus
+)
+
+
+@pytest.fixture
+def sample():
+    """Create test sample."""
+    return Sample(
+        name="TestSample",
+        composition={"A": 0.5, "B": 0.5}
+    )
+
+
+@pytest.fixture
+def protocol():
+    """Create test protocol."""
+    return Protocol(
+        instrument_id="xrd-001",
+        parameters={"scan_range": "20-80", "step_size": 0.02},
+        duration_estimate_hours=0.001
+    )
+
+
+@pytest.fixture
+def experiment(sample, protocol):
+    """Create test experiment."""
+    return Experiment(
+        sample_id=sample.id,
+        protocol=protocol,
+        created_by="test-user",
+        priority=5
+    )
+
+
+class TestExperimentQueue:
+    """Test experiment queue functionality."""
+    
+    def test_enqueue_dequeue(self, experiment):
+        """Queue should maintain FIFO order for same priority."""
+        queue = ExperimentQueue()
+        
+        queue.enqueue(experiment)
+        assert queue.get_stats()["queued"] == 1
+        
+        dequeued = queue.dequeue()
+        assert dequeued.id == experiment.id
+        assert dequeued.status == ExperimentStatus.RUNNING
+        assert queue.get_stats()["running"] == 1
+    
+    def test_priority_ordering(self, sample, protocol):
+        """Higher priority experiments should be dequeued first."""
+        queue = ExperimentQueue()
+        
+        # Add experiments with different priorities
+        exp_low = Experiment(sample_id=sample.id, protocol=protocol, created_by="user", priority=1)
+        exp_high = Experiment(sample_id=sample.id, protocol=protocol, created_by="user", priority=10)
+        exp_med = Experiment(sample_id=sample.id, protocol=protocol, created_by="user", priority=5)
+        
+        queue.enqueue(exp_low)
+        queue.enqueue(exp_high)
+        queue.enqueue(exp_med)
+        
+        # Should get high priority first
+        first = queue.dequeue()
+        assert first.priority == 10
+        
+        second = queue.dequeue()
+        assert second.priority == 5
+        
+        third = queue.dequeue()
+        assert third.priority == 1
+    
+    def test_mark_completed(self, experiment):
+        """Completed experiments should move to completed list."""
+        queue = ExperimentQueue()
+        
+        queue.enqueue(experiment)
+        exp = queue.dequeue()
+        
+        queue.mark_completed(exp.id, success=True)
+        
+        assert queue.get_stats()["running"] == 0
+        assert queue.get_stats()["completed"] == 1
+
+
+class TestDummyXRDDriver:
+    """Test XRD driver implementation."""
+    
+    @pytest.mark.asyncio
+    async def test_connect_disconnect(self):
+        """Driver should connect and disconnect properly."""
+        driver = DummyXRDDriver("xrd-001", {})
+        
+        assert not driver.is_connected
+        
+        success = await driver.connect()
+        assert success
+        assert driver.is_connected
+        
+        success = await driver.disconnect()
+        assert success
+        assert not driver.is_connected
+    
+    @pytest.mark.asyncio
+    async def test_run_experiment(self, protocol):
+        """Driver should execute experiment and return result."""
+        driver = DummyXRDDriver("xrd-001", {})
+        await driver.connect()
+        
+        result = await driver.run_experiment(protocol)
+        
+        assert result.success
+        assert len(result.measurements) > 0
+        assert result.analysis_version == "dummy-xrd-1.0"
+    
+    @pytest.mark.asyncio
+    async def test_run_without_connection(self, protocol):
+        """Running without connection should raise error."""
+        driver = DummyXRDDriver("xrd-001", {})
+        
+        with pytest.raises(Exception):  # InstrumentError
+            await driver.run_experiment(protocol)
+    
+    @pytest.mark.asyncio
+    async def test_get_status(self):
+        """Status should return health information."""
+        driver = DummyXRDDriver("xrd-001", {})
+        await driver.connect()
+        
+        status = await driver.get_status()
+        
+        assert "connected" in status
+        assert status["connected"] is True
+        assert "temperature" in status
+
+
+class TestResource:
+    """Test resource allocation."""
+    
+    def test_allocate_sufficient(self):
+        """Allocating available resource should succeed."""
+        resource = Resource(
+            id="xrd-001",
+            type=ResourceType.INSTRUMENT,
+            capacity=10.0,
+            available=10.0,
+            unit="hours"
+        )
+        
+        success = resource.allocate(5.0)
+        assert success
+        assert resource.available == 5.0
+    
+    def test_allocate_insufficient(self):
+        """Allocating more than available should fail."""
+        resource = Resource(
+            id="xrd-001",
+            type=ResourceType.INSTRUMENT,
+            capacity=10.0,
+            available=3.0,
+            unit="hours"
+        )
+        
+        success = resource.allocate(5.0)
+        assert not success
+        assert resource.available == 3.0  # Unchanged
+    
+    def test_release(self):
+        """Releasing resource should increase availability."""
+        resource = Resource(
+            id="xrd-001",
+            type=ResourceType.INSTRUMENT,
+            capacity=10.0,
+            available=5.0,
+            unit="hours"
+        )
+        
+        resource.release(3.0)
+        assert resource.available == 8.0
+        
+        # Should not exceed capacity
+        resource.release(5.0)
+        assert resource.available == 10.0  # Capped at capacity
+
+
+class TestExperimentOS:
+    """Test main orchestration system."""
+    
+    @pytest.mark.asyncio
+    async def test_submit_and_execute(self, experiment):
+        """Should submit and execute experiment successfully."""
+        os_system = ExperimentOS()
+        
+        # Register driver
+        driver = DummyXRDDriver("xrd-001", {})
+        os_system.registry.register(driver)
+        
+        await os_system.submit_experiment(experiment)
+        
+        assert os_system.queue.get_stats()["queued"] == 1
+    
+    @pytest.mark.asyncio
+    async def test_execute_experiment_direct(self, experiment):
+        """Direct execution should work with driver."""
+        os_system = ExperimentOS()
+        
+        driver = DummyXRDDriver("xrd-001", {})
+        os_system.registry.register(driver)
+        await driver.connect()
+        
+        result = await os_system.execute_experiment(experiment)
+        
+        assert result.success
+        assert result.experiment_id == experiment.id
+    
+    @pytest.mark.asyncio
+    async def test_missing_driver(self, experiment):
+        """Executing without driver should raise error."""
+        os_system = ExperimentOS()
+        
+        with pytest.raises(Exception):  # InstrumentError
+            await os_system.execute_experiment(experiment)
+
+
+# Run tests
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])
+

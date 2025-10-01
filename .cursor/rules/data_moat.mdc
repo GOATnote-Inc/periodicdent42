@@ -1,0 +1,327 @@
+# Data Moat - Schemas, Provenance & Signal Quality
+
+## Core Principle
+Scientific data is the platform's most valuable asset. High signal-to-noise ratio (SNR), structured uncertainty, and complete provenance create a dataset competitors can't replicate.
+
+## Schema Design
+
+### 1. Physics-Aware Validation
+```python
+from pydantic import BaseModel, Field, validator
+from pint import UnitRegistry
+
+ureg = UnitRegistry()
+
+class Measurement(BaseModel):
+    """Single measurement with units, uncertainty, and provenance."""
+    
+    value: float = Field(..., description="Measured value")
+    unit: str = Field(..., description="Unit (e.g., 'eV', 'nm', 'mol/L')")
+    uncertainty: float = Field(0.0, description="Standard error or confidence interval")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    instrument_id: str = Field(..., description="Which instrument generated this")
+    provenance_hash: str = Field(..., description="SHA-256 of experiment protocol")
+    
+    @validator("unit")
+    def validate_unit(cls, v):
+        """Ensure unit is recognized by Pint."""
+        try:
+            ureg(v)
+        except Exception:
+            raise ValueError(f"Invalid unit: {v}")
+        return v
+    
+    @validator("uncertainty")
+    def uncertainty_non_negative(cls, v):
+        if v < 0:
+            raise ValueError("Uncertainty must be non-negative")
+        return v
+```
+
+### 2. Structured Uncertainty
+Every prediction or measurement MUST include uncertainty:
+- **Measurement error**: Instrument precision (from calibration)
+- **Systematic bias**: Known offsets (e.g., temperature sensor drift)
+- **Model uncertainty**: Bayesian posterior variance or ensemble disagreement
+
+```python
+class Prediction(BaseModel):
+    mean: float
+    std: float  # Standard deviation
+    confidence_level: float = 0.95  # For confidence intervals
+    epistemic: float = 0.0  # Model uncertainty
+    aleatoric: float = 0.0  # Data noise
+```
+
+### 3. Provenance Tracking
+Every data point links back to its origin:
+
+```python
+class Experiment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    protocol: Dict[str, Any]  # Instrument settings, parameters
+    sample_id: str
+    created_by: str  # User ID
+    created_at: datetime
+    parent_experiment_ids: List[str] = []  # For multi-step workflows
+    
+    def compute_hash(self) -> str:
+        """Cryptographic hash for integrity."""
+        content = json.dumps(self.protocol, sort_keys=True)
+        return hashlib.sha256(content.encode()).hexdigest()
+
+class Result(BaseModel):
+    experiment_id: str
+    measurements: List[Measurement]
+    derived_properties: Dict[str, Prediction]  # Calculated from measurements
+    analysis_version: str  # Code version used for analysis
+    provenance_graph: Dict[str, List[str]]  # experiment_id -> parent_ids
+```
+
+## Data Quality Scoring
+
+### SNR Calculation
+```python
+def calculate_snr(measurements: List[Measurement]) -> float:
+    """Signal-to-noise ratio: mean / std."""
+    values = [m.value for m in measurements]
+    if len(values) < 2:
+        return float('inf')  # Single measurement, no noise estimate
+    return np.mean(values) / np.std(values)
+
+def quality_score(result: Result) -> float:
+    """Aggregate quality score (0-1)."""
+    snr = calculate_snr(result.measurements)
+    completeness = len(result.measurements) / expected_count
+    uncertainty = np.mean([m.uncertainty / abs(m.value) for m in result.measurements])
+    
+    return (
+        0.4 * min(snr / 10.0, 1.0) +  # SNR contribution
+        0.3 * completeness +            # Completeness contribution
+        0.3 * (1 - min(uncertainty, 1.0))  # Low uncertainty is good
+    )
+```
+
+### Outlier Detection
+```python
+from scipy import stats
+
+def detect_outliers(measurements: List[Measurement], threshold: float = 3.0) -> List[int]:
+    """Z-score method: flag values >3σ from mean."""
+    values = np.array([m.value for m in measurements])
+    z_scores = np.abs(stats.zscore(values))
+    return [i for i, z in enumerate(z_scores) if z > threshold]
+```
+
+## Database Schema
+
+### Core Tables
+```sql
+-- Experiments
+CREATE TABLE experiments (
+    id UUID PRIMARY KEY,
+    protocol JSONB NOT NULL,
+    sample_id TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    protocol_hash TEXT NOT NULL,  -- SHA-256 for integrity
+    status TEXT NOT NULL,  -- queued, running, completed, failed
+    CONSTRAINT valid_status CHECK (status IN ('queued', 'running', 'completed', 'failed'))
+);
+
+-- Measurements (time-series optimized with TimescaleDB)
+CREATE TABLE measurements (
+    id SERIAL PRIMARY KEY,
+    experiment_id UUID REFERENCES experiments(id),
+    timestamp TIMESTAMPTZ NOT NULL,
+    value DOUBLE PRECISION NOT NULL,
+    unit TEXT NOT NULL,
+    uncertainty DOUBLE PRECISION DEFAULT 0.0,
+    instrument_id TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}'
+);
+
+SELECT create_hypertable('measurements', 'timestamp');
+
+-- Provenance edges
+CREATE TABLE provenance (
+    child_id UUID REFERENCES experiments(id),
+    parent_id UUID REFERENCES experiments(id),
+    relationship TEXT,  -- derived_from, replicate_of, control_for
+    PRIMARY KEY (child_id, parent_id)
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_experiments_created_at ON experiments(created_at);
+CREATE INDEX idx_experiments_status ON experiments(status);
+CREATE INDEX idx_measurements_experiment_id ON measurements(experiment_id);
+CREATE INDEX idx_provenance_parent ON provenance(parent_id);
+```
+
+## Physics-Aware Queries
+
+### Semantic Search
+```python
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+def embed_experiment(exp: Experiment) -> np.ndarray:
+    """Generate embedding for semantic search."""
+    text = f"{exp.sample_id} {json.dumps(exp.protocol)}"
+    return model.encode(text)
+
+def find_similar_experiments(query: Experiment, top_k: int = 10) -> List[Experiment]:
+    """Find experiments with similar protocols/samples."""
+    query_embedding = embed_experiment(query)
+    
+    # In production, use vector database (Pinecone, Weaviate, pgvector)
+    # For now, brute-force similarity
+    all_exps = load_all_experiments()
+    similarities = [
+        (exp, cosine_similarity(query_embedding, embed_experiment(exp)))
+        for exp in all_exps
+    ]
+    similarities.sort(key=lambda x: x[1], reverse=True)
+    return [exp for exp, _ in similarities[:top_k]]
+```
+
+### Domain-Specific Filters
+```python
+def find_perovskites_by_bandgap(min_eV: float, max_eV: float) -> List[Result]:
+    """Find perovskite experiments with bandgap in range."""
+    query = """
+    SELECT r.* FROM results r
+    JOIN experiments e ON r.experiment_id = e.id
+    WHERE e.protocol->>'material_class' = 'perovskite'
+      AND (r.derived_properties->'bandgap'->>'mean')::float BETWEEN %s AND %s
+    """
+    return db.execute(query, (min_eV, max_eV))
+```
+
+## Data Versioning
+
+### Immutable Storage
+- **Never delete**: Mark as `deleted_at`, keep for audits
+- **Never update**: Create new version with `version_of` pointer
+- **Cryptographic integrity**: SHA-256 hash on write, verify on read
+
+```python
+class DataVersion(BaseModel):
+    id: str
+    content: Dict[str, Any]
+    version: int
+    version_of: Optional[str] = None  # Previous version ID
+    created_at: datetime
+    checksum: str  # SHA-256 of content
+    
+    def verify_integrity(self) -> bool:
+        computed = hashlib.sha256(json.dumps(self.content, sort_keys=True).encode()).hexdigest()
+        return computed == self.checksum
+```
+
+## Common Pitfalls
+
+❌ **Don't**: Store measurements without units  
+✅ **Do**: Use Pint for unit validation, convert to standard units (SI)
+
+❌ **Don't**: Report single values without uncertainty  
+✅ **Do**: Every measurement includes error bars (even if estimated)
+
+❌ **Don't**: Use generic timestamps (local time)  
+✅ **Do**: Use UTC with timezone info (`datetime.utcnow()`)
+
+❌ **Don't**: Store derived properties without provenance  
+✅ **Do**: Link every result to experiment ID + analysis code version
+
+❌ **Don't**: Ignore outliers silently  
+✅ **Do**: Flag outliers, log reason, allow human review
+
+## Uncertainty Propagation
+
+### Formula
+For derived quantities, propagate uncertainty:
+```python
+import sympy as sp
+
+def propagate_uncertainty(formula: str, variables: Dict[str, Tuple[float, float]]) -> Tuple[float, float]:
+    """
+    formula: "a + b * c"
+    variables: {"a": (mean, std), "b": (mean, std), "c": (mean, std)}
+    Returns: (mean, std) of derived quantity
+    """
+    syms = {k: sp.Symbol(k) for k in variables.keys()}
+    expr = sp.sympify(formula)
+    
+    # Mean value
+    mean_vals = {k: v[0] for k, v in variables.items()}
+    mean = float(expr.subs({syms[k]: v for k, v in mean_vals.items()}))
+    
+    # Uncertainty via first-order Taylor expansion
+    variance = 0.0
+    for k, (_, std_k) in variables.items():
+        partial = sp.diff(expr, syms[k])
+        partial_val = float(partial.subs({syms[k]: v for k, v in mean_vals.items()}))
+        variance += (partial_val * std_k) ** 2
+    
+    return mean, np.sqrt(variance)
+
+# Example: Bandgap = E_lumo - E_homo
+result = propagate_uncertainty(
+    "lumo - homo",
+    {"lumo": (2.5, 0.1), "homo": (-5.0, 0.15)}
+)
+# Returns: (7.5, 0.18)
+```
+
+## Testing Requirements
+
+### Schema Tests
+```python
+def test_measurement_validation():
+    """Invalid units should raise ValidationError."""
+    with pytest.raises(ValueError):
+        Measurement(value=1.5, unit="invalid_unit", instrument_id="xrd-1", provenance_hash="abc123")
+
+def test_uncertainty_non_negative():
+    with pytest.raises(ValueError):
+        Measurement(value=1.0, unit="eV", uncertainty=-0.1, instrument_id="xrd-1", provenance_hash="abc123")
+```
+
+### Integrity Tests
+```python
+def test_provenance_hash():
+    exp = Experiment(protocol={"temp": 300}, sample_id="S001", created_by="alice")
+    hash1 = exp.compute_hash()
+    hash2 = exp.compute_hash()
+    assert hash1 == hash2  # Deterministic
+    
+    exp2 = Experiment(protocol={"temp": 301}, sample_id="S001", created_by="alice")
+    assert hash1 != exp2.compute_hash()  # Different protocol -> different hash
+```
+
+## Performance Targets
+
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| Write latency | <10ms | Fast experiment submission |
+| Query latency (simple) | <50ms | Interactive dashboards |
+| Query latency (semantic) | <500ms | Vector search overhead |
+| Storage overhead | <10% | Provenance adds minimal size |
+| Data integrity checks | 100% | Every read verifies checksum |
+
+## Checklist for New Data Types
+
+- [ ] Pydantic schema with type hints
+- [ ] Unit validation (if applicable)
+- [ ] Uncertainty field(s)
+- [ ] Provenance link (experiment_id or parent_id)
+- [ ] SHA-256 hash for integrity
+- [ ] Database migration script
+- [ ] Tests for validation logic
+- [ ] Documentation of expected ranges/distributions
+
+---
+
+**Remember**: The data moat is about **quality over quantity**. A small, clean, well-provenance dataset beats a large, noisy one every time. Invest in validation upfront to avoid garbage-in-garbage-out downstream.
