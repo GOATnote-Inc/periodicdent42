@@ -1,0 +1,20 @@
+[package]
+name = "pycore"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "pycore"
+crate-type = ["cdylib"]
+
+[features]
+default = ["pybind"]
+pybind = []
+
+[dependencies]
+periodic_core = { path = "../core", package = "core", features = ["pybind"] }
+pyo3.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+uuid.workspace = true
