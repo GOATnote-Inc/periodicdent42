@@ -1,0 +1,30 @@
+version: "3.9"
+services:
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: midupdate/docker/orchestrator.Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - PYTHONPATH=/app/midupdate
+    volumes:
+      - ./midupdate/data:/app/midupdate/data
+      - ./midupdate/training/model_registry:/app/midupdate/training/model_registry
+  trainer:
+    build:
+      context: ..
+      dockerfile: midupdate/docker/trainer.Dockerfile
+    environment:
+      - PYTHONPATH=/app/midupdate
+    volumes:
+      - ./midupdate/data:/app/midupdate/data
+      - ./midupdate/training/model_registry:/app/midupdate/training/model_registry
+  ui:
+    build:
+      context: ..
+      dockerfile: midupdate/docker/ui.Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - orchestrator
