@@ -46,17 +46,27 @@ class ActorCriticNetwork(nn.Module):
         # Shared feature extractor
         self.shared = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),  # Add normalization
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.ReLU()
         )
+        
+        # Initialize weights properly
+        def init_weights(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                torch.nn.init.constant_(m.bias, 0.0)
+        
+        self.apply(init_weights)
         
         # Actor head (policy)
         self.actor_mean = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, action_dim),
-            nn.Tanh()  # Actions in [0, 1]
+            nn.Sigmoid()  # Actions in [0, 1]
         )
         
         self.actor_logstd = nn.Parameter(torch.zeros(action_dim))
@@ -101,13 +111,11 @@ class ActorCriticNetwork(nn.Module):
         if deterministic:
             return action_mean, None
         
-        action_std = torch.exp(action_logstd)
+        action_std = torch.exp(action_logstd).clamp(min=1e-3, max=1.0)  # Prevent collapse
         dist = torch.distributions.Normal(action_mean, action_std)
         action = dist.sample()
+        action = torch.clamp(action, 0.0, 1.0)  # Clip to valid range
         log_prob = dist.log_prob(action).sum(dim=-1)
-        
-        # Clip action to [0, 1]
-        action = torch.clamp(action, 0.0, 1.0)
         
         return action, log_prob
     

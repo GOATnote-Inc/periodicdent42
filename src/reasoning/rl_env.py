@@ -8,8 +8,8 @@ The agent learns to maximize Expected Information Gain (EIG) per unit time
 while respecting safety constraints and budget limits.
 """
 
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 from typing import Dict, Any, Optional, Tuple, List
 import logging
@@ -90,6 +90,7 @@ class ExperimentGym(gym.Env):
         self.experiment_types = experiment_types
         self.max_experiments = max_experiments
         self.time_budget_hours = time_budget_hours
+        self.initial_time_budget = time_budget_hours  # Store initial for normalization
         
         # Default parameter bounds (2D for simplicity)
         self.param_bounds = param_bounds or {
@@ -214,18 +215,19 @@ class ExperimentGym(gym.Env):
             result["value"]
         )
         
-        # Update GP predictions on grid
-        self._update_grid_predictions()
-        
-        # Record history
+        # Record history BEFORE updating GP (needed for _update_gp_model)
         self.history.append({
             "step": self.state.experiments_done,
             "params": params_denorm,
+            "params_array": np.array(list(params_denorm.values())),
             "experiment_type": exp_type,
             "value": result["value"],
             "reward": reward,
             "timestamp": datetime.now()
         })
+        
+        # Update GP predictions on grid
+        self._update_grid_predictions()
         
         # Check if done
         done = (
@@ -266,14 +268,19 @@ class ExperimentGym(gym.Env):
     
     def _get_observation(self) -> np.ndarray:
         """Construct observation vector from current state."""
+        # Normalize best_observed_value to avoid inf/-inf
+        best_value_norm = self.state.best_observed_value
+        if np.isinf(best_value_norm):
+            best_value_norm = -10.0  # Reasonable default for uninitialized
+        
         obs = np.concatenate([
             self.state.gp_mean,
             self.state.gp_variance,
             np.array([
                 self.state.experiments_remaining / self.max_experiments,
-                self.state.time_budget_hours / self.time_budget_hours,
-                self.state.best_observed_value,
-                self.state.safety_violations
+                self.state.time_budget_hours / self.initial_time_budget,  # Normalize by initial budget
+                best_value_norm,
+                self.state.safety_violations / 3.0  # Normalize (max is 3)
             ])
         ])
         return obs.astype(np.float32)
@@ -329,21 +336,22 @@ class ExperimentGym(gym.Env):
         param_array = np.array(list(params.values())).reshape(1, -1)
         value_array = np.array([value])
         
-        # Get existing data
+        # Get existing data from history
         if len(self.history) == 0:
             X = param_array
             y = value_array
         else:
-            X_prev = np.array([h["params_array"] for h in self.history if "params_array" in h])
-            y_prev = np.array([h["value"] for h in self.history])
-            X = np.vstack([X_prev, param_array]) if len(X_prev) > 0 else param_array
-            y = np.concatenate([y_prev, value_array])
+            X_prev = np.array([h["params_array"] for h in self.history[:-1] if "params_array" in h])
+            y_prev = np.array([h["value"] for h in self.history[:-1]])
+            if len(X_prev) > 0:
+                X = np.vstack([X_prev, param_array])
+                y = np.concatenate([y_prev, value_array])
+            else:
+                X = param_array
+                y = value_array
         
         # Fit GP
         self.gp_model.fit(X, y)
-        
-        # Store for next iteration
-        self.history[-1]["params_array"] = param_array[0] if len(self.history) > 0 else None
     
     def _update_grid_predictions(self):
         """Update GP mean and variance on a grid for observation."""
@@ -383,13 +391,14 @@ class ExperimentGym(gym.Env):
         Reward = EIG / duration_hours + bonuses/penalties
         """
         # Base reward: Information Gain per hour
-        eig_per_hour = result["eig"] / result["duration_hours"]
+        eig_per_hour = result["eig"] / max(result["duration_hours"], 0.01)
+        eig_per_hour = np.clip(eig_per_hour, -100, 100)  # Clip to reasonable range
         
         # Bonus for finding new best
         improvement_bonus = 0.0
         if result["value"] > self.state.best_observed_value:
             improvement = result["value"] - self.state.best_observed_value
-            improvement_bonus = improvement * 10.0
+            improvement_bonus = np.clip(improvement * 10.0, -50, 50)
         
         # Penalty for running out of budget
         budget_penalty = 0.0
@@ -397,7 +406,8 @@ class ExperimentGym(gym.Env):
             budget_penalty = -5.0
         
         total_reward = eig_per_hour + improvement_bonus + budget_penalty
-        return total_reward
+        total_reward = np.clip(total_reward, -100, 100)  # Final clipping
+        return float(total_reward)
 
 
 # Benchmark objective functions for testing
