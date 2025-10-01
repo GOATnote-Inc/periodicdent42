@@ -134,9 +134,13 @@ Interested in having us present at your conference or seminar?
 
 ---
 
-## ⚠️ Disclaimer
+## ⚠️ License & Disclaimer
 
-This software is provided "as-is" without warranty of any kind. See LICENSE file for full details. All performance metrics and capabilities described in documentation are based on specific test conditions and may vary. Users are responsible for validation and safety in their own environments.
+**PROPRIETARY SOFTWARE**: This software is proprietary and confidential. Use is restricted to authorized users only. See [LICENSE](../LICENSE) and [AUTHORIZED_USERS.md](../AUTHORIZED_USERS.md) for details.
+
+**For licensing inquiries**: B@thegoatnote.com
+
+This software is provided "as-is" without warranty of any kind. All performance metrics and capabilities described in documentation are based on specific test conditions and may vary. Users are responsible for validation and safety in their own environments.
 
 ---
 
