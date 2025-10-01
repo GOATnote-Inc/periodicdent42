@@ -84,16 +84,24 @@ class DualModelAgent:
             
             latency_ms = (time.time() - start_time) * 1000
             
+            # Try to get usage metadata if available
+            usage = {}
+            try:
+                if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                    usage = {
+                        "input_tokens": response.usage_metadata.prompt_token_count,
+                        "output_tokens": response.usage_metadata.candidates_token_count,
+                    }
+            except Exception:
+                pass
+            
             return {
                 "model": "gemini-2.5-flash",
                 "content": response.text,
                 "latency_ms": round(latency_ms, 2),
                 "is_preliminary": True,
                 "confidence": "medium",
-                "usage": {
-                    "input_tokens": response.usage_metadata.prompt_token_count,
-                    "output_tokens": response.usage_metadata.candidates_token_count,
-                }
+                "usage": usage
             }
         
         except Exception as e:
@@ -135,6 +143,17 @@ class DualModelAgent:
             # Parse reasoning steps
             reasoning_steps = self._extract_reasoning_steps(response.text)
             
+            # Try to get usage metadata if available
+            usage = {}
+            try:
+                if hasattr(response, 'usage_metadata'):
+                    usage = {
+                        "input_tokens": response.usage_metadata.prompt_token_count,
+                        "output_tokens": response.usage_metadata.candidates_token_count,
+                    }
+            except Exception:
+                pass
+            
             return {
                 "model": "gemini-2.5-pro",
                 "content": response.text,
@@ -142,10 +161,7 @@ class DualModelAgent:
                 "is_preliminary": False,
                 "confidence": "high",
                 "reasoning_steps": reasoning_steps,
-                "usage": {
-                    "input_tokens": response.usage_metadata.prompt_token_count,
-                    "output_tokens": response.usage_metadata.candidates_token_count,
-                }
+                "usage": usage
             }
         
         except Exception as e:
