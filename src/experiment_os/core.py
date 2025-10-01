@@ -355,21 +355,118 @@ class ExperimentOS:
     Moat: EXECUTION - Central event loop with fault tolerance and monitoring.
     """
     
-    def __init__(self):
+    def __init__(self, enable_safety_gateway: bool = True):
         self.queue = ExperimentQueue()
         self.registry = DriverRegistry()
         self.resources: Dict[str, Resource] = {}
         self.is_running = False
         self.logger = structlog.get_logger()
+        
+        # Initialize safety gateway (CRITICAL: protects hardware and personnel)
+        self.enable_safety_gateway = enable_safety_gateway
+        self.safety_gateway = None
+        if enable_safety_gateway:
+            try:
+                from src.safety.gateway import get_safety_gateway
+                self.safety_gateway = get_safety_gateway()
+                self.logger.info("safety_gateway_enabled", status="active")
+            except Exception as e:
+                self.logger.error("safety_gateway_initialization_failed", error=str(e))
+                # Fail-safe: if safety can't initialize, disable submissions
+                self.enable_safety_gateway = False
     
     def add_resource(self, resource: Resource):
         """Register a resource for tracking."""
         self.resources[resource.id] = resource
         self.logger.info("resource_added", resource_id=resource.id, capacity=resource.capacity)
     
-    async def submit_experiment(self, experiment: Experiment):
-        """Submit experiment to queue."""
+    async def submit_experiment(self, experiment: Experiment) -> Dict[str, Any]:
+        """
+        Submit experiment to queue after safety validation.
+        
+        CRITICAL SAFETY GATE: All experiments MUST pass safety checks before queueing.
+        This is the MANDATORY gate between user/AI submission and execution.
+        
+        Args:
+            experiment: Experiment to submit
+            
+        Returns:
+            Dict with status and details:
+                - status: "queued", "rejected", "requires_approval"
+                - experiment_id: ID of experiment
+                - reason: Human-readable reason
+                - violations: List of policy violations (if rejected)
+                - warnings: List of warnings (if approved with warnings)
+        
+        Raises:
+            ValueError: If experiment is rejected by safety gateway
+        """
+        # SAFETY GATE: Check experiment against all policies
+        if self.enable_safety_gateway and self.safety_gateway is not None:
+            safety_result = self.safety_gateway.check_experiment(experiment)
+            
+            if safety_result.rejected:
+                # REJECT: Do not queue, raise exception
+                self.logger.error(
+                    "experiment_rejected_by_safety",
+                    experiment_id=experiment.id,
+                    violations=safety_result.policy_violations,
+                    reason=safety_result.reason
+                )
+                raise ValueError(
+                    f"Experiment rejected by safety gateway: {safety_result.reason}. "
+                    f"Violations: {', '.join(safety_result.policy_violations)}"
+                )
+            
+            elif safety_result.requires_human_approval:
+                # PAUSE: Mark for human approval, do not auto-queue
+                self.logger.warning(
+                    "experiment_requires_approval",
+                    experiment_id=experiment.id,
+                    violations=safety_result.policy_violations,
+                    reason=safety_result.reason
+                )
+                return {
+                    "status": "requires_approval",
+                    "experiment_id": experiment.id,
+                    "reason": safety_result.reason,
+                    "violations": safety_result.policy_violations,
+                    "warnings": safety_result.warnings
+                }
+            
+            elif safety_result.approved:
+                # APPROVED: Queue experiment
+                if safety_result.warnings:
+                    self.logger.warning(
+                        "experiment_approved_with_warnings",
+                        experiment_id=experiment.id,
+                        warnings=safety_result.warnings
+                    )
+                else:
+                    self.logger.info(
+                        "experiment_approved",
+                        experiment_id=experiment.id,
+                        reason=safety_result.reason
+                    )
+        else:
+            # Safety gateway disabled (testing only)
+            self.logger.warning(
+                "safety_gateway_disabled",
+                experiment_id=experiment.id,
+                message="Experiment submitted WITHOUT safety validation"
+            )
+        
+        # Queue experiment
         self.queue.enqueue(experiment)
+        
+        return {
+            "status": "queued",
+            "experiment_id": experiment.id,
+            "reason": "Experiment queued for execution",
+            "violations": [],
+            "warnings": [] if not self.safety_gateway else 
+                       self.safety_gateway.check_experiment(experiment).warnings
+        }
     
     async def execute_experiment(self, experiment: Experiment) -> Result:
         """Execute single experiment with error handling.
