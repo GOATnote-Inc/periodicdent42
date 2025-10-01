@@ -127,12 +127,12 @@ def run_stochastic_validation(
                     objective_function=noisy_obj
                 )
         
-        # Compute statistics for this noise level
+        # Compute statistics for this noise level (convert all numpy types to Python floats)
         results["results_by_noise"][noise_std] = {
             "mean": {name: float(np.mean(vals)) for name, vals in noise_results.items()},
             "std": {name: float(np.std(vals)) for name, vals in noise_results.items()},
             "median": {name: float(np.median(vals)) for name, vals in noise_results.items()},
-            "raw": noise_results
+            "raw": {name: [float(v) for v in vals] for name, vals in noise_results.items()}
         }
         
         # Statistical tests
