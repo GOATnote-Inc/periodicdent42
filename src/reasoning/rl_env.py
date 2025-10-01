@@ -1,463 +1,306 @@
 """
-Reinforcement Learning Environment for Autonomous Experiments
+Reinforcement Learning Environment for Experiment Optimization.
 
-Gym-compatible environment that wraps the Experiment OS for training
-RL agents to actively learn optimal experiment sequences.
-
-The agent learns to maximize Expected Information Gain (EIG) per unit time
-while respecting safety constraints and budget limits.
+Production environment using Gymnasium (formerly OpenAI Gym).
+Trains agents to design optimal experiment sequences.
 """
 
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Tuple, Any, Optional
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel
 import logging
-from dataclasses import dataclass
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ExperimentState:
-    """Current state of the R&D campaign."""
-    # Belief state (Gaussian Process mean/variance at key points)
-    gp_mean: np.ndarray  # Shape: (n_grid_points,)
-    gp_variance: np.ndarray  # Shape: (n_grid_points,)
-    
-    # Budget remaining
-    experiments_remaining: int
-    time_budget_hours: float
-    
-    # Historical information
-    experiments_done: int
-    best_observed_value: float
-    
-    # Constraints
-    safety_violations: int
-
-
-class ExperimentGym(gym.Env):
+class ExperimentOptimizationEnv(gym.Env):
     """
-    OpenAI Gym environment for experiment planning.
+    Gymnasium environment for autonomous experiment design.
     
-    **Observation Space**:
-    - GP mean/variance (surrogate model of objective function)
-    - Experiments remaining
-    - Time budget
-    - Best value found so far
+    Agent learns to select next experiments that maximize information gain
+    per unit cost (time/resources).
     
-    **Action Space**:
-    - Continuous: Next experiment parameters (e.g., temperature, pressure, composition)
-    - Discrete: Experiment type (XRD, NMR, UV-Vis, DFT)
-    
-    **Reward**:
-    - Primary: Information Gain per hour
-    - Penalties: Safety violations, budget overruns
-    - Bonus: Finding new optima
-    
-    Example usage:
-        env = ExperimentGym(
-            objective_function=branin_function,
-            experiment_types=["xrd", "nmr"],
-            max_experiments=20,
-            time_budget_hours=24.0
-        )
-        
-        obs = env.reset()
-        for step in range(100):
-            action = agent.select_action(obs)
-            obs, reward, done, info = env.step(action)
-            if done:
-                break
+    Action Space: Continuous [0,1]^n where n = number of parameters
+    Observation Space: GP model state (mean, std on grid) + history info
+    Reward: Expected Information Gain / Cost
     """
     
-    metadata = {"render.modes": ["human"]}
+    metadata = {"render_modes": ["human", "rgb_array"]}
     
     def __init__(
         self,
+        parameter_bounds: Dict[str, Tuple[float, float]],
         objective_function: callable,
-        experiment_types: List[str],
-        max_experiments: int = 20,
-        time_budget_hours: float = 24.0,
-        param_bounds: Optional[Dict[str, Tuple[float, float]]] = None,
-        safety_constraints: Optional[Dict[str, Any]] = None
+        max_experiments: int = 100,
+        time_budget_hours: float = 240.0,
+        experiment_cost_fn: Optional[callable] = None,
+        noise_std: float = 0.1,
+        seed: Optional[int] = None,
     ):
+        """
+        Initialize experiment optimization environment.
+        
+        Args:
+            parameter_bounds: Dict mapping parameter names to (min, max) bounds
+            objective_function: Ground truth function to optimize
+            max_experiments: Maximum experiments per episode
+            time_budget_hours: Total time budget in hours
+            experiment_cost_fn: Function that returns cost in hours for given params
+            noise_std: Observation noise standard deviation
+            seed: Random seed for reproducibility
+        """
         super().__init__()
         
-        self.objective_function = objective_function
-        self.experiment_types = experiment_types
+        self.param_bounds = parameter_bounds
+        self.objective_fn = objective_function
         self.max_experiments = max_experiments
-        self.time_budget_hours = time_budget_hours
-        self.initial_time_budget = time_budget_hours  # Store initial for normalization
+        self.initial_time_budget = time_budget_hours
+        self.time_budget = time_budget_hours
+        self.cost_fn = experiment_cost_fn or self._default_cost
+        self.noise_std = noise_std
         
-        # Default parameter bounds (2D for simplicity)
-        self.param_bounds = param_bounds or {
-            "param1": (0.0, 1.0),
-            "param2": (0.0, 1.0)
-        }
-        self.n_params = len(self.param_bounds)
+        if seed is not None:
+            np.random.seed(seed)
         
-        self.safety_constraints = safety_constraints or {}
-        
-        # Define observation space
-        # [gp_mean (50), gp_variance (50), experiments_remaining (1), 
-        #  time_budget (1), best_value (1), safety_violations (1)]
-        self.n_grid_points = 50
-        obs_dim = self.n_grid_points * 2 + 4
-        self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(obs_dim,),
-            dtype=np.float32
+        # Action space: continuous parameters in [0, 1]
+        self.n_params = len(parameter_bounds)
+        self.action_space = gym.spaces.Box(
+            low=0.0, high=1.0, shape=(self.n_params,), dtype=np.float32
         )
         
-        # Define action space
-        # [param1, param2, ..., experiment_type_idx]
-        action_dim = self.n_params + 1
-        self.action_space = spaces.Box(
-            low=0.0,
-            high=1.0,
-            shape=(action_dim,),
-            dtype=np.float32
+        # Observation space: GP predictions on grid + metadata
+        # Grid of mean/std predictions + best value + budget remaining + experiments done
+        self.grid_size = 20
+        obs_dim = (self.grid_size * 2 +  # mean + std for each grid point
+                   1 +  # best value so far
+                   1 +  # budget remaining (normalized)
+                   1)   # experiments done (normalized)
+        self.observation_space = gym.spaces.Box(
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
         
-        # Internal state
-        self.state: Optional[ExperimentState] = None
-        self.history: List[Dict[str, Any]] = []
-        self.gp_model = None  # Will be initialized on reset
+        # State
+        self.gp = None
+        self.history = []
+        self.best_value = -np.inf
+        self.best_params = None
+        self.time_used = 0.0
+        self.current_step = 0
         
-        logger.info(f"ExperimentGym initialized: {max_experiments} experiments, {time_budget_hours}h budget")
+        logger.info(
+            f"Initialized ExperimentOptimizationEnv: "
+            f"{self.n_params} params, {max_experiments} max experiments, "
+            f"{time_budget_hours}h budget"
+        )
     
-    def reset(self) -> np.ndarray:
-        """
-        Reset environment to initial state.
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None):
+        """Reset environment to initial state."""
+        super().reset(seed=seed)
         
-        Returns:
-            Initial observation
-        """
-        from sklearn.gaussian_process import GaussianProcessRegressor
-        from sklearn.gaussian_process.kernels import RBF, ConstantKernel
+        if seed is not None:
+            np.random.seed(seed)
         
-        # Initialize Gaussian Process surrogate model
-        kernel = ConstantKernel(1.0) * RBF(length_scale=0.1)
-        self.gp_model = GaussianProcessRegressor(
+        # Initialize GP with RBF kernel
+        kernel = ConstantKernel(1.0) * RBF(length_scale=1.0)
+        self.gp = GaussianProcessRegressor(
             kernel=kernel,
-            alpha=0.01,  # Noise level
-            n_restarts_optimizer=10
-        )
-        
-        # Initial state with no experiments done
-        self.state = ExperimentState(
-            gp_mean=np.zeros(self.n_grid_points),
-            gp_variance=np.ones(self.n_grid_points),
-            experiments_remaining=self.max_experiments,
-            time_budget_hours=self.time_budget_hours,
-            experiments_done=0,
-            best_observed_value=-np.inf,
-            safety_violations=0
+            alpha=self.noise_std**2,
+            n_restarts_optimizer=10,
+            normalize_y=True,
         )
         
         self.history = []
+        self.best_value = -np.inf
+        self.best_params = None
+        self.time_used = 0.0
+        self.current_step = 0
         
-        logger.info("Environment reset")
-        return self._get_observation()
+        return self._get_observation(), {}
     
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(
+        self, action: np.ndarray
+    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         """
-        Execute one experiment based on action.
+        Execute one experiment.
         
         Args:
-            action: [param1, param2, ..., experiment_type_idx]
+            action: Normalized parameters in [0, 1]
         
         Returns:
-            observation: Next state observation
-            reward: Reward for this step
-            done: Whether episode is complete
-            info: Additional information
+            observation, reward, terminated, truncated, info
         """
-        if self.state is None:
-            raise RuntimeError("Environment not initialized. Call reset() first.")
+        # Scale action from [0,1] to actual parameter ranges
+        params = self._scale_action(action)
         
-        # Parse action
-        params = action[:-1]  # Experiment parameters
-        exp_type_idx = int(action[-1] * len(self.experiment_types))
-        exp_type_idx = min(exp_type_idx, len(self.experiment_types) - 1)
-        exp_type = self.experiment_types[exp_type_idx]
+        # Execute experiment (with noise)
+        true_value = self.objective_fn(params)
+        observed_value = true_value + np.random.normal(0, self.noise_std)
         
-        # Denormalize parameters to actual bounds
-        params_denorm = self._denormalize_params(params)
+        # Calculate cost
+        cost_hours = self.cost_fn(params)
         
-        # Check safety constraints
-        is_safe = self._check_safety(params_denorm)
-        if not is_safe:
-            self.state.safety_violations += 1
-            reward = -10.0  # Large penalty for safety violation
-            logger.warning(f"Safety violation at params: {params_denorm}")
-            return self._get_observation(), reward, False, {"safety_violation": True}
+        # Calculate EIG before adding this point
+        eig = self._calculate_eig(params)
         
-        # Simulate experiment (in real world, this calls the hardware driver)
-        result = self._run_experiment(params_denorm, exp_type)
-        
-        # Update GP model with new data
-        self._update_gp_model(params_denorm, result["value"])
-        
-        # Calculate reward (Information Gain per hour)
-        reward = self._calculate_reward(result)
-        
-        # Update state
-        self.state.experiments_done += 1
-        self.state.experiments_remaining -= 1
-        self.state.time_budget_hours -= result["duration_hours"]
-        self.state.best_observed_value = max(
-            self.state.best_observed_value,
-            result["value"]
-        )
-        
-        # Record history BEFORE updating GP (needed for _update_gp_model)
+        # Update history
         self.history.append({
-            "step": self.state.experiments_done,
-            "params": params_denorm,
-            "params_array": np.array(list(params_denorm.values())),
-            "experiment_type": exp_type,
-            "value": result["value"],
-            "reward": reward,
-            "timestamp": datetime.now()
+            "params": params,
+            "value": observed_value,
+            "true_value": true_value,
+            "cost_hours": cost_hours,
+            "eig": eig,
         })
         
-        # Update GP predictions on grid
-        self._update_grid_predictions()
+        # Update GP model
+        self._update_gp()
         
-        # Check if done
-        done = (
-            self.state.experiments_remaining <= 0 or
-            self.state.time_budget_hours <= 0 or
-            self.state.safety_violations >= 3
-        )
+        # Calculate reward (EIG per hour)
+        reward = eig / max(cost_hours, 0.1)  # Avoid division by zero
         
+        # Update state
+        self.time_used += cost_hours
+        self.current_step += 1
+        
+        if observed_value > self.best_value:
+            self.best_value = observed_value
+            self.best_params = params
+        
+        # Check termination conditions
+        terminated = self.current_step >= self.max_experiments
+        truncated = self.time_used >= self.time_budget
+        
+        # Get new observation
+        obs = self._get_observation()
+        
+        # Info dictionary
         info = {
-            "experiment_type": exp_type,
-            "value": result["value"],
-            "best_value": self.state.best_observed_value,
-            "eig": result.get("eig", 0.0),
-            "duration_hours": result["duration_hours"]
+            "eig": eig,
+            "cost_hours": cost_hours,
+            "best_value": self.best_value,
+            "best_params": self.best_params,
+            "experiments_done": self.current_step,
+            "time_used": self.time_used,
+            "current_value": observed_value,
         }
         
-        logger.debug(f"Step {self.state.experiments_done}: reward={reward:.3f}, value={result['value']:.3f}")
-        
-        return self._get_observation(), reward, done, info
-    
-    def render(self, mode: str = "human"):
-        """Render the environment state."""
-        if mode == "human":
-            print(f"\n{'='*50}")
-            print(f"Experiment Campaign Status")
-            print(f"{'='*50}")
-            print(f"Experiments done: {self.state.experiments_done}/{self.max_experiments}")
-            print(f"Time remaining: {self.state.time_budget_hours:.1f}h")
-            print(f"Best value found: {self.state.best_observed_value:.4f}")
-            print(f"Safety violations: {self.state.safety_violations}")
-            print(f"{'='*50}\n")
-    
-    def close(self):
-        """Clean up resources."""
-        pass
-    
-    # Private helper methods
+        return obs, reward, terminated, truncated, info
     
     def _get_observation(self) -> np.ndarray:
-        """Construct observation vector from current state."""
-        # Normalize best_observed_value to avoid inf/-inf
-        best_value_norm = self.state.best_observed_value
-        if np.isinf(best_value_norm):
-            best_value_norm = -10.0  # Reasonable default for uninitialized
+        """
+        Construct observation from GP state.
         
-        obs = np.concatenate([
-            self.state.gp_mean,
-            self.state.gp_variance,
-            np.array([
-                self.state.experiments_remaining / self.max_experiments,
-                self.state.time_budget_hours / self.initial_time_budget,  # Normalize by initial budget
-                best_value_norm,
-                self.state.safety_violations / 3.0  # Normalize (max is 3)
-            ])
+        Returns state of GP model (uncertainty landscape) plus metadata.
+        """
+        if len(self.history) < 2:
+            # Not enough data for GP yet - return zeros
+            return np.zeros(self.observation_space.shape[0], dtype=np.float32)
+        
+        # Create grid of test points in [0, 1]
+        if self.n_params == 1:
+            grid = np.linspace(0, 1, self.grid_size).reshape(-1, 1)
+        else:
+            # For multi-dimensional, sample grid
+            grid = np.random.rand(self.grid_size, self.n_params)
+        
+        # Scale grid to parameter bounds
+        scaled_grid = np.array([
+            self._scale_action(g) for g in grid
         ])
+        
+        # GP predictions
+        try:
+            mean, std = self.gp.predict(scaled_grid, return_std=True)
+        except Exception as e:
+            logger.warning(f"GP prediction failed: {e}")
+            return np.zeros(self.observation_space.shape[0], dtype=np.float32)
+        
+        # Normalize predictions
+        mean_norm = (mean - mean.min()) / (mean.max() - mean.min() + 1e-8)
+        std_norm = std / (std.max() + 1e-8)
+        
+        # Handle inf values for best_observed_value
+        best_observed_value = self.best_value
+        if np.isinf(best_observed_value):
+            best_observed_value = 0.0
+        
+        # Construct observation vector
+        obs = np.concatenate([
+            mean_norm,
+            std_norm,
+            [best_observed_value],
+            [self.time_used / self.initial_time_budget],
+            [self.current_step / self.max_experiments],
+        ])
+        
         return obs.astype(np.float32)
     
-    def _denormalize_params(self, params_norm: np.ndarray) -> Dict[str, float]:
-        """Convert normalized [0, 1] params to actual bounds."""
-        params_denorm = {}
-        for i, (param_name, (low, high)) in enumerate(self.param_bounds.items()):
-            params_denorm[param_name] = low + params_norm[i] * (high - low)
-        return params_denorm
-    
-    def _check_safety(self, params: Dict[str, float]) -> bool:
-        """Check if parameters satisfy safety constraints."""
-        # TODO: Implement actual safety checks
-        # For now, simple bounds check
-        for param_name, value in params.items():
-            low, high = self.param_bounds[param_name]
-            if value < low or value > high:
-                return False
-        return True
-    
-    def _run_experiment(self, params: Dict[str, float], exp_type: str) -> Dict[str, Any]:
-        """
-        Simulate running an experiment.
+    def _update_gp(self):
+        """Update GP model with latest data."""
+        if len(self.history) < 2:
+            return
         
-        In production, this would call the actual hardware driver.
-        """
-        # Evaluate objective function (ground truth)
-        param_array = np.array(list(params.values()))
-        value = self.objective_function(param_array)
+        X = np.array([h["params"] for h in self.history])
+        y = np.array([h["value"] for h in self.history])
         
-        # Add noise to simulate measurement uncertainty
-        noise = np.random.normal(0, 0.05)
-        measured_value = value + noise
-        
-        # Simulate experiment duration based on type
-        duration_map = {
-            "xrd": 0.5,  # 30 minutes
-            "nmr": 1.0,  # 1 hour
-            "uvvis": 0.25,  # 15 minutes
-            "dft": 2.0  # 2 hours (simulation)
-        }
-        duration_hours = duration_map.get(exp_type, 1.0)
-        
-        return {
-            "value": measured_value,
-            "duration_hours": duration_hours,
-            "eig": self._calculate_eig(param_array)
-        }
-    
-    def _update_gp_model(self, params: Dict[str, float], value: float):
-        """Update Gaussian Process model with new observation."""
-        param_array = np.array(list(params.values())).reshape(1, -1)
-        value_array = np.array([value])
-        
-        # Get existing data from history
-        if len(self.history) == 0:
-            X = param_array
-            y = value_array
-        else:
-            X_prev = np.array([h["params_array"] for h in self.history[:-1] if "params_array" in h])
-            y_prev = np.array([h["value"] for h in self.history[:-1]])
-            if len(X_prev) > 0:
-                X = np.vstack([X_prev, param_array])
-                y = np.concatenate([y_prev, value_array])
-            else:
-                X = param_array
-                y = value_array
-        
-        # Fit GP
-        self.gp_model.fit(X, y)
-    
-    def _update_grid_predictions(self):
-        """Update GP mean and variance on a grid for observation."""
-        # Create grid of test points
-        grid_1d = np.linspace(0, 1, int(np.sqrt(self.n_grid_points)))
-        if self.n_params == 2:
-            X1, X2 = np.meshgrid(grid_1d, grid_1d)
-            X_grid = np.column_stack([X1.ravel(), X2.ravel()])
-        else:
-            X_grid = grid_1d.reshape(-1, 1)
-        
-        # Predict on grid
-        if len(self.history) > 0:
-            mean, std = self.gp_model.predict(X_grid[:self.n_grid_points], return_std=True)
-            self.state.gp_mean = mean
-            self.state.gp_variance = std ** 2
-        else:
-            self.state.gp_mean = np.zeros(self.n_grid_points)
-            self.state.gp_variance = np.ones(self.n_grid_points)
+        try:
+            self.gp.fit(X, y)
+        except Exception as e:
+            logger.warning(f"GP fit failed: {e}")
     
     def _calculate_eig(self, params: np.ndarray) -> float:
         """
-        Calculate Expected Information Gain at given parameters.
+        Calculate Expected Information Gain for this experiment.
         
-        Simplified: Use GP variance as proxy for information gain.
+        Uses GP uncertainty (standard deviation) as proxy for EIG.
+        Higher uncertainty = more information gain.
         """
-        if len(self.history) == 0:
-            return 1.0  # High EIG when no data
+        if len(self.history) < 2:
+            return 1.0  # High initial uncertainty
         
-        _, std = self.gp_model.predict(params.reshape(1, -1), return_std=True)
-        return float(std[0])
+        try:
+            _, std = self.gp.predict(params.reshape(1, -1), return_std=True)
+            # Clip to prevent inf rewards
+            eig = float(np.clip(std[0], 0.0, 10.0))
+            return eig
+        except Exception as e:
+            logger.warning(f"EIG calculation failed: {e}")
+            return 0.1  # Small default value
     
-    def _calculate_reward(self, result: Dict[str, Any]) -> float:
-        """
-        Calculate reward for the step.
+    def _scale_action(self, action: np.ndarray) -> np.ndarray:
+        """Scale normalized action [0,1] to actual parameter bounds."""
+        scaled = []
+        for i, (name, (low, high)) in enumerate(self.param_bounds.items()):
+            scaled.append(low + action[i] * (high - low))
+        return np.array(scaled)
+    
+    def _default_cost(self, params: np.ndarray) -> float:
+        """Default cost function: each experiment takes 1 hour."""
+        return 1.0
+    
+    def render(self):
+        """Render current state (for debugging)."""
+        if self.current_step == 0:
+            print("No experiments executed yet")
+            return
         
-        Reward = EIG / duration_hours + bonuses/penalties
-        """
-        # Base reward: Information Gain per hour
-        eig_per_hour = result["eig"] / max(result["duration_hours"], 0.01)
-        eig_per_hour = np.clip(eig_per_hour, -100, 100)  # Clip to reasonable range
-        
-        # Bonus for finding new best
-        improvement_bonus = 0.0
-        if result["value"] > self.state.best_observed_value:
-            improvement = result["value"] - self.state.best_observed_value
-            improvement_bonus = np.clip(improvement * 10.0, -50, 50)
-        
-        # Penalty for running out of budget
-        budget_penalty = 0.0
-        if self.state.time_budget_hours < 0:
-            budget_penalty = -5.0
-        
-        total_reward = eig_per_hour + improvement_bonus + budget_penalty
-        total_reward = np.clip(total_reward, -100, 100)  # Final clipping
-        return float(total_reward)
-
-
-# Benchmark objective functions for testing
-
-def branin_function(x: np.ndarray) -> float:
-    """Branin function (common RL benchmark)."""
-    x1, x2 = x[0], x[1]
-    a = 1.0
-    b = 5.1 / (4 * np.pi ** 2)
-    c = 5.0 / np.pi
-    r = 6.0
-    s = 10.0
-    t = 1.0 / (8 * np.pi)
+        print(f"\n{'='*60}")
+        print(f"Experiment Optimization Environment")
+        print(f"{'='*60}")
+        print(f"Experiments done: {self.current_step}/{self.max_experiments}")
+        print(f"Time used: {self.time_used:.1f}/{self.time_budget:.1f} hours")
+        print(f"Best value found: {self.best_value:.6f}")
+        print(f"Best parameters: {self.best_params}")
+        if self.history:
+            last = self.history[-1]
+            print(f"Last experiment:")
+            print(f"  Params: {last['params']}")
+            print(f"  Value: {last['value']:.6f}")
+            print(f"  EIG: {last['eig']:.6f}")
+            print(f"  Cost: {last['cost_hours']:.2f}h")
+        print(f"{'='*60}\n")
     
-    term1 = a * (x2 - b * x1 ** 2 + c * x1 - r) ** 2
-    term2 = s * (1 - t) * np.cos(x1)
-    term3 = s
-    
-    return -(term1 + term2 + term3)  # Negative for maximization
-
-
-def rastrigin_function(x: np.ndarray) -> float:
-    """Rastrigin function (challenging multi-modal function)."""
-    A = 10
-    n = len(x)
-    return -(A * n + np.sum(x ** 2 - A * np.cos(2 * np.pi * x)))
-
-
-def hartmann6d_function(x: np.ndarray) -> float:
-    """6D Hartmann function (higher dimensional benchmark)."""
-    alpha = np.array([1.0, 1.2, 3.0, 3.2])
-    A = np.array([
-        [10, 3, 17, 3.5, 1.7, 8],
-        [0.05, 10, 17, 0.1, 8, 14],
-        [3, 3.5, 1.7, 10, 17, 8],
-        [17, 8, 0.05, 10, 0.1, 14]
-    ])
-    P = 1e-4 * np.array([
-        [1312, 1696, 5569, 124, 8283, 5886],
-        [2329, 4135, 8307, 3736, 1004, 9991],
-        [2348, 1451, 3522, 2883, 3047, 6650],
-        [4047, 8828, 8732, 5743, 1091, 381]
-    ])
-    
-    outer = 0
-    for i in range(4):
-        inner = 0
-        for j in range(6):
-            inner += A[i, j] * (x[j] - P[i, j]) ** 2
-        outer += alpha[i] * np.exp(-inner)
-    
-    return outer  # Already for maximization
-
+    def close(self):
+        """Cleanup resources."""
+        pass
