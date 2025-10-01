@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: docker/orchestrator.Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      AUTH_BASIC_USER: ${AUTH_BASIC_USER:-pilot}
+      AUTH_BASIC_PASS: ${AUTH_BASIC_PASS:-changeme}
+      PII_ALLOWED: ${PII_ALLOWED:-false}
+      ADAPTER: ${ADAPTER:-mock}
+      ROLLING_WINDOW_DAYS: ${ROLLING_WINDOW_DAYS:-14}
+  ui:
+    build:
+      context: .
+      dockerfile: docker/ui.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8000"
+      NEXT_PUBLIC_AUTH_USER: ${AUTH_BASIC_USER:-pilot}
+      NEXT_PUBLIC_AUTH_PASS: ${AUTH_BASIC_PASS:-changeme}
+    depends_on:
+      - orchestrator

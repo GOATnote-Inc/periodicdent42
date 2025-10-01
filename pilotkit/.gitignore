@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+data/
+ui/.next/
+ui/node_modules/
+*.pyc
