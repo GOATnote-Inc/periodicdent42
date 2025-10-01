@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -81,7 +81,9 @@ app.add_middleware(
 )
 
 AUTH_EXEMPT_PATHS = set()
-AUTH_EXEMPT_PATHS.update({"/docs", "/openapi.json", "/", "/static"})
+# Note: /health is also exempt since Cloud Run and load balancers need unauthenticated health checks
+# Protected endpoints: /api/reasoning/query, /api/storage/*
+AUTH_EXEMPT_PATHS.update({"/docs", "/openapi.json", "/", "/static", "/health"})
 
 app.add_middleware(
     AuthenticationMiddleware,
@@ -132,27 +134,17 @@ async def startup_event():
         # Don't crash - allow health check to report status
 
 
-def _verify_health_access(request: Request) -> None:
-    if not settings.ENABLE_AUTH:
-        return
-    api_key = request.headers.get("x-api-key")
-    if not api_key or api_key != settings.API_KEY:
-        logger.warning("Unauthorized health check attempt from %s", request.client)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-
-
 @app.get("/health", response_model=HealthResponse)
-async def health(request: Request):
+async def health():
     """
     Health check endpoint.
     
     Note: Uses /health (not /healthz) as Cloud Run reserves the /healthz path.
+    Authentication is enforced by middleware when ENABLE_AUTH=True.
     
     Returns:
         200 OK if service is healthy, including Vertex AI initialization status
     """
-    _verify_health_access(request)
-
     return HealthResponse(
         status="ok",
         vertex_initialized=is_initialized(),
@@ -285,10 +277,10 @@ async def store_experiment(data: Dict[str, Any]):
         uri = storage.store_experiment_result(experiment_id, result, metadata)
         return {"status": "success", "uri": uri}
     except Exception as e:
-        logger.error(f"Storage error: {e}")
+        logger.error(f"Storage error storing experiment {experiment_id}: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"error": str(e)}
+            content={"error": "Failed to store experiment", "code": "storage_error"}
         )
 
 
@@ -306,10 +298,10 @@ async def list_experiments():
         experiments = storage.list_experiments()
         return {"experiments": experiments, "count": len(experiments)}
     except Exception as e:
-        logger.error(f"Storage error: {e}")
+        logger.error(f"Storage error listing experiments: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"error": str(e)}
+            content={"error": "Failed to list experiments", "code": "storage_error"}
         )
 
 

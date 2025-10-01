@@ -43,23 +43,30 @@ An autonomous experimentation platform designed for materials science, chemistry
 
 ## Quick Start
 
+### Local Development (2 Minutes) 🚀
+
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-cargo build --release
+# One command does everything!
+bash scripts/init_secrets_and_env.sh
 
-# Run bootstrap setup (Phase 0 + 1)
-python scripts/bootstrap.py
-
-# Start services
-docker-compose up -d
-
-# Run safety checks
-cargo test --package safety-kernel
-
-# Launch UI
-cd ui && npm run dev
+# Then start the server:
+cd app && source venv/bin/activate
+uvicorn src.api.main:app --reload --port 8080
 ```
+
+**See**: [QUICK_START.md](QUICK_START.md) for detailed walkthrough  
+**Or**: [LOCAL_DEV_SETUP.md](LOCAL_DEV_SETUP.md) for manual setup
+
+### Production Deployment (10 Minutes)
+```bash
+# Automated deployment to Google Cloud Run with security enabled
+bash infra/scripts/enable_apis.sh      # Enable required APIs
+bash infra/scripts/setup_iam.sh        # Configure service accounts
+bash infra/scripts/create_secrets.sh   # Generate API keys
+bash infra/scripts/deploy_cloudrun.sh  # Deploy secure service
+```
+
+**See**: [PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md) for step-by-step instructions
 
 ## Project Structure
 
@@ -98,15 +105,24 @@ periodicdent42/
 ✅ **EIG Optimization**: Bayesian experimental design approach  
 ✅ **Physics-Aware**: Domain ontologies, unit validation, uncertainty propagation  
 ✅ **Provenance Tracking**: Audit trails from raw data to insights  
+✅ **Security Hardened**: API key authentication, rate limiting, CORS restrictions  
 ✅ **Tiered Autonomy**: Human-in-loop → co-pilot → autopilot progression  
 
 ## Documentation
 
 ### Core Documentation
+- **[Quick Start](QUICK_START.md)** 🚀 - Get running in 2 minutes!
 - [Project Roadmap](docs/roadmap.md) - Phases, milestones, KPIs
 - [Instructions](docs/instructions.md) - Development guidelines, best practices
 - [Architecture](docs/architecture.md) - System design, data flows
-- [Quick Start](docs/QUICKSTART.md) - Installation and usage guide
+
+### Security & Deployment 🔒
+- **[Production Deployment Guide](PRODUCTION_DEPLOYMENT_GUIDE.md)** ⭐ - Complete deployment walkthrough
+- **[Secrets Management](SECRETS_MANAGEMENT.md)** 🔐 - How to handle API keys and secrets properly
+- **[Security Architecture](docs/SECURITY.md)** - Authentication, CORS, rate limiting, compliance
+- **[Security Quick Reference](SECURITY_QUICKREF.md)** - Common operations and incident response
+- **[Local Development Setup](LOCAL_DEV_SETUP.md)** - Dev environment configuration
+- **[Security Implementation](SECURITY_IMPLEMENTATION_COMPLETE.md)** - Technical details
 
 ### Google Cloud Integration (October 2025) ☁️
 - **[Google Cloud Deployment Guide](docs/google_cloud_deployment.md)** ⭐ - Complete GCP deployment with Gemini 2.5 Pro/Flash

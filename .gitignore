@@ -87,3 +87,12 @@ temp/
 .AppleDouble
 .LSOverride
 
+.api-key
+.service-url
+
+# Temporary status/session files (may contain sensitive info)
+*_STATUS.md
+*_COMPLETE.md
+ENV_*.md
+DEPLOYMENT_*.md
+.service-url

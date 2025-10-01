@@ -5,6 +5,9 @@ Application settings with environment variable loading and Secret Manager fallba
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -64,7 +67,13 @@ def get_secret_from_manager(secret_id: str, project_id: str) -> Optional[str]:
         response = client.access_secret_version(request={"name": name})
         return response.payload.data.decode("UTF-8")
     except Exception as e:
-        print(f"Warning: Could not fetch secret {secret_id}: {e}")
+        logger.warning(
+            "Failed to fetch secret from Secret Manager",
+            extra={
+                "secret_name": secret_id,
+                "error_type": type(e).__name__,
+            }
+        )
         return None
 
 

@@ -9,7 +9,29 @@ echo "🔐 Creating Secrets in Secret Manager"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# 1. DB_PASSWORD (optional, defaults to 'postgres' locally)
+# 1. API_KEY (REQUIRED for production security)
+echo "Creating API_KEY secret..."
+# Generate a secure random API key (32 bytes = 64 hex chars)
+API_KEY=$(openssl rand -hex 32)
+echo -n "${API_KEY}" | gcloud secrets create api-key \
+    --project="${PROJECT_ID}" \
+    --data-file=- \
+    --replication-policy="automatic" 2>/dev/null || \
+    echo -n "${API_KEY}" | gcloud secrets versions add api-key --data-file=-
+
+echo "✅ API_KEY created: ${API_KEY:0:8}...${API_KEY: -8}"
+echo ""
+echo "⚠️  SAVE THIS KEY - You'll need it to make API requests!"
+echo "   Full key saved to: .api-key (chmod 600)"
+echo ""
+
+# Save API key to file for reference
+echo "$API_KEY" > .api-key
+chmod 600 .api-key
+echo "✅ API key saved to .api-key for reference"
+echo ""
+
+# 2. DB_PASSWORD (optional, defaults to 'postgres' locally)
 echo "Creating DB_PASSWORD secret..."
 echo -n "your-db-password" | gcloud secrets create DB_PASSWORD \
     --project="${PROJECT_ID}" \
@@ -45,7 +67,7 @@ SERVICE_ACCOUNT="ard-backend@${PROJECT_ID}.iam.gserviceaccount.com"
 echo ""
 echo "Granting access to service account: ${SERVICE_ACCOUNT}"
 
-for SECRET in DB_PASSWORD GCP_SQL_INSTANCE GCS_BUCKET; do
+for SECRET in api-key DB_PASSWORD GCP_SQL_INSTANCE GCS_BUCKET; do
     gcloud secrets add-iam-policy-binding ${SECRET} \
         --project="${PROJECT_ID}" \
         --member="serviceAccount:${SERVICE_ACCOUNT}" \

@@ -19,7 +19,7 @@ if ! gcloud container images describe $IMAGE_NAME --project=$PROJECT_ID &>/dev/n
     cd -
 fi
 
-# Deploy to Cloud Run
+# Deploy to Cloud Run with security enabled
 gcloud run deploy $SERVICE_NAME \
   --image $IMAGE_NAME \
   --platform managed \
@@ -31,8 +31,9 @@ gcloud run deploy $SERVICE_NAME \
   --min-instances 1 \
   --max-instances 10 \
   --service-account $SERVICE_ACCOUNT \
-  --set-env-vars "PROJECT_ID=$PROJECT_ID,LOCATION=$REGION,ENVIRONMENT=production" \
-  --no-allow-unauthenticated
+  --set-env-vars "PROJECT_ID=$PROJECT_ID,LOCATION=$REGION,ENVIRONMENT=production,ENABLE_AUTH=true,RATE_LIMIT_PER_MINUTE=120" \
+  --set-secrets "API_KEY=api-key:latest" \
+  --allow-unauthenticated
 
 # Get service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
@@ -44,12 +45,27 @@ echo ""
 echo "✅ Deployment complete!"
 echo "Service URL: $SERVICE_URL"
 echo ""
-echo "To test (requires authentication):"
-echo "  curl -H \"Authorization: Bearer \$(gcloud auth print-identity-token)\" $SERVICE_URL/healthz"
+echo "🔐 Security Status:"
+echo "  - Authentication: ENABLED (API key required)"
+echo "  - Rate Limiting: 120 requests/minute per IP"
+echo "  - CORS: Configure ALLOWED_ORIGINS for your domain"
 echo ""
-echo "To allow unauthenticated access (for demos only):"
-echo "  gcloud run services add-iam-policy-binding $SERVICE_NAME \\"
-echo "    --region=$REGION \\"
-echo "    --member=\"allUsers\" \\"
-echo "    --role=\"roles/run.invoker\""
+echo "To retrieve your API key:"
+echo "  gcloud secrets versions access latest --secret=api-key --project=$PROJECT_ID"
+echo ""
+echo "To test the health endpoint:"
+echo "  API_KEY=\$(gcloud secrets versions access latest --secret=api-key --project=$PROJECT_ID)"
+echo "  curl -H \"x-api-key: \$API_KEY\" $SERVICE_URL/health"
+echo ""
+echo "To test the reasoning endpoint:"
+echo "  curl -X POST $SERVICE_URL/api/reasoning/query \\"
+echo "    -H \"x-api-key: \$API_KEY\" \\"
+echo "    -H \"Content-Type: application/json\" \\"
+echo "    -d '{\"query\": \"Suggest an experiment for perovskites\"}'"
+echo ""
+echo "⚠️  Next steps:"
+echo "  1. Save your API key securely"
+echo "  2. Set ALLOWED_ORIGINS environment variable with your frontend domain"
+echo "  3. Monitor Cloud Logging for security events"
+echo "  4. Set up alerting for 401/429 responses"
 
