@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-PROPRIETARY-red.svg)](LICENSE)
 
 ## Table of Contents
+- [Hooks Quickstart](#hooks-quickstart)
 - [Overview](#overview)
 - [Capabilities](#capabilities)
 - [System Architecture](#system-architecture)
@@ -18,6 +19,19 @@
 - [Deployment](#deployment)
 - [Documentation Index](#documentation-index)
 - [Support & Licensing](#support--licensing)
+
+## Hooks Quickstart
+
+Cursor 1.7 enforces safety and transparency via repository hooks. The following automations are installed in `.cursor/hooks.json`:
+- **beforeShellExecution** → `.cursor/hooks/check_cmd.sh` blocks destructive commands, sandboxes anything outside `.cursor/allowlist.json`, and requires an explicit **ASK** for package installs.
+- **beforeReadFile** → `.cursor/hooks/redact.sh` scrubs secrets (API keys, tokens, SSH material) before context is sent to any model and fingerprints every finding.
+- **afterFileEdit** → `.cursor/hooks/audit.sh` appends signed JSON lines to `.cursor/audit.log` so we can trace who changed what.
+- **stop** → `.cursor/hooks/notify.sh` summarizes edits, blocked commands, and pending approvals at session shutdown.
+
+**Override & debug:**
+1. To intentionally bypass a command block, run it with `ASK: ` prefixed so reviewers see the intent.
+2. Review `.cursor/allowlist.json` to expand the sandbox allowlist; changes should be code-reviewed.
+3. Inspect `.cursor/audit.log` and `.cursor/redaction.log` for troubleshooting. Add `set -x` inside a hook script while debugging, and remove it once resolved.
 
 ## Overview
 

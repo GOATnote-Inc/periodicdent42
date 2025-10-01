@@ -1,0 +1,6 @@
+{
+  "beforeShellExecution": ".cursor/hooks/check_cmd.sh",
+  "beforeReadFile": ".cursor/hooks/redact.sh",
+  "afterFileEdit": ".cursor/hooks/audit.sh",
+  "stop": ".cursor/hooks/notify.sh"
+}
