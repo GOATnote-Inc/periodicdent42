@@ -21,6 +21,7 @@ from src.reasoning.dual_agent import DualModelAgent
 from src.services.vertex import init_vertex, is_initialized
 from src.utils.sse import sse_event, sse_error
 from src.services.storage import get_storage
+from src.services.db import init_database, close_database
 
 # Configure logging
 logging.basicConfig(
@@ -118,6 +119,9 @@ async def startup_event():
     logger.info(f"Project: {settings.PROJECT_ID}, Location: {settings.LOCATION}")
     
     try:
+        # Initialize Cloud SQL database
+        init_database()
+        
         # Initialize Vertex AI
         init_vertex(settings.PROJECT_ID, settings.LOCATION)
         
@@ -127,11 +131,26 @@ async def startup_event():
             location=settings.LOCATION
         )
         
-        logger.info("Startup complete - ready to serve requests")
+        logger.info("✅ Startup complete - ready to serve requests")
     
     except Exception as e:
-        logger.error(f"Startup failed: {e}")
+        logger.error(f"❌ Startup failed: {e}")
         # Don't crash - allow health check to report status
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources on shutdown."""
+    logger.info("Shutting down Autonomous R&D Intelligence Layer...")
+    
+    try:
+        # Close database connections
+        close_database()
+        
+        logger.info("✅ Shutdown complete")
+    
+    except Exception as e:
+        logger.error(f"❌ Shutdown error: {e}")
 
 
 @app.get("/health", response_model=HealthResponse)
