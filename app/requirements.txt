@@ -19,6 +19,7 @@ alembic==1.12.1
 # Utilities
 python-dotenv==1.0.0
 python-multipart==0.0.6
+pint==0.23
 
 # Testing
 pytest==7.4.3

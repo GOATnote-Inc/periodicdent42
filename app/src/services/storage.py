@@ -4,15 +4,18 @@ Cloud Storage service for experiment results and artifacts.
 Enhanced version with robust error handling, metadata tracking, and versioning.
 """
 
-from google.cloud import storage
-from google.cloud.exceptions import GoogleCloudError
-from src.utils.settings import settings
-import json
 import datetime
 import hashlib
+import json
 import logging
-from typing import Dict, Any, Optional, List
+import shutil
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from google.cloud import storage
+from google.cloud.exceptions import GoogleCloudError
+
+from src.utils.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +189,95 @@ class CloudStorageBackend:
         except (GoogleCloudError, json.JSONDecodeError) as e:
             logger.error(f"Failed to retrieve result: {e}")
             raise
+
+
+class LocalStorageBackend:
+    """Filesystem backed storage for offline simulation runs."""
+
+    def __init__(self, root: Optional[Path] = None) -> None:
+        self.root = Path(root or settings.LOCAL_STORAGE_PATH)
+        self.root.mkdir(parents=True, exist_ok=True)
+        (self.root / "experiments").mkdir(exist_ok=True)
+        (self.root / "raw").mkdir(exist_ok=True)
+
+    def store_experiment_result(
+        self,
+        experiment_id: str,
+        result: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        exp_dir = self.root / "experiments" / experiment_id
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        file_path = exp_dir / f"{timestamp}.json"
+
+        payload = {
+            "experiment_id": experiment_id,
+            "timestamp": timestamp,
+            "metadata": metadata or {},
+            "data": result,
+        }
+
+        file_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return str(file_path)
+
+    def store_raw_file(
+        self,
+        experiment_id: str,
+        file_path: str,
+        file_name: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        destination_name = file_name or Path(file_path).name
+        dest_dir = self.root / "raw" / experiment_id
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / destination_name
+        shutil.copy2(file_path, dest_path)
+        return str(dest_path)
+
+    def retrieve_result(self, experiment_id: str, timestamp: Optional[str] = None) -> Dict[str, Any]:
+        exp_dir = self.root / "experiments" / experiment_id
+        if not exp_dir.exists():
+            raise FileNotFoundError(f"No results for experiment {experiment_id}")
+
+        if timestamp:
+            file_path = exp_dir / f"{timestamp}.json"
+        else:
+            files = sorted(exp_dir.glob("*.json"), reverse=True)
+            if not files:
+                raise FileNotFoundError(f"No result files for experiment {experiment_id}")
+            file_path = files[0]
+
+        return json.loads(file_path.read_text(encoding="utf-8"))
+
+    def list_experiments(self, prefix: str = "experiments/", max_results: int = 100) -> List[Dict[str, Any]]:
+        if not prefix.startswith("experiments"):
+            return []
+        exp_dir = self.root / "experiments"
+        experiments: List[Dict[str, Any]] = []
+        for experiment_folder in sorted(exp_dir.iterdir()):
+            if not experiment_folder.is_dir():
+                continue
+            for file_path in sorted(experiment_folder.glob("*.json"), reverse=True)[:max_results]:
+                stat = file_path.stat()
+                experiments.append(
+                    {
+                        "name": f"{experiment_folder.name}/{file_path.name}",
+                        "size_bytes": stat.st_size,
+                        "created": datetime.datetime.fromtimestamp(stat.st_ctime, tz=datetime.timezone.utc).isoformat(),
+                        "updated": datetime.datetime.fromtimestamp(stat.st_mtime, tz=datetime.timezone.utc).isoformat(),
+                        "metadata": {},
+                        "uri": str(file_path),
+                    }
+                )
+        return experiments[:max_results]
+
+    def delete_result(self, experiment_id: str, timestamp: str) -> bool:
+        file_path = self.root / "experiments" / experiment_id / f"{timestamp}.json"
+        if file_path.exists():
+            file_path.unlink()
+            return True
+        return False
     
     def list_experiments(self, prefix: str = "experiments/", max_results: int = 100) -> List[Dict[str, Any]]:
         """
@@ -262,9 +354,13 @@ def get_storage() -> CloudStorageBackend:
     """
     global storage_backend
     if storage_backend is None:
-        try:
-            storage_backend = CloudStorageBackend()
-        except Exception as e:
-            logger.warning(f"Cloud Storage not available: {e}")
-            return None
+        if settings.GCS_BUCKET:
+            try:
+                storage_backend = CloudStorageBackend()
+            except Exception as exc:
+                logger.warning(f"Falling back to local storage: {exc}")
+                storage_backend = LocalStorageBackend()
+        else:
+            logger.info("GCS bucket not configured - using local filesystem storage")
+            storage_backend = LocalStorageBackend()
     return storage_backend

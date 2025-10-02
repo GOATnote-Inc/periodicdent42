@@ -44,6 +44,7 @@ The Autonomous R&D Intelligence Layer is a production-grade platform that accele
 - **Safety kernel:** Rust-backed interlocks and policy enforcement with fail-safe behaviour.
 - **Scientific memory:** Provenance tracking, domain ontologies, and retrieval-augmented generation for literature context.
 - **Cloud-native operations:** Google Cloud Run deployment, Cloud Storage integration, and Secret Manager–backed secrets.
+- **Phase 2 hardware integration:** UV-Vis spectrometer driver with safety interlocks, campaign orchestration, and Cloud SQL/Storage logging.
 
 ## System Architecture
 
@@ -110,10 +111,15 @@ ENV
 make dev
 
 # Test endpoints
-curl http://localhost:8080/healthz
+curl http://localhost:8080/health
 curl -N -X POST http://localhost:8080/api/reasoning/query \
   -H "Content-Type: application/json" \
   -d '{"query": "Suggest perovskite experiments", "context": {"domain": "materials"}}'
+
+# Launch the Phase 2 UV-Vis campaign (synchronous simulation)
+curl -X POST http://localhost:8080/api/lab/campaign/uvvis \
+  -H "Content-Type: application/json" \
+  -d '{"experiments": 5, "max_hours": 1}'
 ```
 
 Static dashboards located in `app/static/` are served automatically by the FastAPI application.
@@ -132,6 +138,8 @@ Environment variables are loaded via `app/src/utils/settings.py` (Pydantic setti
 | `GCP_SQL_INSTANCE` | Cloud SQL instance (`project:region:instance`). | `None` |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Database credentials and name. | `ard_user` / `None` / `ard_intelligence` |
 | `GCS_BUCKET` | Cloud Storage bucket for experiment artifacts. | `None` |
+| `UV_VIS_DATASET_PATH` | Optional override for the UV-Vis reference dataset. | `configs/uv_vis_reference_library.json` |
+| `LOCAL_STORAGE_PATH` | Filesystem fallback when Cloud Storage is unavailable. | `data/local_storage` |
 | `API_KEY` | API key for authenticated access (enable via `ENABLE_AUTH`). | `None` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS whitelist. | `""` |
 | `ENABLE_METRICS` / `ENABLE_TRACING` | Observability feature flags. | `True` |
@@ -155,6 +163,9 @@ make lint
 # Safety kernel and shared logic tests
 cd ..
 pytest tests/ -v --tb=short
+
+# Phase 2 UV-Vis campaign simulation
+make campaign
 ```
 
 ## Deployment
