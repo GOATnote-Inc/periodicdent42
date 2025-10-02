@@ -1,5 +1,5 @@
 # Core Python dependencies
-python-version==3.12
+# Python 3.12+ required (specified in workflow, not as a package)
 
 # Web Framework
 fastapi==0.104.1
