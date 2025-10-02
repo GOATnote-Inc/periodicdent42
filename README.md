@@ -88,39 +88,42 @@ Client (UI / CLI)
 git clone https://github.com/Periodic-Labs/periodicdent42.git
 cd periodicdent42
 
-# Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Create a shared virtualenv and install backend requirements
+make setup
 
-# Install backend dependencies
-cd app
-pip install -r requirements.txt
+# Install app-specific extras (FastAPI service)
+cd app && make setup-local
 ```
 
 ### Run the API
 
 ```bash
-# Define minimum configuration (see Configuration section for full list)
-cat > .env <<'ENV'
-PROJECT_ID=periodicdent42
-LOCATION=us-central1
-LOG_LEVEL=INFO
-ENV
+# Copy the environment template and adjust as needed
+cp .env.example .env
 
-# Start the FastAPI service with autoreload
-make dev
+# Start the FastAPI service on :8000
+make run.api
 
-# Test endpoints
-curl http://localhost:8080/health
-curl -N -X POST http://localhost:8080/api/reasoning/query \
+# Smoke test the chat endpoint
+curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"query": "Suggest perovskite experiments", "context": {"domain": "materials"}}'
-
-# Launch the Phase 2 UV-Vis campaign (synchronous simulation)
-curl -X POST http://localhost:8080/api/lab/campaign/uvvis \
-  -H "Content-Type: application/json" \
-  -d '{"experiments": 5, "max_hours": 1}'
+  -d '{"query": "Summarise the UV-Vis campaign"}'
 ```
+
+### 5-minute Hello Demo
+
+```bash
+# Terminal 1 – FastAPI backend
+make run.api
+
+# Terminal 2 – Next.js demos (http://localhost:3000)
+make demo
+
+# Visit the hybrid chat UI
+open http://localhost:3000/demos/rag-chat
+```
+
+The demo proxies requests through `/api/rag-chat` (Next.js) to the FastAPI `/api/chat` route. If the backend is offline the UI will return a simulated answer and surface an error banner.
 
 Static dashboards located in `app/static/` are served automatically by the FastAPI application.
 
@@ -157,12 +160,16 @@ make test
 # Coverage report
 make test-coverage
 
-# Linting & formatting checks
+# Linting & formatting checks (FastAPI + repo root)
+cd ..
 make lint
 
 # Safety kernel and shared logic tests
-cd ..
 pytest tests/ -v --tb=short
+
+# Static repo audit & dependency graph
+make audit
+make graph
 
 # Phase 2 UV-Vis campaign simulation
 make campaign

@@ -1,0 +1,178 @@
+{
+  "generated": true,
+  "edges": {
+    "configs/data_schema.py": [
+      "pint"
+    ],
+    "tests/test_safety_gateway.py": [
+      "configs",
+      "src",
+      "src"
+    ],
+    "scripts/train_rl_agent.py": [
+      "src",
+      "src"
+    ],
+    "scripts/run_uv_vis_campaign.py": [
+      "src"
+    ],
+    "scripts/train_ppo_expert.py": [
+      "src",
+      "src",
+      "src"
+    ],
+    "scripts/validate_stochastic.py": [
+      "scripts",
+      "src"
+    ],
+    "scripts/bootstrap.py": [
+      "configs",
+      "src",
+      "src"
+    ],
+    "scripts/validate_rl_system.py": [
+      "src",
+      "src",
+      "src"
+    ],
+    "scripts/train_ppo.py": [
+      "src",
+      "src"
+    ],
+    "pilotkit/tests/test_metrics.py": [
+      "pilotkit",
+      "pilotkit",
+      "pilotkit"
+    ],
+    "pilotkit/tests/test_selection.py": [
+      "pilotkit",
+      "pilotkit"
+    ],
+    "pilotkit/tests/test_stats.py": [
+      "pilotkit"
+    ],
+    "pilotkit/tests/test_feedback_iteration.py": [
+      "pilotkit",
+      "pilotkit",
+      "pilotkit"
+    ],
+    "services/telemetry/store.py": [
+      "services"
+    ],
+    "services/telemetry/dash_data.py": [
+      "services"
+    ],
+    "services/llm/guardrails.py": [
+      "services"
+    ],
+    "services/evals/report.py": [
+      "services"
+    ],
+    "services/evals/runner.py": [
+      "services",
+      "services",
+      "services",
+      "services",
+      "services"
+    ],
+    "services/agents/orchestrator.py": [
+      "services",
+      "services"
+    ],
+    "services/rag/pipeline.py": [
+      "services",
+      "services",
+      "services",
+      "services",
+      "services",
+      "services"
+    ],
+    "services/rag/index.py": [
+      "services"
+    ],
+    "src/reasoning/agentic_optimizer.py": [
+      "src"
+    ],
+    "src/reasoning/eig_optimizer.py": [
+      "configs"
+    ],
+    "src/safety/gateway.py": [
+      "configs"
+    ],
+    "src/connectors/simulators.py": [
+      "configs"
+    ],
+    "src/experiment_os/core.py": [
+      "configs",
+      "src"
+    ],
+    "synthloop/tests/test_orchestrator.py": [
+      "synthloop",
+      "synthloop",
+      "synthloop"
+    ],
+    "app/tests/test_health.py": [
+      "src"
+    ],
+    "app/tests/test_reasoning_smoke.py": [
+      "src"
+    ],
+    "app/src/drivers/uv_vis.py": [
+      "src"
+    ],
+    "app/src/services/db.py": [
+      "src",
+      "src"
+    ],
+    "app/src/services/storage.py": [
+      "src"
+    ],
+    "app/src/reasoning/dual_agent.py": [
+      "src"
+    ],
+    "app/src/lab/campaign.py": [
+      "configs",
+      "src",
+      "src",
+      "src",
+      "src"
+    ],
+    "app/src/data/uv_vis_dataset.py": [
+      "src"
+    ],
+    "app/src/api/main.py": [
+      "src",
+      "src",
+      "src",
+      "src",
+      "src",
+      "src",
+      "src",
+      "src",
+      "src"
+    ],
+    "app/tests/unit/test_uv_vis_driver.py": [
+      "src",
+      "src",
+      "src",
+      "src"
+    ],
+    "apps/api/main.py": [
+      "services",
+      "services",
+      "services",
+      "services"
+    ],
+    "labloop/tests/test_sim_adapter.py": [
+      "labloop",
+      "labloop"
+    ],
+    "labloop/tests/test_safety_guard.py": [
+      "labloop"
+    ],
+    "labloop/tests/test_scheduler.py": [
+      "labloop",
+      "labloop"
+    ]
+  }
+}

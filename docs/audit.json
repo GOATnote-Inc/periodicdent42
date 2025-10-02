@@ -1,0 +1,499 @@
+{
+  "findings": [
+    {
+      "path": "services/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "scripts/repo_audit.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 13 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/telemetry/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/telemetry/store.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/telemetry/dash_data.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/llm/client.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/llm/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/llm/router.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/llm/guardrails.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/evals/metrics.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/evals/report.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/evals/runner.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/evals/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/agents/orchestrator.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/agents/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/rag/pipeline.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/rag/models.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/rag/index.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/rag/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "services/rag/embed.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "src/reasoning/rag_system.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 2 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "src/experiment_os/drivers/uvvis_driver.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 12 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "src/experiment_os/drivers/nmr_driver.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 19 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "src/experiment_os/drivers/xrd_driver.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 12 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/tests/test_health.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/tests/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/tests/conftest.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/tests/test_reasoning_smoke.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/drivers/base.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/drivers/uv_vis.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/drivers/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/services/db.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/services/db.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 1 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/services/storage.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/services/vertex.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/services/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/reasoning/mcp_agent.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/reasoning/mcp_agent.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 5 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/reasoning/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/reasoning/dual_agent.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/lab/campaign.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/lab/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/data/uv_vis_dataset.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/data/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/monitoring/metrics.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/monitoring/metrics.py",
+      "category": "Code Hygiene",
+      "issue": "Lingering TODO/FIXME comment",
+      "evidence": "Found 1 TODO markers",
+      "recommendation": "Document ownership or resolve TODO before release",
+      "effort": 1,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/monitoring/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/utils/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/utils/compliance.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/utils/sse.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/utils/settings.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    },
+    {
+      "path": "app/src/api/security.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "High"
+    },
+    {
+      "path": "app/src/api/__init__.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "High"
+    },
+    {
+      "path": "app/tests/unit/test_uv_vis_driver.py",
+      "category": "Testing",
+      "issue": "Missing dedicated unit tests",
+      "evidence": "No references found in tests/ directory",
+      "recommendation": "Add focused unit tests covering public behaviour",
+      "effort": 2,
+      "priority": "Medium"
+    }
+  ]
+}
