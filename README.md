@@ -299,3 +299,14 @@ Serve `rust/wasm-demo/index.html` with any static file server after running `jus
 - **Axum + Tonic**: unified async stack with Tower middleware, matching our tracing story and enabling shared state between HTTP and gRPC.
 - **PyO3 + maturin**: produces ABI3-compatible wheels for Python consumers without duplicating planner logic.
 - **Feature flags** isolate instrumentation, GPU hooks, WASM optimizations, Python bindings, and Postgres connectivity for minimal builds.
+
+### Mastery Demo Scaffolding
+
+The repository now contains scaffolding for the CODEx "Mastery Demo" build focused on hybrid RAG experimentation. Highlights:
+
+- `apps/api/` exposes a FastAPI entrypoint with a synthetic `/api/chat` route wired into the new service modules.
+- `apps/web/` contains a Next.js UI skeleton with `/demo` and `/evals` pages plus reusable components (RagSources, VectorStats, GuardrailChips, EvalRunCard, RouterBadge).
+- `services/` introduces modular packages for retrieval, LLM routing, guardrails, agents, telemetry, and evaluations.
+- `datasets/synthetic/` holds a deterministic synthetic corpus (60 markdown docs) and evaluation pairs (120 Q/A rows) for offline testing.
+
+Root-level Makefile commands such as `make ingest`, `make run.api`, and `make eval.offline` are stubbed for quick iteration and will be expanded in subsequent vertical slices.
