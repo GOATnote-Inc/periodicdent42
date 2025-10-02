@@ -110,30 +110,63 @@ periodicdent42/
 
 ## Documentation
 
-### Core Documentation
-- **[Quick Start](QUICK_START.md)** 🚀 - Get running in 2 minutes!
-- [Project Roadmap](docs/roadmap.md) - Phases, milestones, KPIs
-- [Instructions](docs/instructions.md) - Development guidelines, best practices
-- [Architecture](docs/architecture.md) - System design, data flows
+> **📚 [Complete Documentation Index](DOCUMENTATION_INDEX.md)** - Comprehensive guide to all 60+ documentation files
 
-### Security & Deployment 🔒
-- **[Production Deployment Guide](PRODUCTION_DEPLOYMENT_GUIDE.md)** ⭐ - Complete deployment walkthrough
-- **[Secrets Management](SECRETS_MANAGEMENT.md)** 🔐 - How to handle API keys and secrets properly
-- **[Security Architecture](docs/SECURITY.md)** - Authentication, CORS, rate limiting, compliance
-- **[Security Quick Reference](SECURITY_QUICKREF.md)** - Common operations and incident response
-- **[Local Development Setup](LOCAL_DEV_SETUP.md)** - Dev environment configuration
-- **[Security Implementation](SECURITY_IMPLEMENTATION_COMPLETE.md)** - Technical details
+### 🎯 Start Here
 
-### Google Cloud Integration (October 2025) ☁️
-- **[Google Cloud Deployment Guide](docs/google_cloud_deployment.md)** ⭐ - Complete GCP deployment with Gemini 2.5 Pro/Flash
-- **[Gemini Integration Examples](docs/gemini_integration_examples.md)** 💻 - Production-ready code samples
-- [Cloud Documentation Index](docs/README_CLOUD.md) - Navigation guide for all cloud docs
+| If you want to... | Read this |
+|-------------------|-----------|
+| **Get started quickly** | [QUICK_START.md](QUICK_START.md) (2 minutes) |
+| **Understand the system** | [ARCHITECTURE.md](ARCHITECTURE.md) ⭐ **Start here for deep dive** |
+| **Deploy to production** | [PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md) |
+| **Set up local dev** | [LOCAL_DEV_SETUP.md](LOCAL_DEV_SETUP.md) |
+| **Manage secrets securely** | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) 🔐 **Critical** |
 
-### Key Features (Cloud)
-- ⚡ **Dual-Model AI**: Gemini 2.5 Flash + Pro for preliminary and detailed responses
-- 🚀 **Serverless Deployment**: Cloud Run with configurable auto-scaling
-- 🔒 **Enterprise Security**: Options for on-premises deployment (contact for details)
-- 💰 **Cost Estimates**: Vary based on usage (contact for pricing)
+### 🏗️ Architecture & Technical
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** ⭐ - **Comprehensive system architecture** (400+ lines, start here!)
+  - System components and data flow
+  - Directory structure explained
+  - Deployment architecture
+  - Security architecture
+  - Performance characteristics
+  - Design decisions and trade-offs
+
+### 🔐 Security & Deployment
+
+- **[SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md)** 🔐 - Secrets management guide (critical!)
+- **[PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md)** - Production deployment
+- **[SECURITY_VERIFICATION_OCT2025.md](SECURITY_VERIFICATION_OCT2025.md)** - Latest security audit
+- [SECURITY_QUICKREF.md](SECURITY_QUICKREF.md) - Quick security reference
+- [docs/google_cloud_deployment.md](docs/google_cloud_deployment.md) - Detailed GCP deployment
+
+### 🔬 Research & Validation
+
+- **[RESEARCH_LOG.md](RESEARCH_LOG.md)** 🔥 - Active research activity log
+- **[BREAKTHROUGH_FINDING.md](BREAKTHROUGH_FINDING.md)** - RL vs BO preliminary findings (honest framing)
+- **[ADAPTIVE_ROUTER_PROTOTYPE.md](ADAPTIVE_ROUTER_PROTOTYPE.md)** - Adaptive router documentation
+- [PHASE1_PREREGISTRATION.md](PHASE1_PREREGISTRATION.md) - Validation experiment design
+- [PHASE1_CHECKLIST.md](PHASE1_CHECKLIST.md) - Validation implementation plan
+
+### 💼 Business & Strategy
+
+- [BUSINESS_VALUE_ANALYSIS.md](BUSINESS_VALUE_ANALYSIS.md) - Business value and customer pain points
+- [MARKET_ANALYSIS_OCT2025.md](MARKET_ANALYSIS_OCT2025.md) - Market analysis
+- [CUSTOMER_PROTOTYPE_STRATEGY.md](CUSTOMER_PROTOTYPE_STRATEGY.md) - Prototype strategy
+- [docs/roadmap.md](docs/roadmap.md) - Product roadmap
+
+### ☁️ Google Cloud Integration
+
+**Key Features**:
+- ⚡ **Dual-Model AI**: Gemini 2.5 Flash + Pro for cost/quality optimization
+- 🚀 **Serverless**: Cloud Run with auto-scaling (1-10 instances)
+- 🔒 **Security**: API key auth, rate limiting, CORS, security headers
+- 💰 **Cost**: ~$80/month for 1000 queries/day (estimate)
+
+**Documentation**:
+- [docs/gemini_integration_examples.md](docs/gemini_integration_examples.md) - Code samples
+- [CLOUD_INTEGRATION_SUMMARY.md](CLOUD_INTEGRATION_SUMMARY.md) - Integration overview
+- [docs/README_CLOUD.md](docs/README_CLOUD.md) - Cloud documentation index
 
 ## Testing
 
