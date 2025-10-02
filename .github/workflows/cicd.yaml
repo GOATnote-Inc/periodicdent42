@@ -42,7 +42,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: htmlcov/
+        path: app/htmlcov/
 
   build-and-deploy:
     needs: test
@@ -56,16 +56,30 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Check for GCP credentials
+      id: check-secrets
+      run: |
+        if [ -z "${{ secrets.WIF_PROVIDER }}" ] || [ -z "${{ secrets.WIF_SERVICE_ACCOUNT }}" ]; then
+          echo "configured=false" >> $GITHUB_OUTPUT
+          echo "⚠️  GCP credentials not configured - skipping deployment"
+          echo "To enable automatic deployment, configure WIF_PROVIDER and WIF_SERVICE_ACCOUNT secrets"
+        else
+          echo "configured=true" >> $GITHUB_OUTPUT
+        fi
+    
     - name: Authenticate to Google Cloud
+      if: steps.check-secrets.outputs.configured == 'true'
       uses: google-github-actions/auth@v1
       with:
         workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
         service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
     
     - name: Set up Cloud SDK
+      if: steps.check-secrets.outputs.configured == 'true'
       uses: google-github-actions/setup-gcloud@v1
     
     - name: Build and push Docker image
+      if: steps.check-secrets.outputs.configured == 'true'
       run: |
         cd app
         gcloud builds submit \
@@ -73,6 +87,7 @@ jobs:
           --project ${{ env.PROJECT_ID }}
     
     - name: Deploy to Cloud Run
+      if: steps.check-secrets.outputs.configured == 'true'
       run: |
         cd infra/scripts
         export PROJECT_ID=${{ env.PROJECT_ID }}
@@ -80,6 +95,7 @@ jobs:
         bash deploy_cloudrun.sh
     
     - name: Get service URL
+      if: steps.check-secrets.outputs.configured == 'true'
       id: get-url
       run: |
         SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
@@ -89,6 +105,7 @@ jobs:
         echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_OUTPUT
     
     - name: Test deployed service
+      if: steps.check-secrets.outputs.configured == 'true'
       run: |
         # Health check
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -103,13 +120,26 @@ jobs:
         fi
     
     - name: Job summary
+      if: always()
       run: |
-        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "✅ Successfully deployed to Cloud Run" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Service URL:** ${{ steps.get-url.outputs.SERVICE_URL }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Region:** ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Project:** ${{ env.PROJECT_ID }}" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ steps.check-secrets.outputs.configured }}" == "true" ]; then
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Successfully deployed to Cloud Run" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Service URL:** ${{ steps.get-url.outputs.SERVICE_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Project:** ${{ env.PROJECT_ID }}" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "## Deployment Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️  GCP credentials not configured" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To enable automatic deployment, configure the following GitHub secrets:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`WIF_PROVIDER\`: Workload Identity Provider resource name" >> $GITHUB_STEP_SUMMARY
+          echo "- \`WIF_SERVICE_ACCOUNT\`: Service account email" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See \`CI_WORKFLOWS_FIXED_SUMMARY.md\` for setup instructions." >> $GITHUB_STEP_SUMMARY
+        fi
 
