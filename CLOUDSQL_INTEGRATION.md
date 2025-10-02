@@ -345,6 +345,92 @@ DB_PASSWORD=<your local password>
 
 ---
 
+## REST API Endpoints
+
+The following REST API endpoints are now available for querying metadata:
+
+### 1. List Experiments
+```bash
+GET /api/experiments?status=completed&limit=100&optimization_run_id=run-123&created_by=user
+```
+
+**Response:**
+```json
+{
+  "experiments": [
+    {
+      "id": "exp-123",
+      "name": "Perovskite Synthesis Optimization",
+      "status": "completed",
+      "parameters": {"temp": 500, "pressure": 1.0},
+      "result_value": 0.85,
+      "created_at": "2025-10-01T10:00:00",
+      "optimization_run_id": "run-456"
+    }
+  ],
+  "count": 1,
+  "status": "success"
+}
+```
+
+### 2. Get Experiment Details
+```bash
+GET /api/experiments/{experiment_id}
+```
+
+Returns detailed information about a specific experiment, including the optimization run it belongs to.
+
+### 3. List Optimization Runs
+```bash
+GET /api/optimization_runs?method=bayesian_optimization&status=completed&limit=50
+```
+
+**Response:**
+```json
+{
+  "runs": [
+    {
+      "id": "run-456",
+      "name": "BO Campaign Oct 2025",
+      "method": "bayesian_optimization",
+      "objective": "maximize",
+      "num_experiments": 25,
+      "best_value": 0.92,
+      "status": "completed"
+    }
+  ],
+  "count": 1,
+  "status": "success"
+}
+```
+
+### 4. List AI Queries with Cost Analysis
+```bash
+GET /api/ai_queries?limit=100&selected_model=flash&include_cost_analysis=true
+```
+
+**Response:**
+```json
+{
+  "queries": [...],
+  "count": 50,
+  "cost_analysis": {
+    "total_queries": 50,
+    "flash_queries": 35,
+    "pro_queries": 15,
+    "total_flash_tokens": 5250,
+    "total_pro_tokens": 2700,
+    "estimated_total_cost_usd": 0.0824,
+    "avg_flash_latency_ms": 245.3,
+    "avg_pro_latency_ms": 1150.8,
+    "cost_per_query_usd": 0.001648
+  },
+  "status": "success"
+}
+```
+
+---
+
 ## Usage Examples
 
 ### Create an Experiment

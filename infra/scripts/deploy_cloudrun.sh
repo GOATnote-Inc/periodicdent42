@@ -19,6 +19,22 @@ if ! gcloud container images describe $IMAGE_NAME --project=$PROJECT_ID &>/dev/n
     cd -
 fi
 
+# Check if Cloud SQL instance exists (optional connection)
+CLOUDSQL_INSTANCE="${PROJECT_ID}:${REGION}:ard-intelligence-db"
+CLOUDSQL_FLAGS=""
+
+if gcloud sql instances describe "ard-intelligence-db" --project="$PROJECT_ID" &>/dev/null; then
+    echo "✅ Cloud SQL instance found, connecting to database"
+    CLOUDSQL_FLAGS="--add-cloudsql-instances $CLOUDSQL_INSTANCE"
+    DB_ENV_VARS=",GCP_SQL_INSTANCE=$CLOUDSQL_INSTANCE,DB_NAME=ard_intelligence,DB_USER=ard_user"
+    DB_SECRETS="DB_PASSWORD=db-password:latest,"
+else
+    echo "⚠️  Cloud SQL instance not found, deploying without database"
+    echo "   Run: bash infra/scripts/setup_cloudsql.sh to set up database"
+    DB_ENV_VARS=""
+    DB_SECRETS=""
+fi
+
 # Deploy to Cloud Run with security enabled
 gcloud run deploy $SERVICE_NAME \
   --image $IMAGE_NAME \
@@ -31,8 +47,9 @@ gcloud run deploy $SERVICE_NAME \
   --min-instances 1 \
   --max-instances 10 \
   --service-account $SERVICE_ACCOUNT \
-  --set-env-vars "PROJECT_ID=$PROJECT_ID,LOCATION=$REGION,ENVIRONMENT=production,ENABLE_AUTH=true,RATE_LIMIT_PER_MINUTE=120" \
-  --set-secrets "API_KEY=api-key:latest" \
+  --set-env-vars "PROJECT_ID=$PROJECT_ID,LOCATION=$REGION,ENVIRONMENT=production,ENABLE_AUTH=true,RATE_LIMIT_PER_MINUTE=120${DB_ENV_VARS}" \
+  --set-secrets "${DB_SECRETS}API_KEY=api-key:latest" \
+  $CLOUDSQL_FLAGS \
   --allow-unauthenticated
 
 # Get service URL
@@ -68,4 +85,12 @@ echo "  1. Save your API key securely"
 echo "  2. Set ALLOWED_ORIGINS environment variable with your frontend domain"
 echo "  3. Monitor Cloud Logging for security events"
 echo "  4. Set up alerting for 401/429 responses"
+
+if [ -z "$CLOUDSQL_FLAGS" ]; then
+    echo ""
+    echo "📊 Database Setup (Optional):"
+    echo "  To enable metadata persistence with Cloud SQL:"
+    echo "    bash infra/scripts/setup_cloudsql.sh"
+    echo "    bash infra/scripts/deploy_cloudrun.sh  # Re-deploy with database"
+fi
 
