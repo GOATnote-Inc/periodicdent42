@@ -1,0 +1,136 @@
+name: Continuous Monitoring
+
+on:
+  pull_request:
+  schedule:
+    - cron: '0 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  performance-monitoring:
+    name: Performance Monitoring
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate performance report
+        run: |
+          python scripts/generate_monitoring_report.py \
+            --kind performance \
+            --output monitoring_reports/performance.json
+      - name: Upload performance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-monitoring-report
+          path: monitoring_reports/performance.json
+
+  uptime-monitoring:
+    name: Uptime Monitoring
+    runs-on: ubuntu-latest
+    needs: performance-monitoring
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate uptime report
+        run: |
+          python scripts/generate_monitoring_report.py \
+            --kind uptime \
+            --output monitoring_reports/uptime.json
+      - name: Upload uptime report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uptime-monitoring-report
+          path: monitoring_reports/uptime.json
+
+  health-monitoring:
+    name: Health Monitoring
+    runs-on: ubuntu-latest
+    needs: performance-monitoring
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate health report
+        run: |
+          python scripts/generate_monitoring_report.py \
+            --kind health \
+            --output monitoring_reports/health.json
+      - name: Upload health report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-monitoring-report
+          path: monitoring_reports/health.json
+
+  metrics-collection:
+    name: Metrics Collection
+    runs-on: ubuntu-latest
+    needs: performance-monitoring
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate metrics report
+        run: |
+          python scripts/generate_monitoring_report.py \
+            --kind metrics \
+            --output monitoring_reports/metrics.json
+      - name: Upload metrics report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-collection-report
+          path: monitoring_reports/metrics.json
+
+  alert-management:
+    name: Alert Management
+    runs-on: ubuntu-latest
+    needs:
+      - performance-monitoring
+      - uptime-monitoring
+      - health-monitoring
+      - metrics-collection
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download monitoring artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: monitoring_reports
+          merge-multiple: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate alert summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t reports < <(find monitoring_reports -maxdepth 1 -name '*.json' ! -name 'alert-summary.json' -print)
+          if [[ ${#reports[@]} -eq 0 ]]; then
+            echo "No monitoring reports were downloaded" >&2
+            exit 1
+          fi
+          python scripts/generate_monitoring_report.py \
+            --kind alert \
+            --output monitoring_reports/alert-summary.json \
+            --inputs "${reports[@]}"
+      - name: Upload alert summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alert-management-report
+          path: monitoring_reports/alert-summary.json
