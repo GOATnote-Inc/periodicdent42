@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard - Autonomous R&D Intelligence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .stat-card-green {
+            background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        }
+        .stat-card-orange {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        .stat-card-blue {
+            background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Analytics Dashboard</h1>
+                    <p class="text-sm text-gray-600 mt-1">Real-time experiment tracking & cost analysis</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button onclick="refreshData()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                        <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Refresh
+                    </button>
+                    <a href="/" class="text-gray-600 hover:text-gray-900">← Back to Main</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+            <p class="mt-4 text-gray-600">Loading analytics data...</p>
+        </div>
+
+        <!-- Main Content (hidden until loaded) -->
+        <div id="content" class="hidden space-y-8">
+            <!-- Key Metrics -->
+            <section>
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">Key Metrics</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Total Experiments -->
+                    <div class="stat-card rounded-xl p-6 text-white animate-slide-in">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-white/80 text-sm font-medium">Total Experiments</p>
+                                <p class="text-3xl font-bold mt-2" id="total-experiments">-</p>
+                                <p class="text-white/70 text-xs mt-2" id="experiments-breakdown">-</p>
+                            </div>
+                            <div class="bg-white/20 rounded-lg p-3">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Optimization Runs -->
+                    <div class="stat-card-green rounded-xl p-6 text-white animate-slide-in" style="animation-delay: 0.1s">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-800 text-sm font-medium">Optimization Runs</p>
+                                <p class="text-3xl font-bold mt-2 text-gray-900" id="total-runs">-</p>
+                                <p class="text-gray-700 text-xs mt-2" id="runs-breakdown">-</p>
+                            </div>
+                            <div class="bg-white/30 rounded-lg p-3">
+                                <svg class="w-8 h-8 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI Queries -->
+                    <div class="stat-card-orange rounded-xl p-6 text-white animate-slide-in" style="animation-delay: 0.2s">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-800 text-sm font-medium">AI Queries</p>
+                                <p class="text-3xl font-bold mt-2 text-gray-900" id="total-queries">-</p>
+                                <p class="text-gray-700 text-xs mt-2" id="queries-breakdown">-</p>
+                            </div>
+                            <div class="bg-white/30 rounded-lg p-3">
+                                <svg class="w-8 h-8 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Total AI Cost -->
+                    <div class="stat-card-blue rounded-xl p-6 text-white animate-slide-in" style="animation-delay: 0.3s">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-white/80 text-sm font-medium">Total AI Cost</p>
+                                <p class="text-3xl font-bold mt-2" id="total-cost">-</p>
+                                <p class="text-white/70 text-xs mt-2" id="cost-breakdown">-</p>
+                            </div>
+                            <div class="bg-white/20 rounded-lg p-3">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Row -->
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Method Comparison -->
+                <div class="bg-white rounded-xl shadow-sm p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Optimization Method Distribution</h3>
+                    <canvas id="methodChart" height="250"></canvas>
+                </div>
+
+                <!-- Status Overview -->
+                <div class="bg-white rounded-xl shadow-sm p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Experiment Status</h3>
+                    <canvas id="statusChart" height="250"></canvas>
+                </div>
+            </section>
+
+            <!-- Cost Analysis -->
+            <section class="bg-white rounded-xl shadow-sm p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">AI Cost Analysis by Model</h3>
+                <canvas id="costChart" height="100"></canvas>
+            </section>
+
+            <!-- Recent Activity -->
+            <section>
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Recent Experiments -->
+                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="font-semibold text-gray-900">Latest Experiments</h3>
+                        </div>
+                        <div class="divide-y divide-gray-200" id="recent-experiments">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Recent Optimization Runs -->
+                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="font-semibold text-gray-900">Latest Optimization Runs</h3>
+                        </div>
+                        <div class="divide-y divide-gray-200" id="recent-runs">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        let methodChart, statusChart, costChart;
+
+        async function fetchAnalyticsData() {
+            try {
+                const [experiments, runs, queries] = await Promise.all([
+                    fetch('/api/experiments?limit=100').then(r => r.json()),
+                    fetch('/api/optimization_runs?limit=100').then(r => r.json()),
+                    fetch('/api/ai_queries?limit=100&include_cost_analysis=true').then(r => r.json())
+                ]);
+
+                return { experiments, runs, queries };
+            } catch (error) {
+                console.error('Error fetching analytics data:', error);
+                throw error;
+            }
+        }
+
+        function updateKeyMetrics(data) {
+            const { experiments, runs, queries } = data;
+
+            // Total Experiments
+            const totalExps = experiments.experiments?.length || 0;
+            const completedExps = experiments.experiments?.filter(e => e.status === 'completed').length || 0;
+            document.getElementById('total-experiments').textContent = totalExps;
+            document.getElementById('experiments-breakdown').textContent = `${completedExps} completed, ${totalExps - completedExps} in progress`;
+
+            // Optimization Runs
+            const totalRuns = runs.optimization_runs?.length || 0;
+            const completedRuns = runs.optimization_runs?.filter(r => r.status === 'completed').length || 0;
+            document.getElementById('total-runs').textContent = totalRuns;
+            document.getElementById('runs-breakdown').textContent = `${completedRuns} completed, ${totalRuns - completedRuns} active`;
+
+            // AI Queries
+            const totalQueries = queries.ai_queries?.length || 0;
+            document.getElementById('total-queries').textContent = totalQueries;
+            const avgLatency = queries.ai_queries?.reduce((sum, q) => sum + (q.latency_ms || 0), 0) / totalQueries || 0;
+            document.getElementById('queries-breakdown').textContent = `Avg latency: ${avgLatency.toFixed(0)}ms`;
+
+            // Total Cost
+            const totalCost = queries.cost_analysis?.total_cost_usd || 0;
+            document.getElementById('total-cost').textContent = `$${totalCost.toFixed(4)}`;
+            const avgCost = queries.cost_analysis?.average_cost_per_query || 0;
+            document.getElementById('cost-breakdown').textContent = `Avg: $${avgCost.toFixed(6)} per query`;
+        }
+
+        function updateMethodChart(data) {
+            const methods = {};
+            data.runs.optimization_runs?.forEach(run => {
+                const method = run.method || 'unknown';
+                methods[method] = (methods[method] || 0) + 1;
+            });
+
+            const ctx = document.getElementById('methodChart').getContext('2d');
+            if (methodChart) methodChart.destroy();
+            
+            methodChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(methods).map(m => m.replace('_', ' ').toUpperCase()),
+                    datasets: [{
+                        data: Object.values(methods),
+                        backgroundColor: [
+                            '#667eea',
+                            '#764ba2',
+                            '#84fab0',
+                            '#8fd3f4'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateStatusChart(data) {
+            const statuses = {};
+            data.experiments.experiments?.forEach(exp => {
+                const status = exp.status || 'unknown';
+                statuses[status] = (statuses[status] || 0) + 1;
+            });
+
+            const ctx = document.getElementById('statusChart').getContext('2d');
+            if (statusChart) statusChart.destroy();
+            
+            statusChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(statuses).map(s => s.charAt(0).toUpperCase() + s.slice(1)),
+                    datasets: [{
+                        label: 'Experiments',
+                        data: Object.values(statuses),
+                        backgroundColor: [
+                            '#fbbf24',
+                            '#3b82f6',
+                            '#10b981',
+                            '#ef4444'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCostChart(data) {
+            const modelCosts = {};
+            data.queries.ai_queries?.forEach(query => {
+                const model = query.selected_model || 'unknown';
+                modelCosts[model] = (modelCosts[model] || 0) + (query.cost_usd || 0);
+            });
+
+            const ctx = document.getElementById('costChart').getContext('2d');
+            if (costChart) costChart.destroy();
+            
+            costChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(modelCosts).map(m => m.replace('_', ' ').toUpperCase()),
+                    datasets: [{
+                        label: 'Total Cost (USD)',
+                        data: Object.values(modelCosts),
+                        backgroundColor: '#667eea'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toFixed(4);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateRecentActivity(data) {
+            // Recent Experiments
+            const expsHtml = (data.experiments.experiments?.slice(0, 5) || []).map(exp => `
+                <div class="px-6 py-4 hover:bg-gray-50 transition">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-gray-900">${exp.id}</p>
+                            <p class="text-xs text-gray-600 mt-1">
+                                Status: <span class="px-2 py-1 rounded-full text-xs ${
+                                    exp.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                    exp.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                                    exp.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }">${exp.status}</span>
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-gray-500">${new Date(exp.created_at).toLocaleString()}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('recent-experiments').innerHTML = expsHtml || '<p class="px-6 py-4 text-gray-500">No experiments yet</p>';
+
+            // Recent Optimization Runs
+            const runsHtml = (data.runs.optimization_runs?.slice(0, 5) || []).map(run => `
+                <div class="px-6 py-4 hover:bg-gray-50 transition">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-gray-900">${run.id}</p>
+                            <p class="text-xs text-gray-600 mt-1">
+                                Method: <span class="font-medium">${(run.method || '').replace('_', ' ').toUpperCase()}</span> | 
+                                Status: <span class="px-2 py-1 rounded-full text-xs ${
+                                    run.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                    run.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                                    run.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }">${run.status}</span>
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-gray-500">${new Date(run.created_at).toLocaleString()}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('recent-runs').innerHTML = runsHtml || '<p class="px-6 py-4 text-gray-500">No optimization runs yet</p>';
+        }
+
+        async function loadDashboard() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('content').classList.add('hidden');
+
+                const data = await fetchAnalyticsData();
+                
+                updateKeyMetrics(data);
+                updateMethodChart(data);
+                updateStatusChart(data);
+                updateCostChart(data);
+                updateRecentActivity(data);
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div class="text-center py-12">
+                        <svg class="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <p class="text-red-600 font-semibold">Failed to load analytics data</p>
+                        <p class="text-gray-600 mt-2">Please ensure the API server is running</p>
+                        <button onclick="loadDashboard()" class="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function refreshData() {
+            loadDashboard();
+        }
+
+        // Load dashboard on page load
+        window.addEventListener('DOMContentLoaded', loadDashboard);
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadDashboard, 30000);
+    </script>
+</body>
+</html>
+
