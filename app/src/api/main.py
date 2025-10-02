@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from pathlib import Path
+from datetime import datetime
 from typing import Any, Dict, List
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -22,6 +23,8 @@ from src.reasoning.dual_agent import DualModelAgent
 from src.services.vertex import init_vertex, is_initialized
 from src.utils.sse import sse_event, sse_error
 from src.services.storage import get_storage
+from src.lab.campaign import get_campaign_runner, CampaignReport
+from src.services import db
 
 # Configure logging
 logging.basicConfig(
@@ -108,6 +111,26 @@ class HealthResponse(BaseModel):
     project_id: str = ""
 
 
+class CampaignRequest(BaseModel):
+    """Request body for triggering the UV-Vis autonomous campaign."""
+
+    experiments: int = 50
+    max_hours: float = 24.0
+
+
+class CampaignResponse(BaseModel):
+    """Response payload summarizing a campaign run."""
+
+    campaign_id: str
+    instrument_id: str
+    experiments_requested: int
+    experiments_completed: int
+    started_at: datetime
+    completed_at: datetime
+    storage_uris: List[str]
+    failures: List[str]
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
@@ -119,7 +142,10 @@ async def startup_event():
     try:
         # Initialize Vertex AI
         init_vertex(settings.PROJECT_ID, settings.LOCATION)
-        
+
+        # Initialize Cloud SQL (or local) database
+        db.init_database()
+
         # Initialize agent
         agent = DualModelAgent(
             project_id=settings.PROJECT_ID,
@@ -267,6 +293,28 @@ async def root():
             "ui": "/"
         }
     }
+
+
+# Campaign orchestration
+@app.post("/api/lab/campaign/uvvis", response_model=CampaignResponse)
+async def run_uvvis_campaign(request: CampaignRequest):
+    """Trigger the UV-Vis autonomous campaign in simulation mode."""
+
+    runner = get_campaign_runner()
+    report: CampaignReport = runner.run_campaign(
+        min_experiments=request.experiments,
+        max_hours=request.max_hours,
+    )
+    return CampaignResponse(
+        campaign_id=report.campaign_id,
+        instrument_id=report.instrument_id,
+        experiments_requested=report.experiments_requested,
+        experiments_completed=report.experiments_completed,
+        started_at=report.started_at,
+        completed_at=report.completed_at,
+        storage_uris=report.storage_uris,
+        failures=report.failures,
+    )
 
 
 # Storage endpoints

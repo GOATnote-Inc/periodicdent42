@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     
     # Cloud Storage
     GCS_BUCKET: Optional[str] = None  # Set by Terraform or env
+    UV_VIS_DATASET_PATH: Optional[str] = None
+    LOCAL_STORAGE_PATH: str = "data/local_storage"
     
     # Server settings
     PORT: int = 8080

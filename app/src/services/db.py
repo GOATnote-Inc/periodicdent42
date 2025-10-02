@@ -36,6 +36,22 @@ class ExperimentRun(Base):
     user_id = Column(String, default="anonymous")  # TODO: Auth integration
 
 
+class InstrumentRun(Base):
+    """Hardware instrument run log for auditability."""
+
+    __tablename__ = "instrument_runs"
+
+    id = Column(String, primary_key=True)
+    instrument_id = Column(String, nullable=False)
+    sample_id = Column(String, nullable=False)
+    campaign_id = Column(String, nullable=True)
+    status = Column(String, default="completed")
+    metadata_json = Column(JSON, default=dict)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 def get_database_url() -> str:
     """
     Construct database URL based on environment.
@@ -64,6 +80,10 @@ def init_database():
     global _engine, _SessionLocal
     
     try:
+        if settings.DB_PASSWORD is None and settings.GCP_SQL_INSTANCE is None:
+            logger.info("Database credentials not provided; skipping database initialization")
+            return
+
         database_url = get_database_url()
         logger.info(f"Connecting to database...")
         
@@ -140,7 +160,43 @@ def log_experiment_run(
     except Exception as e:
         logger.error(f"Failed to log experiment: {e}")
         session.rollback()
-    
+
+    finally:
+        session.close()
+
+
+def log_instrument_run(
+    *,
+    run_id: str,
+    instrument_id: str,
+    sample_id: str,
+    campaign_id: Optional[str],
+    status: str,
+    notes: Optional[str],
+    metadata: Optional[dict] = None,
+) -> None:
+    """Persist hardware campaign run information."""
+
+    session = get_session()
+    if session is None:
+        logger.warning("Database not available, skipping instrument log")
+        return
+
+    try:
+        run = InstrumentRun(
+            id=run_id,
+            instrument_id=instrument_id,
+            sample_id=sample_id,
+            campaign_id=campaign_id,
+            status=status,
+            notes=notes,
+            metadata_json=sanitize_payload(metadata or {}),
+        )
+        session.add(run)
+        session.commit()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error(f"Failed to log instrument run: {exc}")
+        session.rollback()
     finally:
         session.close()
 
