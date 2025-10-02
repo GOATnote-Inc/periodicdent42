@@ -51,16 +51,13 @@ if [ "$INSTANCE_EXISTS" = false ]; then
         --region="$REGION" \
         --database-version="$POSTGRES_VERSION" \
         --tier="$TIER" \
-        --network="default" \
-        --enable-bin-log \
         --backup-start-time="03:00" \
         --availability-type="ZONAL" \
         --storage-type="SSD" \
         --storage-size="10GB" \
         --storage-auto-increase \
         --maintenance-window-day="SUN" \
-        --maintenance-window-hour="04" \
-        --no-assign-ip
+        --maintenance-window-hour="04"
     
     echo -e "${GREEN}✅ Cloud SQL instance created: $INSTANCE_NAME${NC}"
 fi
