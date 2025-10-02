@@ -13,13 +13,19 @@ Usage:
 """
 
 import argparse
+import os
 import random
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 # Add app directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "app"))
+app_dir = Path(__file__).parent.parent / "app"
+sys.path.insert(0, str(app_dir))
+
+# Load environment variables from app/.env
+from dotenv import load_dotenv
+load_dotenv(app_dir / ".env")
 
 from sqlalchemy import func
 

@@ -4,12 +4,13 @@ Database service for experiment tracking.
 Uses Cloud SQL (PostgreSQL) for structured data.
 """
 
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, Float
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Float, Integer, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 import logging
-from typing import Optional
+from typing import Optional, List
+from enum import Enum
 
 from src.utils.compliance import sanitize_payload
 from src.utils.settings import settings
@@ -17,6 +18,20 @@ from src.utils.settings import settings
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
+
+
+# Enums for status and method types
+class ExperimentStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class OptimizationMethod(str, Enum):
+    BAYESIAN_OPTIMIZATION = "bayesian_optimization"
+    REINFORCEMENT_LEARNING = "reinforcement_learning"
+    ADAPTIVE_ROUTER = "adaptive_router"
 
 
 class ExperimentRun(Base):
@@ -50,6 +65,56 @@ class InstrumentRun(Base):
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Experiment(Base):
+    """Individual experiment within an optimization run."""
+    __tablename__ = "experiments"
+    
+    id = Column(String, primary_key=True)
+    optimization_run_id = Column(String, nullable=True)  # NULL for standalone experiments
+    method = Column(String, nullable=True)  # Which optimizer suggested this
+    parameters = Column(JSON, nullable=False)  # Experimental parameters
+    context = Column(JSON, nullable=True)  # Domain context
+    noise_estimate = Column(Float, nullable=True)  # Estimated noise level
+    results = Column(JSON, nullable=True)  # Measurement results
+    status = Column(String, default="pending")  # pending, running, completed, failed
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
+    error_message = Column(String, nullable=True)
+    created_by = Column(String, default="anonymous")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class OptimizationRun(Base):
+    """Optimization campaign with multiple experiments."""
+    __tablename__ = "optimization_runs"
+    
+    id = Column(String, primary_key=True)
+    method = Column(String, nullable=False)  # RL, BO, or Adaptive
+    context = Column(JSON, nullable=True)  # Optimization context
+    status = Column(String, default="pending")
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
+    error_message = Column(String, nullable=True)
+    created_by = Column(String, default="anonymous")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AIQuery(Base):
+    """AI model query tracking for cost analysis."""
+    __tablename__ = "ai_queries"
+    
+    id = Column(String, primary_key=True)
+    query = Column(String, nullable=False)
+    context = Column(JSON, nullable=True)
+    selected_model = Column(String, nullable=False)  # flash, pro, adaptive_router
+    latency_ms = Column(Float, nullable=True)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    cost_usd = Column(Float, nullable=True)
+    created_by = Column(String, default="anonymous")
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 def get_database_url() -> str:
@@ -161,6 +226,94 @@ def log_experiment_run(
         logger.error(f"Failed to log experiment: {e}")
         session.rollback()
 
+    finally:
+        session.close()
+
+
+def close_database():
+    """
+    Close database connections and dispose of engine.
+    """
+    global _engine, _SessionLocal
+    if _engine:
+        _engine.dispose()
+        _engine = None
+        _SessionLocal = None
+        logger.info("Database connections closed")
+
+
+def get_experiments(
+    status: Optional[str] = None,
+    optimization_run_id: Optional[str] = None,
+    created_by: Optional[str] = None,
+    limit: int = 100
+) -> List[Experiment]:
+    """
+    Query experiments with optional filters.
+    
+    Args:
+        status: Filter by status
+        optimization_run_id: Filter by optimization run
+        created_by: Filter by creator
+        limit: Maximum number of results
+        
+    Returns:
+        List of Experiment objects
+    """
+    session = get_session()
+    if session is None:
+        return []
+    
+    try:
+        query = session.query(Experiment)
+        
+        if status:
+            query = query.filter(Experiment.status == status)
+        if optimization_run_id:
+            query = query.filter(Experiment.optimization_run_id == optimization_run_id)
+        if created_by:
+            query = query.filter(Experiment.created_by == created_by)
+        
+        return query.order_by(Experiment.created_at.desc()).limit(limit).all()
+    
+    finally:
+        session.close()
+
+
+def get_optimization_runs(
+    status: Optional[str] = None,
+    method: Optional[str] = None,
+    created_by: Optional[str] = None,
+    limit: int = 50
+) -> List[OptimizationRun]:
+    """
+    Query optimization runs with optional filters.
+    
+    Args:
+        status: Filter by status
+        method: Filter by optimization method
+        created_by: Filter by creator
+        limit: Maximum number of results
+        
+    Returns:
+        List of OptimizationRun objects
+    """
+    session = get_session()
+    if session is None:
+        return []
+    
+    try:
+        query = session.query(OptimizationRun)
+        
+        if status:
+            query = query.filter(OptimizationRun.status == status)
+        if method:
+            query = query.filter(OptimizationRun.method == method)
+        if created_by:
+            query = query.filter(OptimizationRun.created_by == created_by)
+        
+        return query.order_by(OptimizationRun.created_at.desc()).limit(limit).all()
+    
     finally:
         session.close()
 
