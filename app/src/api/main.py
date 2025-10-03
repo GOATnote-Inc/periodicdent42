@@ -295,6 +295,15 @@ async def root():
     }
 
 
+@app.get("/analytics.html")
+async def analytics_page():
+    """Serve the analytics dashboard."""
+    analytics_path = STATIC_DIR / "analytics.html"
+    if analytics_path.exists():
+        return FileResponse(analytics_path)
+    raise HTTPException(status_code=404, detail="Analytics page not found")
+
+
 # Campaign orchestration
 @app.post("/api/lab/campaign/uvvis", response_model=CampaignResponse)
 async def run_uvvis_campaign(request: CampaignRequest):
