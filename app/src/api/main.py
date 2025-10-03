@@ -41,13 +41,15 @@ app = FastAPI(
 )
 
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
-logger.info(f"STATIC_DIR resolved to: {STATIC_DIR}")
-logger.info(f"STATIC_DIR exists: {STATIC_DIR.exists()}")
+print(f"🔍 STATIC_DIR resolved to: {STATIC_DIR}", flush=True)
+print(f"🔍 STATIC_DIR exists: {STATIC_DIR.exists()}", flush=True)
 if STATIC_DIR.exists():
-    logger.info(f"Mounting static files from: {STATIC_DIR}")
+    print(f"✅ Mounting static files from: {STATIC_DIR}", flush=True)
+    files_in_static = list(STATIC_DIR.glob("*"))
+    print(f"📁 Files in static: {[f.name for f in files_in_static]}", flush=True)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 else:
-    logger.warning(f"Static directory not found at: {STATIC_DIR}")
+    print(f"❌ Static directory not found at: {STATIC_DIR}", flush=True)
 
 def _parse_allowed_origins(raw_origins: str) -> List[str]:
     origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
