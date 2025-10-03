@@ -52,20 +52,27 @@ else:
     print(f"❌ Static directory not found at: {STATIC_DIR}", flush=True)
 
 def _parse_allowed_origins(raw_origins: str) -> List[str]:
+    # Always allow Cloud Storage and Cloud Run origins for analytics dashboard
+    default_origins = [
+        "https://storage.googleapis.com",
+        "https://ard-backend-dydzexswua-uc.a.run.app",
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
+    ]
+    
     origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
     if origins:
-        return origins
-
-    if settings.ENVIRONMENT.lower() == "development":
-        return [
-            "http://localhost",
-            "http://localhost:3000",
-            "http://127.0.0.1",
-            "http://127.0.0.1:3000",
-        ]
-
-    logger.warning("No CORS origins configured; browser requests will be blocked by default.")
-    return []
+        # Combine custom origins with defaults
+        all_origins = list(set(default_origins + origins))
+        logger.info(f"CORS origins configured: {all_origins}")
+        return all_origins
+    
+    logger.info(f"Using default CORS origins: {default_origins}")
+    return default_origins
 
 
 ALLOWED_ORIGINS = _parse_allowed_origins(settings.ALLOWED_ORIGINS)
