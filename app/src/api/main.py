@@ -379,6 +379,195 @@ async def list_experiments():
         )
 
 
+# Database metadata endpoints for analytics dashboard
+@app.get("/api/experiments")
+async def list_experiments_db(
+    status: str = None,
+    optimization_run_id: str = None,
+    limit: int = 100,
+    created_by: str = None
+):
+    """
+    List experiments from database with optional filtering.
+    
+    Query Parameters:
+        status: Filter by status (pending, running, completed, failed)
+        optimization_run_id: Filter by optimization run ID
+        limit: Maximum number of results (default: 100)
+        created_by: Filter by creator
+    """
+    try:
+        experiments = db.get_experiments(
+            status=status,
+            optimization_run_id=optimization_run_id,
+            created_by=created_by,
+            limit=limit
+        )
+        
+        # Convert to dict for JSON serialization
+        exp_dicts = []
+        for exp in experiments:
+            exp_dict = {
+                "id": exp.id,
+                "optimization_run_id": exp.optimization_run_id,
+                "method": exp.method,
+                "parameters": exp.parameters,
+                "context": exp.context,
+                "noise_estimate": exp.noise_estimate,
+                "results": exp.results,
+                "status": exp.status,
+                "start_time": exp.start_time.isoformat() if exp.start_time else None,
+                "end_time": exp.end_time.isoformat() if exp.end_time else None,
+                "error_message": exp.error_message,
+                "created_by": exp.created_by,
+                "created_at": exp.created_at.isoformat() if exp.created_at else None
+            }
+            exp_dicts.append(exp_dict)
+        
+        return {
+            "experiments": exp_dicts,
+            "count": len(exp_dicts)
+        }
+    
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to query experiments"}
+        )
+
+
+@app.get("/api/optimization_runs")
+async def list_optimization_runs_api(
+    status: str = None,
+    method: str = None,
+    limit: int = 50,
+    created_by: str = None
+):
+    """
+    List optimization runs from database with optional filtering.
+    
+    Query Parameters:
+        status: Filter by status (pending, running, completed, failed)
+        method: Filter by optimization method (reinforcement_learning, bayesian_optimization, adaptive_router)
+        limit: Maximum number of results (default: 50)
+        created_by: Filter by creator
+    """
+    try:
+        runs = db.get_optimization_runs(
+            status=status,
+            method=method,
+            created_by=created_by,
+            limit=limit
+        )
+        
+        # Convert to dict for JSON serialization
+        run_dicts = []
+        for run in runs:
+            run_dict = {
+                "id": run.id,
+                "method": run.method,
+                "context": run.context,
+                "status": run.status,
+                "start_time": run.start_time.isoformat() if run.start_time else None,
+                "end_time": run.end_time.isoformat() if run.end_time else None,
+                "error_message": run.error_message,
+                "created_by": run.created_by,
+                "created_at": run.created_at.isoformat() if run.created_at else None
+            }
+            run_dicts.append(run_dict)
+        
+        return {
+            "optimization_runs": run_dicts,
+            "count": len(run_dicts)
+        }
+    
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to query optimization runs"}
+        )
+
+
+@app.get("/api/ai_queries")
+async def list_ai_queries(
+    limit: int = 100,
+    selected_model: str = None,
+    created_by: str = None,
+    include_cost_analysis: bool = True
+):
+    """
+    List AI queries from database with optional cost analysis.
+    
+    Query Parameters:
+        limit: Maximum number of results (default: 100)
+        selected_model: Filter by model (flash, pro, adaptive_router)
+        created_by: Filter by creator
+        include_cost_analysis: Include cost analysis summary (default: true)
+    """
+    try:
+        session = db.get_session()
+        if session is None:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Database not available"}
+            )
+        
+        # Build query
+        query = session.query(db.AIQuery)
+        
+        if selected_model:
+            query = query.filter(db.AIQuery.selected_model == selected_model)
+        if created_by:
+            query = query.filter(db.AIQuery.created_by == created_by)
+        
+        ai_queries = query.order_by(db.AIQuery.created_at.desc()).limit(limit).all()
+        
+        # Convert to dict
+        query_dicts = []
+        total_cost = 0.0
+        total_queries = len(ai_queries)
+        
+        for q in ai_queries:
+            query_dict = {
+                "id": q.id,
+                "query": q.query,
+                "context": q.context,
+                "selected_model": q.selected_model,
+                "latency_ms": q.latency_ms,
+                "input_tokens": q.input_tokens,
+                "output_tokens": q.output_tokens,
+                "cost_usd": q.cost_usd,
+                "created_by": q.created_by,
+                "created_at": q.created_at.isoformat() if q.created_at else None
+            }
+            query_dicts.append(query_dict)
+            if q.cost_usd:
+                total_cost += q.cost_usd
+        
+        response = {
+            "ai_queries": query_dicts,
+            "count": total_queries
+        }
+        
+        if include_cost_analysis:
+            response["cost_analysis"] = {
+                "total_cost_usd": round(total_cost, 6),
+                "average_cost_per_query": round(total_cost / total_queries, 6) if total_queries > 0 else 0
+            }
+        
+        session.close()
+        return response
+    
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to query AI queries"}
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
