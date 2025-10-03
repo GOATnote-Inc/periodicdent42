@@ -89,3 +89,5 @@ temp/
 .AppleDouble
 .LSOverride
 
+*.api-key
+*.service-url
