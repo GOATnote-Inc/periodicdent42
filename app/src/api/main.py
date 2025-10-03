@@ -146,6 +146,15 @@ async def startup_event():
     logger.info("Starting Autonomous R&D Intelligence Layer...")
     logger.info(f"Project: {settings.PROJECT_ID}, Location: {settings.LOCATION}")
     
+    # Debug static directory
+    logger.info(f"🔍 STATIC_DIR: {STATIC_DIR}")
+    logger.info(f"🔍 STATIC_DIR exists: {STATIC_DIR.exists()}")
+    if STATIC_DIR.exists():
+        files = list(STATIC_DIR.glob("*"))
+        logger.info(f"📁 Files in static directory: {[f.name for f in files]}")
+    else:
+        logger.error(f"❌ STATIC_DIR does not exist!")
+    
     try:
         # Initialize Vertex AI
         init_vertex(settings.PROJECT_ID, settings.LOCATION)
