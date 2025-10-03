@@ -140,20 +140,26 @@
                 <!-- Method Comparison -->
                 <div class="bg-white rounded-xl shadow-sm p-6">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">Optimization Method Distribution</h3>
-                    <canvas id="methodChart" height="250"></canvas>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="methodChart"></canvas>
+                    </div>
                 </div>
 
                 <!-- Status Overview -->
                 <div class="bg-white rounded-xl shadow-sm p-6">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">Experiment Status</h3>
-                    <canvas id="statusChart" height="250"></canvas>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="statusChart"></canvas>
+                    </div>
                 </div>
             </section>
 
             <!-- Cost Analysis -->
             <section class="bg-white rounded-xl shadow-sm p-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">AI Cost Analysis by Model</h3>
-                <canvas id="costChart" height="100"></canvas>
+                <div style="position: relative; height: 250px;">
+                    <canvas id="costChart"></canvas>
+                </div>
             </section>
 
             <!-- Recent Activity -->
@@ -256,7 +262,8 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    maintainAspectRatio: true,
+                    aspectRatio: 1.5,
                     plugins: {
                         legend: {
                             position: 'bottom'
