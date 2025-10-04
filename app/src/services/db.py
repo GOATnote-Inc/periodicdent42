@@ -104,7 +104,7 @@ class OptimizationRun(Base):
 class AIQuery(Base):
     """AI model query tracking for cost analysis."""
     __tablename__ = "ai_queries"
-    
+
     id = Column(String, primary_key=True)
     query = Column(String, nullable=False)
     context = Column(JSON, nullable=True)
@@ -136,6 +136,65 @@ def get_database_url() -> str:
 # Global engine and session factory
 _engine = None
 _SessionLocal = None
+
+
+def _isoformat(value: Optional[datetime]) -> Optional[str]:
+    """Return an ISO formatted string when a datetime is provided."""
+
+    return value.isoformat() if value else None
+
+
+def experiment_to_dict(experiment: Experiment) -> dict:
+    """Serialize an Experiment ORM object into a JSON-friendly dictionary."""
+
+    return {
+        "id": experiment.id,
+        "optimization_run_id": experiment.optimization_run_id,
+        "method": experiment.method,
+        "parameters": experiment.parameters,
+        "context": experiment.context,
+        "noise_estimate": experiment.noise_estimate,
+        "results": experiment.results,
+        "status": experiment.status,
+        "start_time": _isoformat(experiment.start_time),
+        "end_time": _isoformat(experiment.end_time),
+        "error_message": experiment.error_message,
+        "created_by": experiment.created_by,
+        "created_at": _isoformat(experiment.created_at),
+    }
+
+
+def optimization_run_to_dict(run: OptimizationRun) -> dict:
+    """Serialize an OptimizationRun ORM object into a JSON-friendly dictionary."""
+
+    return {
+        "id": run.id,
+        "method": run.method,
+        "context": run.context,
+        "status": run.status,
+        "start_time": _isoformat(run.start_time),
+        "end_time": _isoformat(run.end_time),
+        "error_message": run.error_message,
+        "created_by": run.created_by,
+        "created_at": _isoformat(run.created_at),
+    }
+
+
+def ai_query_to_dict(query: AIQuery) -> dict:
+    """Serialize an AIQuery ORM object into a JSON-friendly dictionary."""
+
+    return {
+        "id": query.id,
+        "query": query.query,
+        "context": query.context,
+        "selected_model": query.selected_model,
+        "latency_ms": query.latency_ms,
+        "input_tokens": query.input_tokens,
+        "output_tokens": query.output_tokens,
+        "cost_usd": query.cost_usd,
+        "created_by": query.created_by,
+        "created_at": _isoformat(query.created_at),
+    }
 
 
 def init_database():

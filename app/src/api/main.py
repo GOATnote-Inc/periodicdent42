@@ -244,9 +244,8 @@ async def query_with_feedback(body: QueryRequest, request: Request):
     async def event_stream():
         """Stream SSE events for Flash then Pro."""
         try:
-            # Launch both models in parallel
-            flash_task = asyncio.create_task(agent._query_flash(prompt, context))
-            pro_task = asyncio.create_task(agent._query_pro(prompt, context))
+            # Launch both models in parallel via the agent helper
+            flash_task, pro_task = agent.start_query_tasks(prompt, context)
             
             # Stream Flash response immediately
             flash_response = await flash_task
@@ -437,24 +436,7 @@ async def list_experiments_db(
         )
         
         # Convert to dict for JSON serialization
-        exp_dicts = []
-        for exp in experiments:
-            exp_dict = {
-                "id": exp.id,
-                "optimization_run_id": exp.optimization_run_id,
-                "method": exp.method,
-                "parameters": exp.parameters,
-                "context": exp.context,
-                "noise_estimate": exp.noise_estimate,
-                "results": exp.results,
-                "status": exp.status,
-                "start_time": exp.start_time.isoformat() if exp.start_time else None,
-                "end_time": exp.end_time.isoformat() if exp.end_time else None,
-                "error_message": exp.error_message,
-                "created_by": exp.created_by,
-                "created_at": exp.created_at.isoformat() if exp.created_at else None
-            }
-            exp_dicts.append(exp_dict)
+        exp_dicts = [db.experiment_to_dict(exp) for exp in experiments]
         
         return {
             "experiments": exp_dicts,
@@ -494,20 +476,7 @@ async def list_optimization_runs_api(
         )
         
         # Convert to dict for JSON serialization
-        run_dicts = []
-        for run in runs:
-            run_dict = {
-                "id": run.id,
-                "method": run.method,
-                "context": run.context,
-                "status": run.status,
-                "start_time": run.start_time.isoformat() if run.start_time else None,
-                "end_time": run.end_time.isoformat() if run.end_time else None,
-                "error_message": run.error_message,
-                "created_by": run.created_by,
-                "created_at": run.created_at.isoformat() if run.created_at else None
-            }
-            run_dicts.append(run_dict)
+        run_dicts = [db.optimization_run_to_dict(run) for run in runs]
         
         return {
             "optimization_runs": run_dicts,
@@ -557,26 +526,9 @@ async def list_ai_queries(
         ai_queries = query.order_by(db.AIQuery.created_at.desc()).limit(limit).all()
         
         # Convert to dict
-        query_dicts = []
-        total_cost = 0.0
-        total_queries = len(ai_queries)
-        
-        for q in ai_queries:
-            query_dict = {
-                "id": q.id,
-                "query": q.query,
-                "context": q.context,
-                "selected_model": q.selected_model,
-                "latency_ms": q.latency_ms,
-                "input_tokens": q.input_tokens,
-                "output_tokens": q.output_tokens,
-                "cost_usd": q.cost_usd,
-                "created_by": q.created_by,
-                "created_at": q.created_at.isoformat() if q.created_at else None
-            }
-            query_dicts.append(query_dict)
-            if q.cost_usd:
-                total_cost += q.cost_usd
+        query_dicts = [db.ai_query_to_dict(q) for q in ai_queries]
+        total_cost = sum((q["cost_usd"] or 0) for q in query_dicts)
+        total_queries = len(query_dicts)
         
         response = {
             "ai_queries": query_dicts,
