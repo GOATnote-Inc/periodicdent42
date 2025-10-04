@@ -32,9 +32,20 @@ class DualModelAgent:
         
         logger.info("DualModelAgent initialized")
     
+    def start_query_tasks(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+    ) -> Tuple[asyncio.Task, asyncio.Task]:
+        """Launch Flash and Pro queries concurrently and return their tasks."""
+
+        flash_task = asyncio.create_task(self._query_flash(prompt, context))
+        pro_task = asyncio.create_task(self._query_pro(prompt, context))
+        return flash_task, pro_task
+
     async def query_parallel(
-        self, 
-        prompt: str, 
+        self,
+        prompt: str,
         context: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
@@ -48,8 +59,7 @@ class DualModelAgent:
             (flash_response, pro_response) - Flash completes first, Pro follows
         """
         # Launch both models simultaneously
-        flash_task = asyncio.create_task(self._query_flash(prompt, context))
-        pro_task = asyncio.create_task(self._query_pro(prompt, context))
+        flash_task, pro_task = self.start_query_tasks(prompt, context)
         
         # Await Flash first for immediate UI update
         flash_response = await flash_task
