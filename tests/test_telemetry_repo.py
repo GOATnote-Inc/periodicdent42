@@ -11,10 +11,18 @@ from services.telemetry.telemetry_repo import TelemetryRepo
 
 @pytest.fixture
 def telemetry_db(tmp_path: Path) -> str:
+    """Create temporary test database with Alembic migrations applied."""
     db_path = tmp_path / "telemetry.sqlite"
     url = f"sqlite:///{db_path}"
-    cfg = Config(str(Path("infra/db/alembic.ini")))
-    cfg.set_main_option("script_location", "infra/db/migrations")
+    
+    # Resolve Alembic config path relative to repository root
+    # This works in both local development and CI environments
+    repo_root = Path(__file__).resolve().parent.parent
+    alembic_ini = repo_root / "infra" / "db" / "alembic.ini"
+    migrations_dir = repo_root / "infra" / "db" / "migrations"
+    
+    cfg = Config(str(alembic_ini))
+    cfg.set_main_option("script_location", str(migrations_dir))
     cfg.set_main_option("sqlalchemy.url", url)
     command.upgrade(cfg, "head")
     return url
