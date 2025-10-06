@@ -8,7 +8,7 @@ pydantic-settings==2.1.0
 google-cloud-aiplatform==1.38.1
 google-cloud-storage==2.10.0
 google-cloud-secret-manager==2.16.4
-google-cloud-logging==3.8.0
+google-cloud-logging==3.12.1
 google-cloud-monitoring==2.16.0
 
 # Database
