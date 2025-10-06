@@ -167,14 +167,17 @@ def safe_execute(
 
 
 # Example resilient function
-@retry(max_attempts=3, delay=0.1, backoff=2.0)
 def resilient_api_call(url: str) -> dict:
     """Example API call with automatic retry on failure."""
-    # Simulated API call
-    import random
-    if random.random() < 0.3:
-        raise ConnectionError("Network error")
-    return {"status": "success", "url": url}
+    @retry(max_attempts=5, delay=0.1, backoff=2.0)
+    def _make_request():
+        # Simulated API call with transient failures
+        import random
+        if random.random() < 0.3:
+            raise ConnectionError("Network error")
+        return {"status": "success", "url": url}
+    
+    return _make_request()
 
 
 # Example circuit breaker usage

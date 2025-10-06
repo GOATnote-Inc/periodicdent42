@@ -114,6 +114,7 @@ def test_safe_execute_pattern():
 
 
 # Example 8: Real-world scenario - API call with resilience
+@pytest.mark.chaos_safe  # Don't inject additional chaos - function has built-in failures
 def test_resilient_api_call():
     """Test API call that survives network failures."""
     result = resilient_api_call("https://example.com/api")
