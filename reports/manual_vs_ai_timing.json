@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-10-06T19:12:07.739663",
+  "n_flamegraphs": 2,
+  "avg_manual_seconds": 120.0,
+  "avg_ai_seconds": 0.05623292922973633,
+  "avg_speedup": 2133.9809546422,
+  "results": [
+    {
+      "flamegraph": "validate_stochastic_20251006_192536.svg",
+      "manual_seconds": 120.0,
+      "ai_seconds": 0.0568089485168457,
+      "speedup": 2112.3432686738797
+    },
+    {
+      "flamegraph": "validate_rl_system_20251006_192536.svg",
+      "manual_seconds": 120.0,
+      "ai_seconds": 0.05565690994262695,
+      "speedup": 2156.066517593235
+    }
+  ],
+  "note": "Manual time based on conservative 2-minute estimate per flamegraph"
+}

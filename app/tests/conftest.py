@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -54,19 +55,30 @@ if os.getenv("SKIP_TEST_TELEMETRY") != "1":
                 passed = report.outcome == "passed"
                 error_message = str(report.longrepr) if report.failed else None
                 
+                # Get git context
+                commit_sha = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    capture_output=True, text=True, timeout=2
+                ).stdout.strip() or "unknown"
+                
+                branch = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    capture_output=True, text=True, timeout=2
+                ).stdout.strip() or "main"
+                
                 # Create test execution record
                 execution = TestExecution(
                     test_name=test_name,
                     test_file=test_file,
                     duration_ms=duration_ms,
                     passed=passed,
-                    commit_sha=collector.get_commit_sha(),
-                    branch=collector.get_branch(),
+                    commit_sha=commit_sha,
+                    branch=branch,
                     error_message=error_message,
                 )
                 
                 # Collect and store
-                collector.collect(execution)
+                collector.collect_test_result(execution)
                 
                 if os.getenv("DEBUG_TELEMETRY") == "1":
                     print(f"✅ Collected telemetry for {test_name}")
