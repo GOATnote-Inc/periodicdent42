@@ -39,10 +39,18 @@ jobs:
         id: download_model
         continue-on-error: true
         run: |
-          # Try to download from Cloud Storage (when configured)
-          # gsutil cp gs://periodicdent42-ml-models/test_selector.pkl . || echo "Model not found"
-          # For now, skip ML prediction (will be enabled after model is uploaded)
-          echo "skip_ml=true" >> $GITHUB_OUTPUT
+          # ML Test Selection: Download trained model from Cloud Storage
+          echo "🤖 Downloading trained ML model..."
+          gsutil cp gs://periodicdent42-ml-models/test_selector.pkl . || echo "⚠️  Model not found, skipping ML"
+          gsutil cp gs://periodicdent42-ml-models/test_selector.json . || echo "⚠️  Metadata not found"
+          
+          if [ -f test_selector.pkl ]; then
+            echo "skip_ml=false" >> $GITHUB_OUTPUT
+            echo "✅ ML test selection enabled"
+          else
+            echo "skip_ml=true" >> $GITHUB_OUTPUT
+            echo "⚠️  ML test selection disabled (model not found)"
+          fi
       
       - name: Predict tests to run
         id: predict
