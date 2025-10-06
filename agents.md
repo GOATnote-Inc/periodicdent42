@@ -91,12 +91,13 @@ cd app && export PYTHONPATH="/Users/kiteboard/periodicdent42:\${PYTHONPATH}" && 
 ### Test
 \`\`\`bash
 cd app && export PYTHONPATH=".:\${PYTHONPATH}" && pytest tests/ -v --tb=short --cov=src
+pytest --cov-report=term-missing  # root services + coverage gate (>=60%)
 \`\`\`
 
 **Coverage Requirements:**
-- Aim for >50% coverage on new modules
+- Aim for >60% coverage on new modules (CI gate enforced at 60%)
 - Critical paths (API endpoints, safety systems) should have >80% coverage
-- CI pipeline enforces coverage checks on pull requests
+- New router, telemetry, and RAG modules must include focused tests under `tests/`
 
 ## Coding Guidelines
 
@@ -201,6 +202,8 @@ This project follows a **"fail frequently and learn fast"** philosophy:
    curl 'http://localhost:8080/api/experiments?limit=10'
    curl 'http://localhost:8080/api/optimization_runs?status=completed'
    curl 'http://localhost:8080/api/ai_queries'
+   curl 'http://localhost:8000/api/telemetry/runs?limit=20'
+   curl "http://localhost:8000/api/telemetry/runs/${RUN_ID}/events"
    \`\`\`
 
 2. **Query database directly**:
@@ -209,12 +212,19 @@ This project follows a **"fail frequently and learn fast"** philosophy:
    psql -h localhost -p 5433 -U ard_user -d ard_intelligence -c "SELECT COUNT(*) FROM experiments;"
    \`\`\`
 
-3. **Regenerate test data**:
+3. **Apply telemetry migrations / inspect runs**:
+   \`\`\`bash
+   make db-upgrade
+   MESSAGE="add column" make db-migrate
+   python -m tools.telemetry tail --last 25
+   \`\`\`
+
+4. **Regenerate test data**:
    \`\`\`bash
    python scripts/generate_test_data.py --runs 20 --experiments-per-run 10 --standalone 50 --queries 100
    \`\`\`
 
-4. **Reset database schema** (DESTRUCTIVE):
+5. **Reset database schema** (DESTRUCTIVE):
    \`\`\`bash
    python scripts/recreate_schema.py
    python scripts/init_database.py

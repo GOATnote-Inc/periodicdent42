@@ -18,13 +18,26 @@ graph:
 	python scripts/repo_graph.py --root . --json docs/dependency_graph.json --mermaid docs/ARCHITECTURE_MAP.md
 
 audit:
-	python scripts/repo_audit.py --root . --output docs/audit.json
+        python scripts/repo_audit.py --root . --output docs/audit.json
 
 demo:
-	npm --prefix apps/web run dev
+        npm --prefix apps/web run dev
+
+db-migrate:
+        @if [ -z "$(MESSAGE)" ]; then \
+                echo "Set MESSAGE=\"description\" to create a migration"; \
+                exit 1; \
+        fi
+        alembic -c infra/db/alembic.ini revision -m "$(MESSAGE)"
+
+db-upgrade:
+        alembic -c infra/db/alembic.ini upgrade head
+
+test-coverage:
+        pytest --cov-report=term-missing
 
 run:
-	cd app && $(MAKE) dev
+        cd app && $(MAKE) dev
 
 campaign:
 	cd app && PYTHONPATH=src python ../scripts/run_uv_vis_campaign.py --experiments 50 --hours 24
@@ -37,7 +50,10 @@ ingest:
 	python -m services.rag.index
 
 run.api:
-	uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
+        uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+run-api:
+        $(MAKE) run.api
 
 run.web:
 	npm --prefix apps/web run dev

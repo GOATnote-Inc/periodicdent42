@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Protocol
+
+from services.router.llm_router import LLMRouter, RouterDecision
 
 
 class SupportsRouterContext(Protocol):
@@ -9,21 +10,12 @@ class SupportsRouterContext(Protocol):
     arm: str | None
 
 
-@dataclass
-class RouterDecision:
-    arm: str
-    policy: str
-
-
-DEFAULT_ARM = "balanced"
+_ROUTER = LLMRouter()
 
 
 def select_arm(request: SupportsRouterContext) -> RouterDecision:
-    if request.arm:
-        return RouterDecision(arm=request.arm, policy="user_override")
-    if len(request.query) > 280:
-        return RouterDecision(arm="high-accuracy", policy="length-rule")
-    return RouterDecision(arm=DEFAULT_ARM, policy="bandit-placeholder")
+    trace = _ROUTER.route(request)
+    return trace.decision
 
 
 __all__ = ["RouterDecision", "select_arm"]

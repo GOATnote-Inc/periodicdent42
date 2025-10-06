@@ -83,6 +83,7 @@ results/
 tmp/
 temp/
 *.tmp
+.cache/
 
 # macOS
 .DS_Store
