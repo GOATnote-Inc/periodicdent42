@@ -7,6 +7,8 @@ Moat: TIME - Maximize learning velocity through intelligent experiment selection
 """
 
 import copy
+import math
+import random
 import numpy as np
 from typing import List, Tuple, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
@@ -17,6 +19,18 @@ import structlog
 from configs.data_schema import Experiment, Protocol, Sample, Decision
 
 logger = structlog.get_logger()
+
+
+def _to_hashable(value: Any) -> Any:
+    """Convert arbitrary objects to a hashable representation."""
+
+    if isinstance(value, dict):
+        return tuple(sorted((key, _to_hashable(val)) for key, val in value.items()))
+    if isinstance(value, (list, tuple, set)):
+        return tuple(_to_hashable(item) for item in value)
+    if hasattr(value, "__dict__"):
+        return tuple(sorted((key, _to_hashable(val)) for key, val in vars(value).items()))
+    return value
 
 
 @dataclass
@@ -41,11 +55,33 @@ class Hypothesis:
             return self._continuous_likelihood(test, outcome)
 
         likelihoods = self.metadata.get("likelihoods", {})
-        key = (self._hashable(test), self._hashable(outcome))
-        likelihood = likelihoods.get(key)
+        test_key = self._resolve_test_key(test)
+        outcome_key = self._hashable(outcome)
+        likelihood: Optional[float] = None
+
+        if isinstance(likelihoods, dict):
+            tuple_key = (self._hashable(test), outcome_key)
+            if tuple_key in likelihoods:
+                likelihood = likelihoods.get(tuple_key)
+            else:
+                mapping = likelihoods.get(test_key)
+                if isinstance(mapping, dict):
+                    likelihood = mapping.get(outcome)
+                    if likelihood is None:
+                        likelihood = mapping.get(outcome_key)
+                elif isinstance(mapping, (int, float)):
+                    likelihood = mapping
 
         if likelihood is None:
-            likelihood = self.metadata.get("default_likelihood", 1.0)
+            default = self.metadata.get("default_likelihood")
+            if default is not None:
+                likelihood = float(default)
+            else:
+                outcomes = self.metadata.get("test_outcomes", {}).get(test_key)
+                if outcomes:
+                    likelihood = 1.0 / max(len(outcomes), 1)
+                else:
+                    likelihood = 1e-6
 
         return max(float(likelihood), 1e-12)
 
@@ -89,9 +125,15 @@ class Hypothesis:
 
     @staticmethod
     def _hashable(value: Any) -> Any:
-        if isinstance(value, dict):
-            return tuple(sorted(value.items()))
-        return value
+        return _to_hashable(value)
+
+    @staticmethod
+    def _resolve_test_key(test: Any) -> Any:
+        if isinstance(test, dict):
+            return test.get("name") or _to_hashable(test)
+        if hasattr(test, "name"):
+            return getattr(test, "name")
+        return test
 
 
 @dataclass
@@ -343,11 +385,22 @@ class EIGOptimizer:
         """Enumerate plausible outcomes and their support weights."""
 
         discrete_outcomes: List[Any] = []
+        test_key = Hypothesis._resolve_test_key(test)
 
         for hypothesis in belief_state.hypotheses:
-            outcomes = hypothesis.metadata.get("possible_outcomes") or hypothesis.metadata.get("outcomes")
-            if outcomes:
-                discrete_outcomes.extend(outcomes)
+            outcomes_map = hypothesis.metadata.get("test_outcomes")
+            if outcomes_map and test_key in outcomes_map:
+                discrete_outcomes.extend(outcomes_map[test_key])
+            else:
+                outcomes = hypothesis.metadata.get("possible_outcomes") or hypothesis.metadata.get("outcomes")
+                if outcomes:
+                    discrete_outcomes.extend(outcomes)
+
+        if not discrete_outcomes:
+            if isinstance(test, dict):
+                discrete_outcomes.extend(test.get("possible_outcomes", []))
+            elif hasattr(test, "possible_outcomes"):
+                discrete_outcomes.extend(getattr(test, "possible_outcomes"))
 
         if discrete_outcomes:
             unique_outcomes = list(dict.fromkeys(discrete_outcomes))
@@ -586,8 +639,58 @@ class EIGOptimizer:
         
         ucb = mean + beta * std
         top_indices = np.argsort(ucb)[-top_k:]
-        
+
         return X_pool[top_indices]
+
+
+@dataclass
+class DiagnosticTest:
+    """Definition of a diagnostic test including operational cost and risk."""
+
+    name: str
+    rationale: str
+    possible_outcomes: List[Any]
+    cost: float
+    risk: float
+
+
+@dataclass
+class ExperimentRecord:
+    """Record of a single executed diagnostic test."""
+
+    test_name: str
+    rationale: str
+    outcome: Any
+    information_gain: float
+    value_of_information: float
+    entropy_before: float
+    entropy_after: float
+    entropy_change: float
+    top_hypotheses: List[Tuple[str, float]]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "test": self.test_name,
+            "rationale": self.rationale,
+            "outcome": self.outcome,
+            "information_gain": self.information_gain,
+            "value_of_information": self.value_of_information,
+            "entropy_before": self.entropy_before,
+            "entropy_after": self.entropy_after,
+            "entropy_change": self.entropy_change,
+            "top_hypotheses": self.top_hypotheses,
+        }
+
+
+@dataclass
+class AgentState:
+    """Mutable state of the diagnostic agent during sequential testing."""
+
+    belief_state: BeliefState
+    total_cost_allowed: float
+    remaining_budget: float
+    max_risk_level: float
+    experiment_history: List[ExperimentRecord] = field(default_factory=list)
 
 
 def generate_decision_log(
@@ -630,36 +733,413 @@ def generate_decision_log(
     )
 
 
-# Example usage
-if __name__ == "__main__":
-    # Create synthetic data
-    np.random.seed(42)
-    
-    X_train = np.random.rand(10, 2)  # 10 experiments, 2 parameters
-    y_train = np.sin(X_train[:, 0]) + 0.5 * X_train[:, 1] + np.random.randn(10) * 0.1
-    
-    # Fit GP
-    gp = GaussianProcessSurrogate()
-    gp.fit(X_train, y_train)
-    
-    # Create optimizer
-    cost_model = {
-        "xrd-001_time": 2.0,
-        "xrd-001_cost": 100.0
+def _outcome_distribution(hypothesis: Hypothesis, test_name: str) -> Dict[Any, float]:
+    """Return outcome probabilities for a test under a hypothesis."""
+
+    likelihoods = hypothesis.metadata.get("likelihoods", {})
+    distribution: Dict[Any, float] = {}
+
+    if isinstance(likelihoods, dict):
+        mapping = likelihoods.get(test_name)
+        if isinstance(mapping, dict):
+            distribution = {key: float(value) for key, value in mapping.items()}
+        else:
+            hashed_key = Hypothesis._hashable({"name": test_name})
+            mapping = likelihoods.get(hashed_key)
+            if isinstance(mapping, dict):
+                distribution = {key: float(value) for key, value in mapping.items()}
+
+        if not distribution:
+            hashed_test = Hypothesis._hashable({"name": test_name})
+            for key, value in likelihoods.items():
+                if isinstance(key, tuple) and len(key) == 2 and key[0] == hashed_test:
+                    distribution[key[1]] = float(value)
+
+    return distribution
+
+
+def _simulate_outcome(
+    test: DiagnosticTest,
+    ground_truth: str,
+    hypotheses: List[Hypothesis],
+    rng: random.Random,
+) -> Any:
+    """Sample an outcome for the given test using the ground-truth hypothesis."""
+
+    hypothesis = next((h for h in hypotheses if h.name == ground_truth), None)
+    if hypothesis is None:
+        return rng.choice(test.possible_outcomes)
+
+    distribution = _outcome_distribution(hypothesis, test.name)
+    if not distribution:
+        return rng.choice(test.possible_outcomes)
+
+    total = sum(distribution.values())
+    if total <= 0:
+        return rng.choice(test.possible_outcomes)
+
+    threshold = rng.random() * total
+    cumulative = 0.0
+    for outcome in test.possible_outcomes:
+        probability = float(
+            distribution.get(outcome)
+            or distribution.get(Hypothesis._hashable(outcome), 0.0)
+        )
+        cumulative += probability
+        if threshold <= cumulative:
+            return outcome
+
+    return max(distribution.items(), key=lambda item: item[1])[0]
+
+
+def _select_next_test(
+    mode: str,
+    candidates: List[DiagnosticTest],
+    optimizer: EIGOptimizer,
+    belief_state: BeliefState,
+) -> Optional[Tuple[DiagnosticTest, float, float]]:
+    """Score candidates and return the next test plus its metrics."""
+
+    scores: List[Tuple[DiagnosticTest, float, float]] = []
+    for test in candidates:
+        payload = {
+            "name": test.name,
+            "possible_outcomes": list(test.possible_outcomes),
+            "cost": test.cost,
+            "risk": test.risk,
+        }
+        info_gain = optimizer.compute_information_gain(payload, belief_state=belief_state)
+        voi = info_gain / max(test.cost, 1e-6)
+        scores.append((test, info_gain, voi))
+
+    if not scores:
+        return None
+
+    mode_key = mode.lower()
+    if mode_key == "greedy":
+        return max(scores, key=lambda item: (item[1], -item[0].cost))
+    if mode_key == "infogain":
+        return max(scores, key=lambda item: (item[2], item[1]))
+
+    raise ValueError(f"Unknown diagnostic mode: {mode}")
+
+
+def build_diagnostic_scenario() -> Tuple[List[DiagnosticTest], List[Hypothesis]]:
+    """Create a synthetic diagnostic scenario with priors and likelihoods."""
+
+    tests = [
+        DiagnosticTest(
+            name="VacuumIntegrity",
+            rationale="Mass-spec leak check to validate chamber integrity",
+            possible_outcomes=["leak", "clear"],
+            cost=4.0,
+            risk=0.2,
+        ),
+        DiagnosticTest(
+            name="AlignmentDriftScan",
+            rationale="Precision scan to measure goniometer drift",
+            possible_outcomes=["drift", "stable"],
+            cost=3.0,
+            risk=0.3,
+        ),
+        DiagnosticTest(
+            name="DetectorHealthCheck",
+            rationale="Power cycle detector and run built-in self test",
+            possible_outcomes=["recovered", "still_faulty"],
+            cost=5.5,
+            risk=0.55,
+        ),
+        DiagnosticTest(
+            name="SampleChargeProbe",
+            rationale="Kelvin probe to quantify surface charging",
+            possible_outcomes=["charging", "neutral"],
+            cost=2.5,
+            risk=0.1,
+        ),
+    ]
+
+    outcomes_map = {test.name: list(test.possible_outcomes) for test in tests}
+    all_outcomes: List[Any] = []
+    for test in tests:
+        all_outcomes.extend(test.possible_outcomes)
+    unique_outcomes = list(dict.fromkeys(all_outcomes))
+
+    hypotheses = [
+        Hypothesis(
+            name="Vacuum Leak",
+            prior=0.35,
+            metadata={
+                "likelihoods": {
+                    "VacuumIntegrity": {"leak": 0.9, "clear": 0.1},
+                    "AlignmentDriftScan": {"drift": 0.7, "stable": 0.3},
+                    "DetectorHealthCheck": {"recovered": 0.2, "still_faulty": 0.8},
+                    "SampleChargeProbe": {"charging": 0.6, "neutral": 0.4},
+                },
+                "test_outcomes": copy.deepcopy(outcomes_map),
+                "possible_outcomes": unique_outcomes,
+            },
+        ),
+        Hypothesis(
+            name="Alignment Drift",
+            prior=0.4,
+            metadata={
+                "likelihoods": {
+                    "VacuumIntegrity": {"leak": 0.2, "clear": 0.8},
+                    "AlignmentDriftScan": {"drift": 0.85, "stable": 0.15},
+                    "DetectorHealthCheck": {"recovered": 0.4, "still_faulty": 0.6},
+                    "SampleChargeProbe": {"charging": 0.3, "neutral": 0.7},
+                },
+                "test_outcomes": copy.deepcopy(outcomes_map),
+                "possible_outcomes": unique_outcomes,
+            },
+        ),
+        Hypothesis(
+            name="Sample Charging",
+            prior=0.25,
+            metadata={
+                "likelihoods": {
+                    "VacuumIntegrity": {"leak": 0.1, "clear": 0.9},
+                    "AlignmentDriftScan": {"drift": 0.25, "stable": 0.75},
+                    "DetectorHealthCheck": {"recovered": 0.6, "still_faulty": 0.4},
+                    "SampleChargeProbe": {"charging": 0.85, "neutral": 0.15},
+                },
+                "test_outcomes": copy.deepcopy(outcomes_map),
+                "possible_outcomes": unique_outcomes,
+            },
+        ),
+    ]
+
+    return tests, hypotheses
+
+
+def run_diagnostic_session(
+    mode: str = "infogain",
+    ground_truth: Optional[str] = None,
+    *,
+    tests: Optional[List[DiagnosticTest]] = None,
+    hypotheses: Optional[List[Hypothesis]] = None,
+    total_budget: float = 12.0,
+    max_risk: float = 0.5,
+    rng: Optional[random.Random] = None,
+) -> Dict[str, Any]:
+    """Run a sequential diagnostic session and return summary metrics."""
+
+    scenario_tests, scenario_hypotheses = tests, hypotheses
+    if scenario_tests is None or scenario_hypotheses is None:
+        scenario_tests, scenario_hypotheses = build_diagnostic_scenario()
+
+    reference_hypotheses = scenario_hypotheses
+    belief_hypotheses = [
+        Hypothesis(
+            name=h.name,
+            prior=h.prior,
+            hypothesis_type=h.hypothesis_type,
+            mean=h.mean,
+            variance=h.variance,
+            metadata=copy.deepcopy(h.metadata),
+            likelihood_fn=h.likelihood_fn,
+        )
+        for h in reference_hypotheses
+    ]
+
+    belief_state = BeliefState(hypotheses=belief_hypotheses, min_posterior_threshold=1e-3)
+    agent_state = AgentState(
+        belief_state=belief_state,
+        total_cost_allowed=total_budget,
+        remaining_budget=total_budget,
+        max_risk_level=max_risk,
+    )
+
+    gp_stub = GaussianProcessSurrogate()
+    optimizer = EIGOptimizer(gp_stub, cost_model={}, belief_state=belief_state)
+
+    rng = rng or random.Random()
+    available_names = [h.name for h in reference_hypotheses]
+    if ground_truth and ground_truth not in available_names:
+        raise ValueError(f"Unknown ground_truth '{ground_truth}'. Expected one of {available_names}")
+    ground_truth_name = ground_truth or rng.choice(available_names)
+
+    available_tests = list(scenario_tests)
+    total_info_gain = 0.0
+    tests_run = 0
+    mode_key = mode.lower()
+
+    while available_tests:
+        selection = _select_next_test(mode_key, available_tests, optimizer, belief_state)
+        if selection is None:
+            break
+
+        test, info_gain, voi = selection
+        if test.risk > agent_state.max_risk_level:
+            logger.info(
+                "test_skipped_risk",
+                test=test.name,
+                risk=test.risk,
+                max_risk=agent_state.max_risk_level,
+            )
+            available_tests.remove(test)
+            continue
+
+        if test.cost > agent_state.remaining_budget:
+            logger.info(
+                "budget_exhausted",
+                test=test.name,
+                cost=test.cost,
+                remaining=agent_state.remaining_budget,
+            )
+            break
+
+        payload = {
+            "name": test.name,
+            "possible_outcomes": list(test.possible_outcomes),
+            "cost": test.cost,
+            "risk": test.risk,
+        }
+        entropy_before = belief_state.current_entropy()
+        outcome = _simulate_outcome(test, ground_truth_name, reference_hypotheses, rng)
+        belief_state.update_beliefs(payload, outcome)
+        entropy_after = belief_state.current_entropy()
+        entropy_change = entropy_before - entropy_after
+        top_hypotheses = sorted(
+            ((h.name, float(h.prior)) for h in belief_state.hypotheses),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:3]
+
+        rationale = (
+            f"{mode_key} selection: IG={info_gain:.3f} bits, "
+            f"cost={test.cost:.2f}, VoI={voi:.3f}"
+        )
+        record = ExperimentRecord(
+            test_name=test.name,
+            rationale=rationale,
+            outcome=outcome,
+            information_gain=info_gain,
+            value_of_information=voi,
+            entropy_before=entropy_before,
+            entropy_after=entropy_after,
+            entropy_change=entropy_change,
+            top_hypotheses=top_hypotheses,
+        )
+        agent_state.experiment_history.append(record)
+
+        agent_state.remaining_budget -= test.cost
+        available_tests.remove(test)
+        total_info_gain += info_gain
+        tests_run += 1
+
+        logger.info(
+            "test_executed",
+            test=test.name,
+            outcome=outcome,
+            information_gain=info_gain,
+            voi=voi,
+            remaining_budget=agent_state.remaining_budget,
+        )
+
+        if entropy_after <= 1e-3 or len(belief_state.hypotheses) <= 1:
+            logger.info(
+                "entropy_threshold_reached",
+                entropy=entropy_after,
+                tests_run=tests_run,
+            )
+            break
+
+    total_cost_spent = agent_state.total_cost_allowed - agent_state.remaining_budget
+    cost_per_bit = (
+        total_cost_spent / total_info_gain if total_info_gain > 0 else float("inf")
+    )
+    final_top = None
+    if belief_state.hypotheses:
+        final_top = max(
+            ((h.name, float(h.prior)) for h in belief_state.hypotheses),
+            key=lambda item: item[1],
+        )
+    success = bool(final_top and final_top[0] == ground_truth_name)
+
+    return {
+        "mode": mode_key,
+        "ground_truth": ground_truth_name,
+        "tests_run": tests_run,
+        "total_cost": total_cost_spent,
+        "remaining_budget": agent_state.remaining_budget,
+        "total_information_gain": total_info_gain,
+        "cost_per_bit": cost_per_bit,
+        "success": success,
+        "history": [record.to_dict() for record in agent_state.experiment_history],
+        "final_top_hypothesis": final_top,
     }
-    optimizer = EIGOptimizer(gp, cost_model)
-    
-    # Generate candidate pool
-    X_pool = np.random.rand(50, 2)
-    
-    # Select batch
-    selected = optimizer.select_batch_greedy(X_pool, batch_size=5, instrument_id="xrd-001")
-    
-    print("Selected experiments:")
-    for i, result in enumerate(selected):
-        print(f"{i+1}. EIG={result.eig:.3f}, cost={result.cost_hours:.1f}h, ratio={result.eig_per_cost:.3f}")
-    
-    # Generate decision log
-    decision = generate_decision_log(selected, [], agent_id="demo")
-    print(f"\nDecision rationale: {decision.rationale}")
+
+
+def run_comparison_driver(n_cases: int = 25, seed: int = 0) -> Dict[str, Dict[str, float]]:
+    """Run multiple synthetic sessions and print greedy vs info-gain comparison."""
+
+    rng = random.Random(seed)
+    results: Dict[str, List[Dict[str, Any]]] = {"greedy": [], "infogain": []}
+
+    for _ in range(n_cases):
+        tests, hypotheses = build_diagnostic_scenario()
+        ground_truth = rng.choice([h.name for h in hypotheses])
+
+        results["greedy"].append(
+            run_diagnostic_session(
+                mode="greedy",
+                ground_truth=ground_truth,
+                tests=tests,
+                hypotheses=hypotheses,
+                rng=random.Random(rng.random()),
+            )
+        )
+
+        tests_inf, hypotheses_inf = build_diagnostic_scenario()
+        results["infogain"].append(
+            run_diagnostic_session(
+                mode="infogain",
+                ground_truth=ground_truth,
+                tests=tests_inf,
+                hypotheses=hypotheses_inf,
+                rng=random.Random(rng.random()),
+            )
+        )
+
+    summary: Dict[str, Dict[str, float]] = {}
+    for mode, sessions in results.items():
+        if not sessions:
+            continue
+        avg_tests = sum(session["tests_run"] for session in sessions) / len(sessions)
+        avg_cost = sum(session["total_cost"] for session in sessions) / len(sessions)
+        success_rate = sum(1 for session in sessions if session["success"]) / len(sessions)
+        finite_costs = [
+            session["cost_per_bit"]
+            for session in sessions
+            if math.isfinite(session["cost_per_bit"])
+        ]
+        avg_cost_per_bit = (
+            sum(finite_costs) / len(finite_costs) if finite_costs else float("inf")
+        )
+        summary[mode] = {
+            "avg_tests_used": avg_tests,
+            "avg_total_cost": avg_cost,
+            "success_rate": success_rate,
+            "avg_cost_per_bit": avg_cost_per_bit,
+        }
+
+    print(f"\nDiagnostic strategy comparison over {n_cases} synthetic runs")
+    print("Mode       | Avg Tests | Avg Cost | Success | Cost/bit")
+    for mode in ("greedy", "infogain"):
+        stats = summary.get(mode)
+        if not stats:
+            continue
+        cost_bit = stats["avg_cost_per_bit"]
+        cost_bit_display = f"{cost_bit:.3f}" if math.isfinite(cost_bit) else "inf"
+        print(
+            f"{mode:<10} | {stats['avg_tests_used']:.2f}      | "
+            f"${stats['avg_total_cost']:.2f}   | {stats['success_rate']:.2%} | {cost_bit_display}"
+        )
+
+    return summary
+
+
+if __name__ == "__main__":
+    run_comparison_driver()
 
