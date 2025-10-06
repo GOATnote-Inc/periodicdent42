@@ -55,30 +55,33 @@ jobs:
       
       - name: Enforce coverage minimum
         run: |
-          python - <<'PY'
-import xml.etree.ElementTree as ET
-from pathlib import Path
-
-report = Path('coverage.xml')
-if not report.exists():
-    print("⚠️  No coverage.xml found - skipping coverage check")
-    exit(0)
-
-line_rate = float(ET.parse(report).getroot().attrib['line-rate'])
-threshold = 0.60
-coverage_pct = line_rate * 100
-
-print(f"\n{'='*60}")
-print(f"  COVERAGE REPORT")
-print(f"{'='*60}")
-print(f"  Current: {coverage_pct:.2f}%")
-print(f"  Required: {threshold*100:.0f}%")
-print(f"  Status: {'✅ PASS' if coverage_pct >= threshold*100 else '❌ FAIL'}")
-print(f"{'='*60}\n")
-
-if line_rate < threshold:
-    raise SystemExit(f"Coverage {coverage_pct:.2f}% below required {threshold*100:.0f}%")
-PY
+          python -c "
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          
+          report = Path('coverage.xml')
+          if not report.exists():
+              print('No coverage.xml found - skipping coverage check')
+              exit(0)
+          
+          line_rate = float(ET.parse(report).getroot().attrib['line-rate'])
+          threshold = 0.60
+          coverage_pct = line_rate * 100
+          
+          print()
+          print('=' * 60)
+          print('  COVERAGE REPORT')
+          print('=' * 60)
+          print(f'  Current: {coverage_pct:.2f}%')
+          print(f'  Required: {threshold*100:.0f}%')
+          status = 'PASS' if coverage_pct >= threshold*100 else 'FAIL'
+          print(f'  Status: {status}')
+          print('=' * 60)
+          print()
+          
+          if line_rate < threshold:
+              raise SystemExit(f'Coverage {coverage_pct:.2f}% below required {threshold*100:.0f}%')
+          "
       
       - name: Run canary eval (optional)
         continue-on-error: true
