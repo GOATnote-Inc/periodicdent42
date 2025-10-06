@@ -990,7 +990,7 @@
                         team will coordinate a strategy session.
                     </p>
                 </div>
-                <form aria-label="Contact form">
+                <form aria-label="Contact form" action="mailto:info@thegoatnote.com" method="post" enctype="text/plain">
                     <div>
                         <label for="name">Name</label>
                         <input id="name" name="name" type="text" placeholder="Alex Rivera" required>
@@ -1010,7 +1010,7 @@
     </main>
 
     <footer>
-        <span>© 2025 Autonomous Research Lab Initiative. Concept site for AI-driven discovery.</span>
+        <span>© 2025 GOATnote Autonomous Research Lab Initiative. Concept site for AI-driven discovery.</span>
         <span><a href="#home">Back to top</a></span>
     </footer>
 
@@ -1328,11 +1328,10 @@
             });
         });
 
-        // CONTACT FORM (DEMO) --------------------------------------------------
+        // CONTACT FORM --------------------------------------------------
         document.querySelector('#contact form').addEventListener('submit', event => {
-            event.preventDefault();
-            alert('Thanks for reaching out! A member of the autonomous lab initiative will respond shortly.');
-            event.target.reset();
+            // Allow mailto: to work, but show confirmation
+            alert('Thanks for reaching out! Your inquiry will be sent to info@thegoatnote.com. A member of the GOATnote Autonomous Research Lab Initiative will respond shortly.');
         });
     </script>
 </body>
