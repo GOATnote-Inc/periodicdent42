@@ -18,9 +18,26 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run unit tests
+      - name: Run tests with coverage
+        env:
+          DATABASE_URL: sqlite:///$(pwd)/ci-telemetry.db
         run: |
-          pytest tests -k "nothing" || echo "stub"
+          pytest --cov-report=xml --cov-report=term-missing
+      - name: Enforce coverage minimum
+        run: |
+          python - <<'PY'
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+report = Path('coverage.xml')
+if not report.exists():
+    raise SystemExit('coverage.xml not found')
+line_rate = float(ET.parse(report).getroot().attrib['line-rate'])
+threshold = 0.60
+if line_rate < threshold:
+    raise SystemExit(f"Coverage {line_rate*100:.2f}% below required {threshold*100:.0f}%")
+print(f"Coverage check passed: {line_rate*100:.2f}%")
+PY
       - name: Run canary eval
         run: |
           python -m services.evals.runner

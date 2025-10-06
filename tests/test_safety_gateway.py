@@ -10,6 +10,11 @@ import sys
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
+try:  # pragma: no cover - optional dependency
+    import structlog  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    pytest.skip("structlog not available", allow_module_level=True)
+
 # Mock safety_kernel module before importing gateway
 sys.modules['safety_kernel'] = MagicMock()
 

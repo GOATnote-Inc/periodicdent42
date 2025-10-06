@@ -1,43 +1,37 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import os
+
+import json
 from pathlib import Path
 from typing import List
 
-from services.rag.embed import Embedder, EmbeddingResult
-
-
-@dataclass
-class CorpusChunk:
-    doc_id: str
-    content: str
-    section: str
-
-
-@dataclass
-class RetrievalHit:
-    chunk: CorpusChunk
-    score: float
+from core import stable_hash
+from services.rag.index_store import RagIndex
+from services.rag.types import CorpusChunk, RetrievalHit
 
 
 class CorpusIndex:
-    """In-memory hybrid index placeholder."""
+    """RAG index facade backed by a persistent vector cache."""
 
-    def __init__(self, chunks: list[CorpusChunk], embeddings: list[EmbeddingResult]):
-        self.chunks = chunks
-        self.embeddings = embeddings
+    def __init__(self, rag_index: RagIndex):
+        self._rag_index = rag_index
 
     def top_k(self, query: str, k: int = 5) -> List[RetrievalHit]:
-        # Simplified scoring based on keyword overlap.
-        query_terms = set(query.lower().split())
-        hits: list[RetrievalHit] = []
-        for chunk in self.chunks:
-            score = sum(1 for term in query_terms if term in chunk.content.lower())
-            if score:
-                hits.append(RetrievalHit(chunk=chunk, score=float(score)))
-        hits.sort(key=lambda hit: hit.score, reverse=True)
-        return hits[:k]
+        return self._rag_index.query(query, k=k)
+
+    @property
+    def meta(self) -> dict[str, object]:
+        return self._rag_index.metadata()
+
+    @property
+    def doc_count(self) -> int:
+        meta = self.meta
+        if not meta:
+            return 0
+        count = meta.get("doc_count", 0)
+        return int(count) if isinstance(count, (int, float)) else 0
 
 
 def load_corpus_chunks(corpus_dir: Path) -> list[CorpusChunk]:
@@ -57,13 +51,6 @@ def load_corpus_chunks(corpus_dir: Path) -> list[CorpusChunk]:
     return chunks
 
 
-def build_in_memory_index(corpus_dir: Path) -> CorpusIndex:
-    embedder = Embedder()
-    chunks = load_corpus_chunks(corpus_dir)
-    embeddings = embedder.embed_documents(chunk.content for chunk in chunks)
-    return CorpusIndex(chunks=chunks, embeddings=embeddings)
-
-
 def load_eval_dataset(path: Path) -> list[dict]:
     entries: list[dict] = []
     for line in path.read_text().splitlines():
@@ -72,9 +59,21 @@ def load_eval_dataset(path: Path) -> list[dict]:
     return entries
 
 
-def ingest(corpus_dir: Path | None = None) -> CorpusIndex:
+def ingest(
+    corpus_dir: Path | None = None,
+    *,
+    cache_dir: Path | None = None,
+    ttl_seconds: int = 86_400,
+) -> CorpusIndex:
     target_dir = corpus_dir or Path("datasets/synthetic/corpus")
-    return build_in_memory_index(target_dir)
+    documents = load_corpus_chunks(target_dir)
+    content_hash = stable_hash(f"{doc.doc_id}:{doc.section}:{doc.content}" for doc in documents)
+    cache_root = Path(os.getenv("RAG_CACHE_DIR", str(cache_dir or Path(".cache/rag"))))
+    ttl = int(os.getenv("RAG_CACHE_TTL_SECONDS", ttl_seconds))
+    rag_index = RagIndex.open(cache_root, ttl_seconds=ttl, expected_hash=content_hash)
+    if not rag_index.metadata() or rag_index.metadata().get("content_hash") != content_hash:
+        rag_index.add(documents)
+    return CorpusIndex(rag_index)
 
 
 __all__ = ["ingest", "CorpusIndex", "CorpusChunk", "RetrievalHit", "load_eval_dataset"]
@@ -82,4 +81,4 @@ __all__ = ["ingest", "CorpusIndex", "CorpusChunk", "RetrievalHit", "load_eval_da
 
 if __name__ == "__main__":
     index = ingest()
-    print(f"Loaded {len(index.chunks)} chunks from synthetic corpus.")
+    print(f"Loaded {index.doc_count} chunks from synthetic corpus.")

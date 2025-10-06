@@ -8,7 +8,6 @@ from services.evals.metrics import MetricResult, exact_match, faithfulness, roug
 from services.rag.index import load_eval_dataset
 from services.rag.models import ChatRequest
 from services.rag.pipeline import ChatPipeline
-from services.telemetry.store import TelemetryStore
 
 
 @dataclass
@@ -26,11 +25,12 @@ class EvalRun:
 def run_offline_eval(dataset_path: Path | None = None) -> EvalRun:
     path = dataset_path or Path("datasets/synthetic/eval.jsonl")
     dataset = load_eval_dataset(path)
-    pipeline = ChatPipeline.default(telemetry_store=TelemetryStore.in_memory())
+    pipeline = ChatPipeline.default()
     results: list[EvalExampleResult] = []
     for example in dataset[:5]:  # limit for stub
         request = ChatRequest(query=example["question"])
-        response = pipeline.run(request, router_decision=None)
+        result = pipeline.run(request, router_decision=None)
+        response = result.response
         metrics = [
             exact_match(response.answer, example["answer"]),
             rouge_l(response.answer, example["answer"]),

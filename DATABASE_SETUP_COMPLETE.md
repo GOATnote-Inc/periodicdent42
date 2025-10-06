@@ -8,7 +8,7 @@
 
 ## 🎯 Summary
 
-Successfully set up Cloud SQL database with full metadata persistence, generated realistic test data, and verified end-to-end integration with the analytics dashboard.
+Successfully set up Cloud SQL database with full metadata persistence, generated realistic test data, wired up persistent telemetry tables, and verified end-to-end integration with the analytics dashboard and router observability endpoints.
 
 ---
 
@@ -100,11 +100,32 @@ curl 'http://localhost:8080/api/ai_queries?limit=5'
 - ✅ Includes cost analysis summary
 - ✅ Total and average cost calculations
 
+#### `GET /api/telemetry/runs`
+```bash
+curl 'http://localhost:8000/api/telemetry/runs?limit=10'
+```
+- ✅ Returns persisted telemetry runs from Cloud SQL/SQLite
+- ✅ Supports `status` filtering (running/completed)
+- ✅ Includes router summaries and vector stats metadata
+
+#### `GET /api/telemetry/runs/{id}/events`
+```bash
+curl 'http://localhost:8000/api/telemetry/runs/${RUN_ID}/events'
+```
+- ✅ Returns append-only event log (router decisions, system notes)
+- ✅ Useful for dashboards and troubleshooting
+
 #### `GET /health`
 ```bash
 curl http://localhost:8080/health
 ```
 - ✅ Returns: `{"status":"ok","vertex_initialized":true,"project_id":"periodicdent42"}`
+
+### 6. Telemetry & Router Observability
+- ✅ Alembic migration `0001_create_telemetry` applied via `make db-upgrade`
+- ✅ Tables: `telemetry_runs`, `telemetry_events`, `telemetry_metrics`, `telemetry_errors`, `telemetry_artifacts`
+- ✅ CLI tail command: `python -m tools.telemetry tail --last 25`
+- ✅ Prometheus counter `router_decisions_total` exposed for route auditing
 
 ---
 
@@ -134,6 +155,8 @@ DB_PASSWORD=ard_secure_password_2024
 DB_NAME=ard_intelligence
 DB_HOST=localhost
 DB_PORT=5433
+# Optional single URL override
+# DATABASE_URL=postgresql+psycopg2://ard_user:ard_secure_password_2024@localhost:5433/ard_intelligence
 PYTHONPATH=/Users/kiteboard/periodicdent42:$PYTHONPATH
 ```
 

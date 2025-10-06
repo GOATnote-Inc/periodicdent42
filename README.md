@@ -2,6 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Coverage](coverage.svg)](coverage.svg)
 [![License](https://img.shields.io/badge/license-PROPRIETARY-red.svg)](LICENSE)
 
 ## Table of Contents
@@ -102,7 +103,7 @@ cd app && make setup-local
 cp .env.example .env
 
 # Start the FastAPI service on :8000
-make run.api
+make run-api
 
 # Smoke test the chat endpoint
 curl -X POST http://localhost:8000/api/chat \
@@ -140,6 +141,7 @@ Environment variables are loaded via `app/src/utils/settings.py` (Pydantic setti
 | `GEMINI_PRO_MODEL` | Accurate Gemini model for verification. | `gemini-2.5-pro` |
 | `GCP_SQL_INSTANCE` | Cloud SQL instance (`project:region:instance`). | `None` |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Database credentials and name. | `ard_user` / `None` / `ard_intelligence` |
+| `DATABASE_URL` | Complete SQLAlchemy URL (overrides individual DB_* vars). | `sqlite:///./telemetry.db` |
 | `GCS_BUCKET` | Cloud Storage bucket for experiment artifacts. | `None` |
 | `UV_VIS_DATASET_PATH` | Optional override for the UV-Vis reference dataset. | `configs/uv_vis_reference_library.json` |
 | `LOCAL_STORAGE_PATH` | Filesystem fallback when Cloud Storage is unavailable. | `data/local_storage` |
@@ -147,6 +149,11 @@ Environment variables are loaded via `app/src/utils/settings.py` (Pydantic setti
 | `ALLOWED_ORIGINS` | Comma-separated CORS whitelist. | `""` |
 | `ENABLE_METRICS` / `ENABLE_TRACING` | Observability feature flags. | `True` |
 | `RATE_LIMIT_PER_MINUTE` | Requests per minute per IP when rate limiting is enabled. | `60` |
+| `ROUTER_LATENCY_BUDGET_MS` | Override router latency threshold. | `800` |
+| `ROUTER_MAX_CONTEXT_TOKENS` | Override router context token ceiling. | `280` |
+| `ROUTER_UNCERTAINTY_THRESHOLD` | Override router uncertainty cutoff. | `0.55` |
+| `RAG_CACHE_DIR` | Filesystem directory for persisted embeddings. | `.cache/rag` |
+| `RAG_CACHE_TTL_SECONDS` | Time-to-live for cached embeddings. | `86400` |
 
 Secrets omitted from `.env` are fetched from Google Secret Manager when running within GCP (see `get_secret_from_manager`).
 
@@ -160,6 +167,9 @@ make test
 # Coverage report
 make test-coverage
 
+# Telemetry CLI helper
+python -m tools.telemetry tail --last 10
+
 # Linting & formatting checks (FastAPI + repo root)
 cd ..
 make lint
@@ -170,6 +180,9 @@ pytest tests/ -v --tb=short
 # Static repo audit & dependency graph
 make audit
 make graph
+
+# Telemetry migrations (Cloud SQL / SQLite)
+make db-upgrade
 
 # Phase 2 UV-Vis campaign simulation
 make campaign
@@ -205,6 +218,7 @@ Key documentation lives under `docs/`:
 - [VALIDATION_SUMMARY.md](VALIDATION_SUMMARY.md) – Current validation status and metrics.
 - [docs/architecture.md](docs/architecture.md) – Deep dive into system design and data flows.
 - [docs/QUICKSTART.md](docs/QUICKSTART.md) – Expanded setup instructions.
+- [docs/telemetry-and-router-runbook.md](docs/telemetry-and-router-runbook.md) – Telemetry persistence, router tuning, and RAG cache ops.
 
 ## Support & Licensing
 

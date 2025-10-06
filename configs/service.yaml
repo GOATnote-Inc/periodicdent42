@@ -4,5 +4,13 @@ grpc:
   addr: 0.0.0.0:50051
 telemetry:
   otlp_endpoint: null
+  database_url: null
 database:
   url: null
+router:
+  latency_budget_ms: 800
+  max_context_tokens: 280
+  uncertainty_threshold: 0.55
+rag:
+  cache_dir: .cache/rag
+  ttl_seconds: 86400
