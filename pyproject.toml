@@ -23,10 +23,17 @@ dev = [
     "pytest-asyncio==0.21.1",
     "pytest-cov==4.1.0",
     "pytest-mock==3.12.0",
-    "hypothesis==6.92.1",
+    "pytest-benchmark==4.0.0",  # Phase 2: Continuous benchmarking
+    "hypothesis==6.92.1",        # Phase 2: Property-based testing
+    "mutmut==2.4.4",             # Phase 2: Mutation testing
+    "numpy==1.26.2",             # Phase 2: Numerical accuracy tests
     "mypy==1.7.1",
     "black==23.11.0",
     "ruff==0.1.6",
+]
+# Data versioning and experiment reproducibility
+science = [
+    "dvc[gs]==3.30.0",          # Phase 2: Data Version Control with Google Cloud Storage
 ]
 
 [tool.pytest.ini_options]
@@ -40,6 +47,9 @@ markers = [
     "chem: tests requiring heavy chemistry libraries (pyscf, rdkit, ase)",
     "slow: tests that take >5 seconds to run",
     "integration: integration tests requiring external services",
+    "benchmark: performance benchmarking tests (Phase 2)",
+    "property: property-based tests using Hypothesis (Phase 2)",
+    "numerical: numerical accuracy tests (Phase 2)",
 ]
 
 [tool.mypy]
