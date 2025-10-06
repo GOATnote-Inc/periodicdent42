@@ -60,6 +60,8 @@ markers = [
     "property: property-based tests using Hypothesis (Phase 2)",
     "numerical: numerical accuracy tests (Phase 2)",
     "ml_test_selection: tests for ML-powered test selection (Phase 3)",
+    "chaos_safe: tests that should not experience chaos engineering failures (Phase 3)",
+    "chaos_critical: tests that always experience chaos for thorough validation (Phase 3)",
 ]
 
 [tool.mypy]
