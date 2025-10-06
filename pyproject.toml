@@ -30,6 +30,10 @@ dev = [
     "mypy==1.7.1",
     "black==23.11.0",
     "ruff==0.1.6",
+    # Required by test files
+    "pydantic>=2.0",
+    "alembic>=1.12",
+    "sqlalchemy>=2.0",
 ]
 # Data versioning and experiment reproducibility
 science = [
