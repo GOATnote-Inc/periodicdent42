@@ -6,6 +6,7 @@ strategies to prioritize experiments that reduce uncertainty most efficiently.
 Moat: TIME - Maximize learning velocity through intelligent experiment selection.
 """
 
+import copy
 import numpy as np
 from typing import List, Tuple, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
@@ -313,50 +314,148 @@ class EIGOptimizer:
             eliminated=len(self.belief_state.eliminated_hypotheses),
         )
     
-    def calculate_eig(self, X_candidate: np.ndarray, n_samples: int = 100) -> float:
-        """Calculate Expected Information Gain for candidate.
-        
-        EIG = H(θ) - E[H(θ|y)]
-        where θ = model parameters, y = new observation
-        
-        Args:
-            X_candidate: Candidate experiment parameters (shape: (n_dim,) or (1, n_dim))
-            n_samples: Number of samples for Monte Carlo approximation
-        
-        Returns:
-            EIG value (higher = more informative)
-        """
-        if X_candidate.ndim == 1:
-            X_candidate = X_candidate.reshape(1, -1)
-        
-        # Prior entropy: current uncertainty
-        prior_samples = self.gp.predict(X_candidate, return_std=True)[0]
-        prior_std = self.gp.predict(X_candidate, return_std=True)[1]
-        
-        if prior_std is None or prior_std[0] < 1e-6:
-            return 0.0  # Already certain, no information gain
-        
-        H_prior = 0.5 * np.log(2 * np.pi * np.e * prior_std[0]**2)
-        
-        # Expected posterior entropy (Monte Carlo approximation)
-        H_posterior_expected = 0.0
-        
-        for _ in range(n_samples):
-            # Sample hypothetical observation
-            y_hypothetical = np.random.normal(prior_samples[0], prior_std[0])
-            
-            # Simulate GP update (simplified: just reduces variance)
-            # In production, use GPyTorch's fantasize() method
-            posterior_std = prior_std[0] * np.sqrt(1 - 0.5)  # Assume 50% reduction
-            
-            H_posterior = 0.5 * np.log(2 * np.pi * np.e * posterior_std**2)
-            H_posterior_expected += H_posterior
-        
-        H_posterior_expected /= n_samples
-        
-        eig = H_prior - H_posterior_expected
-        
-        return max(eig, 0.0)  # EIG should be non-negative
+    def _test_to_array(self, test: Any) -> Optional[np.ndarray]:
+        """Extract a feature vector from a test specification."""
+
+        if isinstance(test, np.ndarray):
+            return test.reshape(1, -1)
+
+        if isinstance(test, (list, tuple)):
+            return np.asarray(test, dtype=float).reshape(1, -1)
+
+        if isinstance(test, dict):
+            if "params" in test:
+                return np.asarray(test["params"], dtype=float).reshape(1, -1)
+            if "candidate" in test:
+                return np.asarray(test["candidate"], dtype=float).reshape(1, -1)
+
+        if hasattr(test, "parameters"):
+            return np.asarray(getattr(test, "parameters"), dtype=float).reshape(1, -1)
+
+        return None
+
+    def _candidate_outcomes_and_weights(
+        self,
+        test: Any,
+        belief_state: BeliefState,
+        n_outcomes: int,
+    ) -> List[Tuple[Any, float]]:
+        """Enumerate plausible outcomes and their support weights."""
+
+        discrete_outcomes: List[Any] = []
+
+        for hypothesis in belief_state.hypotheses:
+            outcomes = hypothesis.metadata.get("possible_outcomes") or hypothesis.metadata.get("outcomes")
+            if outcomes:
+                discrete_outcomes.extend(outcomes)
+
+        if discrete_outcomes:
+            unique_outcomes = list(dict.fromkeys(discrete_outcomes))
+            return [(outcome, 1.0) for outcome in unique_outcomes]
+
+        feature_vector = self._test_to_array(test)
+
+        if feature_vector is None:
+            return []
+
+        mean, std = self.gp.predict(feature_vector, return_std=True)
+
+        if std is None or std[0] < 1e-9:
+            return [(float(mean[0]), 1.0)]
+
+        quantile_edges = np.linspace(0.0, 1.0, n_outcomes + 1)
+        centers = 0.5 * (quantile_edges[:-1] + quantile_edges[1:])
+        centers = np.clip(centers, 1e-3, 1 - 1e-3)
+        outcomes = norm.ppf(centers, loc=float(mean[0]), scale=float(std[0]))
+        widths = np.diff(quantile_edges)
+
+        return list(zip(outcomes, widths))
+
+    def _clone_belief_state(self, belief_state: BeliefState) -> BeliefState:
+        """Create a copy of a belief state without sharing mutable members."""
+
+        cloned_hypotheses = [
+            Hypothesis(
+                name=hypothesis.name,
+                prior=hypothesis.prior,
+                hypothesis_type=hypothesis.hypothesis_type,
+                mean=hypothesis.mean,
+                variance=hypothesis.variance,
+                metadata=copy.deepcopy(hypothesis.metadata),
+                likelihood_fn=hypothesis.likelihood_fn,
+            )
+            for hypothesis in belief_state.hypotheses
+        ]
+
+        clone = BeliefState(
+            hypotheses=cloned_hypotheses,
+            min_posterior_threshold=belief_state.min_posterior_threshold,
+        )
+        clone.eliminated_hypotheses = copy.deepcopy(belief_state.eliminated_hypotheses)
+        clone.archived_hypotheses = copy.deepcopy(belief_state.archived_hypotheses)
+        return clone
+
+    def compute_information_gain(
+        self,
+        test: Any,
+        belief_state: Optional[BeliefState] = None,
+        n_outcomes: int = 50,
+    ) -> float:
+        """Compute Expected Information Gain for a test against a belief state."""
+
+        state = belief_state or self.belief_state
+
+        if state is None or not state.hypotheses:
+            return 0.0
+
+        current_entropy = state.current_entropy()
+
+        if current_entropy <= 0:
+            return 0.0
+
+        candidate_outcomes = self._candidate_outcomes_and_weights(test, state, n_outcomes)
+
+        if not candidate_outcomes:
+            return 0.0
+
+        priors = np.asarray([h.prior for h in state.hypotheses], dtype=float)
+        expected_entropy = 0.0
+        total_weight = 0.0
+
+        for outcome, support_weight in candidate_outcomes:
+            likelihood_state = self._clone_belief_state(state)
+            likelihoods = np.asarray(
+                [h.compute_likelihood(test, outcome) for h in likelihood_state.hypotheses],
+                dtype=float,
+            )
+
+            evidence = float(np.dot(priors, likelihoods))
+
+            if evidence <= 0 or support_weight <= 0:
+                continue
+
+            outcome_weight = evidence * support_weight
+
+            posterior_state = self._clone_belief_state(state)
+            posterior_state.update_beliefs(test, outcome)
+            posterior_entropy = posterior_state.current_entropy()
+
+            expected_entropy += outcome_weight * posterior_entropy
+            total_weight += outcome_weight
+
+        if total_weight <= 0:
+            return 0.0
+
+        expected_entropy /= total_weight
+        eig = current_entropy - expected_entropy
+
+        return max(float(eig), 0.0)
+
+    def calculate_eig(self, X_candidate: np.ndarray, n_samples: int = 50) -> float:
+        """Calculate Expected Information Gain for a candidate parameter vector."""
+
+        test = {"params": np.asarray(X_candidate, dtype=float)}
+        return self.compute_information_gain(test, self.belief_state, n_outcomes=n_samples)
     
     def estimate_cost(self, X_candidate: np.ndarray, instrument_id: str) -> Tuple[float, float]:
         """Estimate experiment cost in hours and USD.
@@ -427,14 +526,20 @@ class EIGOptimizer:
         for i in range(min(batch_size, len(X_pool))):
             # Calculate EIG for all remaining candidates
             eig_results = []
-            
+
             for idx in remaining_indices:
                 result = self.calculate_eig_per_cost(X_pool[idx], instrument_id)
                 eig_results.append((idx, result))
-            
+                self.logger.info(
+                    "candidate_eig",
+                    candidate_index=idx,
+                    eig=result.eig,
+                    eig_per_cost=result.eig_per_cost,
+                )
+
             # Select highest EIG/cost
             best_idx, best_result = max(eig_results, key=lambda x: x[1].eig_per_cost)
-            
+
             selected.append(best_result)
             remaining_indices.remove(best_idx)
             
