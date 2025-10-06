@@ -1,0 +1,36 @@
+{
+  "data_source": "training_data.json",
+  "model_source": "test_selector.pkl",
+  "n_samples": 100,
+  "n_failures": 39,
+  "n_passes": 61,
+  "failure_rate": 0.39,
+  "failure_rate_ci_95": [
+    0.3001687400639441,
+    0.4879698295415926
+  ],
+  "cv_f1_mean": 0.449047619047619,
+  "cv_f1_std": 0.1606647189878277,
+  "training_f1": 0.9090909090909091,
+  "training_auc": 0.9794031105506515,
+  "operating_point": {
+    "target_recall": 0.9,
+    "precision": 0.9210526315789473,
+    "recall": 0.8974358974358975,
+    "threshold": 0.5045151667243193
+  },
+  "ci_time_estimate": {
+    "baseline_seconds": 90.0,
+    "with_ml_seconds": 80.76923076923077,
+    "time_saved_seconds": 9.230769230769228,
+    "reduction_percent": 10.256410256410254,
+    "note": "Estimate based on synthetic data; real reduction TBD"
+  },
+  "data_type": "synthetic_baseline",
+  "warnings": [
+    "Model trained on synthetic data (N=100)",
+    "Real-world performance requires 50+ real test runs",
+    "CI time reduction is estimated, not measured",
+    "False negative rate needs production validation"
+  ]
+}
