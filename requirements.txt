@@ -18,10 +18,11 @@ torch==2.2.0  # Updated for Python 3.12 compatibility
 scikit-learn==1.3.2
 gpytorch==1.11  # Gaussian Processes
 
-# Chemistry & Materials
-pyscf==2.3.0
-rdkit==2023.9.1
-ase==3.22.1  # Atomistic Simulation Environment
+# Chemistry & Materials (moved to pyproject.toml[project.optional-dependencies.chem])
+# Install with: pip install ".[chem]"
+# pyscf==2.3.0
+# rdkit==2023.9.1
+# ase==3.22.1  # Atomistic Simulation Environment
 
 # Data & Database
 psycopg2-binary==2.9.9

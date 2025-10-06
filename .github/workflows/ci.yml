@@ -4,13 +4,17 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 6 * * *"  # Nightly at 6 AM UTC for chem tests
+  workflow_dispatch:  # Manual trigger
 
 env:
   PYTHONPATH: .
   DATABASE_URL: sqlite:///ci-telemetry.db
 
 jobs:
-  build:
+  fast:
+    name: Fast Tests (no heavy deps)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,20 +22,17 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"  # Match pyproject.toml requirement
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
       
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      
-      - name: Install dependencies
+      - name: Install core dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install ".[dev]"
       
       - name: Lint with ruff
         run: |
@@ -42,9 +43,9 @@ jobs:
         run: |
           mypy services/ core/ tools/ || echo "⚠️  Type checking issues found (non-blocking)"
       
-      - name: Run tests with coverage
+      - name: Run fast tests with coverage
         run: |
-          pytest --cov-report=xml --cov-report=term-missing --cov-report=html -v
+          pytest -m "not chem and not slow" --cov-report=xml --cov-report=term-missing --cov-report=html -v --maxfail=3
       
       - name: Upload coverage HTML
         if: always()
@@ -91,9 +92,10 @@ jobs:
       - name: Job summary
         if: always()
         run: |
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Fast Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Python Version:** $(python --version)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Test Scope:** Fast tests only (no chem/slow)" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Tests Passed**" >> $GITHUB_STEP_SUMMARY
           if [ -f coverage.xml ]; then
             echo "✅ **Coverage Requirements Met**" >> $GITHUB_STEP_SUMMARY
@@ -101,3 +103,44 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "- Coverage Report (HTML)" >> $GITHUB_STEP_SUMMARY
+  
+  chem:
+    name: Chemistry Tests (nightly/on-demand)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+      
+      - name: Install system dependencies for chemistry libs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libblas-dev liblapack-dev gfortran cmake
+      
+      - name: Install all dependencies including chemistry
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ".[dev,chem]"
+      
+      - name: Run chemistry tests
+        run: |
+          pytest -m "chem" -v --tb=short
+      
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Chemistry Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Python Version:** $(python --version)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Test Scope:** Chemistry tests (pyscf, rdkit, ase)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
