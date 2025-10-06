@@ -23,6 +23,11 @@ jobs:
           DATABASE_URL: sqlite:///$(pwd)/ci-telemetry.db
         run: |
           pytest --cov-report=xml --cov-report=term-missing
+      - name: Ensure coverage XML exists
+        run: |
+          if [ ! -f coverage.xml ]; then
+            coverage xml -i
+          fi
       - name: Enforce coverage minimum
         run: |
           python - <<'PY'
