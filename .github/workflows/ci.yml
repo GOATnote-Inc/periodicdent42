@@ -24,14 +24,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            pyproject.toml
+          cache-dependency-path: requirements.lock
       
-      - name: Install core dependencies
+      - name: Install uv (fast pip replacement)
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip uv
+      
+      - name: Install core dependencies (deterministic with lock file)
+        run: |
+          uv pip sync requirements.lock --system
           pip install ".[dev]"
       
       - name: Lint with ruff
@@ -104,6 +105,39 @@ jobs:
           echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "- Coverage Report (HTML)" >> $GITHUB_STEP_SUMMARY
   
+  security:
+    name: Security Audit (Dependency Vulnerabilities)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      
+      - name: Install pip-audit
+        run: |
+          python -m pip install --upgrade pip pip-audit
+      
+      - name: Audit dependencies for vulnerabilities
+        run: |
+          echo "📋 Auditing root dependencies..."
+          pip-audit -r requirements.txt --desc || echo "⚠️  Vulnerabilities found (non-blocking)"
+          
+          echo ""
+          echo "📋 Auditing app dependencies..."
+          pip-audit -r app/requirements.txt --desc || echo "⚠️  Vulnerabilities found (non-blocking)"
+      
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Scan Complete:** Root + App dependencies" >> $GITHUB_STEP_SUMMARY
+          echo "📚 **Source:** PyPI Advisory Database" >> $GITHUB_STEP_SUMMARY
+          echo "🔍 **Tool:** pip-audit" >> $GITHUB_STEP_SUMMARY
+  
   chem:
     name: Chemistry Tests (nightly/on-demand)
     runs-on: ubuntu-latest
@@ -117,20 +151,20 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            pyproject.toml
+          cache-dependency-path: requirements-full.lock
       
       - name: Install system dependencies for chemistry libs
         run: |
           sudo apt-get update
           sudo apt-get install -y libblas-dev liblapack-dev gfortran cmake
       
-      - name: Install all dependencies including chemistry
+      - name: Install uv (fast pip replacement)
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install ".[dev,chem]"
+          python -m pip install --upgrade pip uv
+      
+      - name: Install all dependencies including chemistry (deterministic with lock file)
+        run: |
+          uv pip sync requirements-full.lock --system
       
       - name: Run chemistry tests
         run: |

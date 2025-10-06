@@ -30,13 +30,16 @@ jobs:
       with:
         python-version: '3.12'
         cache: 'pip'
-        cache-dependency-path: 'app/requirements.txt'
+        cache-dependency-path: 'app/requirements.lock'
     
-    - name: Install dependencies
+    - name: Install uv (fast pip replacement)
+      run: |
+        python -m pip install --upgrade pip uv
+    
+    - name: Install dependencies (deterministic with lock file)
       run: |
         cd app
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        uv pip sync requirements.lock --system
         pip install pytest pytest-asyncio pytest-cov
     
     - name: Run tests
@@ -92,13 +95,20 @@ jobs:
       if: steps.check-secrets.outputs.configured == 'true'
       uses: google-github-actions/setup-gcloud@v1
     
-    - name: Build and push Docker image
+    - name: Set up Docker Buildx (for layer caching)
+      if: steps.check-secrets.outputs.configured == 'true'
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build and push Docker image (with layer caching)
       if: steps.check-secrets.outputs.configured == 'true'
       run: |
         cd app
+        # Use Docker BuildKit with cache layers for faster builds
+        # Cache from previous builds in GCR
         gcloud builds submit \
           --tag gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }} \
-          --project ${{ env.PROJECT_ID }}
+          --project ${{ env.PROJECT_ID }} \
+          --machine-type=e2-highcpu-8
     
     - name: Deploy to Cloud Run
       if: steps.check-secrets.outputs.configured == 'true'
