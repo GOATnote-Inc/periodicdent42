@@ -48,7 +48,7 @@ hypothesis==6.92.1  # Property-based testing
 
 # Code Quality
 mypy==1.7.1
-black==23.11.0
+black==25.9.0
 ruff==0.1.6
 
 # Utilities
