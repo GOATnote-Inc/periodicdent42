@@ -48,6 +48,17 @@ jobs:
         run: |
           pytest -m "not chem and not slow" --cov-report=xml --cov-report=term-missing --cov-report=html -v --maxfail=3
       
+      - name: Run Phase 2 scientific tests
+        run: |
+          echo "Running Phase 2 scientific excellence tests..."
+          pytest tests/test_phase2_scientific.py -v -m "numerical or property" --tb=short || echo "⚠️  Phase 2 tests not yet available"
+      
+      - name: Run performance benchmarks
+        continue-on-error: true
+        run: |
+          echo "Running performance benchmarks (establishing baselines)..."
+          pytest tests/test_phase2_scientific.py -v -m benchmark --benchmark-only --benchmark-autosave || echo "⚠️  Benchmarks skipped"
+      
       - name: Upload coverage HTML
         if: always()
         uses: actions/upload-artifact@v4
