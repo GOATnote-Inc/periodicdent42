@@ -40,10 +40,8 @@
           pytest-cov
           hypothesis
           
-          # Development tools
-          ruff
+          # Development tools (mypy is in Python packages)
           mypy
-          black
           
           # Utilities
           python-dotenv
@@ -57,7 +55,7 @@
           sqlalchemy alembic psycopg2
           google-cloud-storage google-cloud-secret-manager google-cloud-logging
           pytest pytest-benchmark pytest-cov hypothesis
-          ruff mypy black
+          mypy
           python-dotenv requests
           
           # Scientific computing
@@ -77,6 +75,8 @@
         devShells.default = pkgs.mkShell {
           buildInputs = [
             corePythonEnv
+            pkgs.ruff
+            pkgs.black
             pkgs.postgresql_15
             pkgs.google-cloud-sdk
             pkgs.git
@@ -115,6 +115,8 @@
         devShells.full = pkgs.mkShell {
           buildInputs = [
             fullPythonEnv
+            pkgs.ruff
+            pkgs.black
             pkgs.postgresql_15
             pkgs.google-cloud-sdk
             pkgs.git
@@ -153,6 +155,8 @@
         devShells.ci = pkgs.mkShell {
           buildInputs = [
             corePythonEnv
+            pkgs.ruff
+            pkgs.black
             pkgs.git
             pkgs.docker
             pkgs.jq
@@ -170,7 +174,7 @@
           version = "1.0.0";
           src = ./.;
           
-          buildInputs = [ corePythonEnv ];
+          buildInputs = [ corePythonEnv pkgs.ruff pkgs.black ];
           
           buildPhase = ''
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -243,7 +247,7 @@ EOF
         # Note: Made lenient for incremental development (Phase 3)
         checks = {
           tests = pkgs.runCommand "run-tests" {
-            buildInputs = [ corePythonEnv pkgs.git ];
+            buildInputs = [ corePythonEnv pkgs.git pkgs.ruff pkgs.black ];
           } ''
             export HOME=$TMPDIR
             cp -r ${./.} source
@@ -260,21 +264,21 @@ EOF
           '';
           
           lint = pkgs.runCommand "run-lint" {
-            buildInputs = [ corePythonEnv ];
+            buildInputs = [ corePythonEnv pkgs.ruff ];
           } ''
             cp -r ${./.} source
             chmod -R u+w source
             cd source
             
             echo "Running linter..."
-            ${corePythonEnv}/bin/ruff check . --no-fix || true
+            ${pkgs.ruff}/bin/ruff check . --no-fix || true
             echo "⚠️  Linter completed (issues allowed during incremental development)"
             
             touch $out
           '';
           
           types = pkgs.runCommand "run-mypy" {
-            buildInputs = [ corePythonEnv ];
+            buildInputs = [ corePythonEnv pkgs.ruff pkgs.black ];
           } ''
             cp -r ${./.} source
             chmod -R u+w source
@@ -309,7 +313,7 @@ EOF
           lint = {
             type = "app";
             program = toString (pkgs.writeShellScript "run-lint" ''
-              ${corePythonEnv}/bin/ruff check .
+              ${pkgs.ruff}/bin/ruff check .
             '');
           };
         };
