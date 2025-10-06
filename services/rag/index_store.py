@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, List, Sequence
 
 from core import stable_hash
 from services.rag.embed import Embedder

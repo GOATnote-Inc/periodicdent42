@@ -3,28 +3,25 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from alembic import command
-from alembic.config import Config
 
 from services.telemetry.telemetry_repo import TelemetryRepo
 
 
 @pytest.fixture
 def telemetry_db(tmp_path: Path) -> str:
-    """Create temporary test database with Alembic migrations applied."""
+    """Create temporary test database with schema created directly."""
+    from services.telemetry.telemetry_repo import Base
+    from sqlalchemy import create_engine
+    
     db_path = tmp_path / "telemetry.sqlite"
     url = f"sqlite:///{db_path}"
     
-    # Resolve Alembic config path relative to repository root
-    # This works in both local development and CI environments
-    repo_root = Path(__file__).resolve().parent.parent
-    alembic_ini = repo_root / "infra" / "db" / "alembic.ini"
-    migrations_dir = repo_root / "infra" / "db" / "migrations"
+    # Create tables directly using SQLAlchemy metadata
+    # This avoids Alembic path resolution issues in tests
+    engine = create_engine(url)
+    Base.metadata.create_all(engine)
+    engine.dispose()
     
-    cfg = Config(str(alembic_ini))
-    cfg.set_main_option("script_location", str(migrations_dir))
-    cfg.set_main_option("sqlalchemy.url", url)
-    command.upgrade(cfg, "head")
     return url
 
 

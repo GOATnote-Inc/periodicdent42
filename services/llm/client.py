@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
@@ -26,7 +25,7 @@ class LLMClient:
     def fake(cls) -> "LLMClient":
         return cls(provider="fake")
 
-    def complete(self, messages: List[Message]) -> ChatCompletion:
+    def complete(self, messages: list[Message]) -> ChatCompletion:
         last_message = messages[-1].content if messages else ""
         text = (
             "This is a synthetic response summarizing the retrieved context with placeholder "

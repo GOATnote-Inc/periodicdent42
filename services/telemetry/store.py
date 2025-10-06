@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
-from typing import Any, Iterable, List
-
 import datetime as dt
+import os
+from collections.abc import Iterable
+from typing import Any
 
 from services.rag.models import ChatRequest, ChatResponse
 from services.router.llm_router import RouterLog

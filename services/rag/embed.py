@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, List
 
 
 @dataclass
@@ -44,7 +44,7 @@ class Embedder:
         norm = math.sqrt(sum(value * value for value in vector)) or 1.0
         return [value / norm for value in vector]
 
-    def embed_documents(self, texts: Iterable[str]) -> List[EmbeddingResult]:
+    def embed_documents(self, texts: Iterable[str]) -> list[EmbeddingResult]:
         return [EmbeddingResult(text=text, vector=self._vector_for_text(text)) for text in texts]
 
     def embed_query(self, text: str) -> EmbeddingResult:

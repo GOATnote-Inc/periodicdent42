@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, List, Optional
+from typing import Any, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, create_engine, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker

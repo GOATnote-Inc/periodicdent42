@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 from pydantic import BaseModel
 
 
@@ -24,9 +22,9 @@ class VectorStats(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    citations: List[Citation]
+    citations: list[Citation]
     router: dict[str, str]
-    guardrails: List[dict[str, str]]
+    guardrails: list[dict[str, str]]
     vector_stats: VectorStats
 
 

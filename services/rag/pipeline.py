@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 from services.llm.client import ChatCompletion, LLMClient, Message
 from services.llm.guardrails import run_guardrails
@@ -14,7 +13,7 @@ from services.rag.models import ChatRequest, ChatResponse, Citation, VectorStats
 class PipelineResult:
     response: ChatResponse
     completion: ChatCompletion
-    hits: List[RetrievalHit]
+    hits: list[RetrievalHit]
 
 
 class ChatPipeline:
