@@ -28,32 +28,34 @@ from .db import Base, get_session
 class TestExecution:
     """Single test execution record with features for ML model."""
     
-    # Test identification
+    # Test identification (required)
     test_name: str
     test_file: str
     
-    # Execution results
+    # Execution results (required)
     duration_ms: float
     passed: bool
-    error_message: Optional[str] = None
     
-    # Source control context
+    # Source control context (required)
     commit_sha: str
     branch: str
+    
+    # Optional fields (with defaults)
+    error_message: Optional[str] = None
     changed_files: List[str] = None
     
-    # Code change features (for ML)
+    # Code change features (for ML, with defaults)
     lines_added: int = 0
     lines_deleted: int = 0
     files_changed: int = 0
     complexity_delta: float = 0.0
     
-    # Historical features (computed)
+    # Historical features (computed, with defaults)
     recent_failure_rate: float = 0.0
     avg_duration: float = 0.0
     days_since_last_change: int = 0
     
-    # Timestamp
+    # Timestamp (with default)
     timestamp: float = None
     
     def __post_init__(self):

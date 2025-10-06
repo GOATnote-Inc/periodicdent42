@@ -1,0 +1,1802 @@
+[
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 371.94805331635433,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T04:00:00",
+    "features": {
+      "lines_added": 118,
+      "lines_deleted": 16,
+      "files_changed": 9,
+      "complexity_delta": 1.02,
+      "recent_failure_rate": 0.1862130304611155,
+      "avg_duration": 341.5185635414559,
+      "days_since_last_change": 24
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 364.4383771957757,
+    "passed": false,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T01:00:00",
+    "features": {
+      "lines_added": 196,
+      "lines_deleted": 43,
+      "files_changed": 7,
+      "complexity_delta": 1.53,
+      "recent_failure_rate": 0.21608227773622393,
+      "avg_duration": 360.44576335911376,
+      "days_since_last_change": 7
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 99.51482140791931,
+    "passed": true,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T10:00:00",
+    "features": {
+      "lines_added": 32,
+      "lines_deleted": 89,
+      "files_changed": 8,
+      "complexity_delta": -0.57,
+      "recent_failure_rate": 0.17514940056941733,
+      "avg_duration": 98.21469927374817,
+      "days_since_last_change": 13
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 175.4218463756389,
+    "passed": false,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T20:00:00",
+    "features": {
+      "lines_added": 80,
+      "lines_deleted": 47,
+      "files_changed": 9,
+      "complexity_delta": 0.33,
+      "recent_failure_rate": 0.1339836017643435,
+      "avg_duration": 194.5185234178773,
+      "days_since_last_change": 1
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_ppo_agent",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 120.7435450224549,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T01:00:00",
+    "features": {
+      "lines_added": 19,
+      "lines_deleted": 2,
+      "files_changed": 6,
+      "complexity_delta": 0.17,
+      "recent_failure_rate": 0.03316387720347652,
+      "avg_duration": 166.1433768552157,
+      "days_since_last_change": 20
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 144.36239781212393,
+    "passed": false,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T21:00:00",
+    "features": {
+      "lines_added": 184,
+      "lines_deleted": 86,
+      "files_changed": 10,
+      "complexity_delta": 0.98,
+      "recent_failure_rate": 0.015277294589702395,
+      "avg_duration": 119.86912647726591,
+      "days_since_last_change": 1
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 362.98864631192095,
+    "passed": true,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T20:00:00",
+    "features": {
+      "lines_added": 100,
+      "lines_deleted": 88,
+      "files_changed": 6,
+      "complexity_delta": 0.12,
+      "recent_failure_rate": 0.027010215569109253,
+      "avg_duration": 326.60690927508085,
+      "days_since_last_change": 5
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 442.8482357218197,
+    "passed": true,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T04:00:00",
+    "features": {
+      "lines_added": 99,
+      "lines_deleted": 86,
+      "files_changed": 3,
+      "complexity_delta": 0.13,
+      "recent_failure_rate": 0.15624275420368033,
+      "avg_duration": 458.05774677369646,
+      "days_since_last_change": 18
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 139.49802487078887,
+    "passed": true,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T21:00:00",
+    "features": {
+      "lines_added": 27,
+      "lines_deleted": 34,
+      "files_changed": 4,
+      "complexity_delta": -0.07,
+      "recent_failure_rate": 0.08697760110481081,
+      "avg_duration": 149.58010526188724,
+      "days_since_last_change": 0
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 377.8685126292789,
+    "passed": true,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T12:00:00",
+    "features": {
+      "lines_added": 13,
+      "lines_deleted": 6,
+      "files_changed": 3,
+      "complexity_delta": 0.07,
+      "recent_failure_rate": 0.2301497576307727,
+      "avg_duration": 343.3210609883666,
+      "days_since_last_change": 20
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_ppo_agent",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 163.92813959532896,
+    "passed": true,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T03:00:00",
+    "features": {
+      "lines_added": 145,
+      "lines_deleted": 70,
+      "files_changed": 9,
+      "complexity_delta": 0.75,
+      "recent_failure_rate": 0.03897643943223384,
+      "avg_duration": 120.80700467460464,
+      "days_since_last_change": 14
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 368.46284655866214,
+    "passed": false,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T02:00:00",
+    "features": {
+      "lines_added": 192,
+      "lines_deleted": 42,
+      "files_changed": 6,
+      "complexity_delta": 1.5,
+      "recent_failure_rate": 0.12771793540893944,
+      "avg_duration": 330.44503077270673,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 520.9454255393333,
+    "passed": true,
+    "commit_sha": "abc0001000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T19:00:00",
+    "features": {
+      "lines_added": 7,
+      "lines_deleted": 26,
+      "files_changed": 10,
+      "complexity_delta": -0.19,
+      "recent_failure_rate": 0.23832682782078368,
+      "avg_duration": 491.28127508803834,
+      "days_since_last_change": 6
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 464.8042789423173,
+    "passed": true,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T20:00:00",
+    "features": {
+      "lines_added": 89,
+      "lines_deleted": 94,
+      "files_changed": 8,
+      "complexity_delta": -0.05,
+      "recent_failure_rate": 0.03670927335049235,
+      "avg_duration": 474.5520113731804,
+      "days_since_last_change": 15
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 136.9451474065962,
+    "passed": false,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T20:00:00",
+    "features": {
+      "lines_added": 39,
+      "lines_deleted": 16,
+      "files_changed": 6,
+      "complexity_delta": 0.23,
+      "recent_failure_rate": 0.17754193774168667,
+      "avg_duration": 163.84666830222602,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 502.9805192623888,
+    "passed": false,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T20:00:00",
+    "features": {
+      "lines_added": 171,
+      "lines_deleted": 56,
+      "files_changed": 6,
+      "complexity_delta": 1.15,
+      "recent_failure_rate": 0.0803822932582456,
+      "avg_duration": 459.64144576743087,
+      "days_since_last_change": 19
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 118.04850274388001,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T11:00:00",
+    "features": {
+      "lines_added": 76,
+      "lines_deleted": 22,
+      "files_changed": 3,
+      "complexity_delta": 0.54,
+      "recent_failure_rate": 0.14961875571869168,
+      "avg_duration": 122.39345414277123,
+      "days_since_last_change": 14
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 169.99184555449534,
+    "passed": true,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T15:00:00",
+    "features": {
+      "lines_added": 103,
+      "lines_deleted": 11,
+      "files_changed": 9,
+      "complexity_delta": 0.92,
+      "recent_failure_rate": 0.2615216607120639,
+      "avg_duration": 158.51164126037975,
+      "days_since_last_change": 7
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 164.18070150360492,
+    "passed": true,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T03:00:00",
+    "features": {
+      "lines_added": 82,
+      "lines_deleted": 4,
+      "files_changed": 2,
+      "complexity_delta": 0.78,
+      "recent_failure_rate": 0.1779962463523024,
+      "avg_duration": 186.12619003190537,
+      "days_since_last_change": 18
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 377.8925063296427,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T21:00:00",
+    "features": {
+      "lines_added": 129,
+      "lines_deleted": 78,
+      "files_changed": 1,
+      "complexity_delta": 0.51,
+      "recent_failure_rate": 0.14698854199335504,
+      "avg_duration": 371.5723233973794,
+      "days_since_last_change": 8
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 292.83603919300464,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T02:00:00",
+    "features": {
+      "lines_added": 55,
+      "lines_deleted": 2,
+      "files_changed": 1,
+      "complexity_delta": 0.53,
+      "recent_failure_rate": 0.2048971552955005,
+      "avg_duration": 303.40670862767035,
+      "days_since_last_change": 22
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 275.45052565252564,
+    "passed": false,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T22:00:00",
+    "features": {
+      "lines_added": 96,
+      "lines_deleted": 52,
+      "files_changed": 2,
+      "complexity_delta": 0.44,
+      "recent_failure_rate": 0.29440201415643585,
+      "avg_duration": 264.9007770079279,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 409.4531231314298,
+    "passed": true,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T06:00:00",
+    "features": {
+      "lines_added": 196,
+      "lines_deleted": 73,
+      "files_changed": 8,
+      "complexity_delta": 1.23,
+      "recent_failure_rate": 0.21190559711031307,
+      "avg_duration": 370.82075486806326,
+      "days_since_last_change": 17
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 67.71221417594717,
+    "passed": true,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T10:00:00",
+    "features": {
+      "lines_added": 2,
+      "lines_deleted": 41,
+      "files_changed": 2,
+      "complexity_delta": -0.39,
+      "recent_failure_rate": 0.2269932761241131,
+      "avg_duration": 77.89431952016686,
+      "days_since_last_change": 29
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 383.783189712747,
+    "passed": false,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T01:00:00",
+    "features": {
+      "lines_added": 180,
+      "lines_deleted": 79,
+      "files_changed": 1,
+      "complexity_delta": 1.01,
+      "recent_failure_rate": 0.25567097981874926,
+      "avg_duration": 426.6792817926033,
+      "days_since_last_change": 0
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 437.6116986082345,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T18:00:00",
+    "features": {
+      "lines_added": 6,
+      "lines_deleted": 13,
+      "files_changed": 7,
+      "complexity_delta": -0.07,
+      "recent_failure_rate": 0.20666777094442373,
+      "avg_duration": 440.7143053086079,
+      "days_since_last_change": 3
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 245.36356210829186,
+    "passed": false,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T06:00:00",
+    "features": {
+      "lines_added": 111,
+      "lines_deleted": 69,
+      "files_changed": 6,
+      "complexity_delta": 0.42,
+      "recent_failure_rate": 0.1572651458217736,
+      "avg_duration": 264.73435851950927,
+      "days_since_last_change": 26
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 227.8433076957515,
+    "passed": true,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T16:00:00",
+    "features": {
+      "lines_added": 124,
+      "lines_deleted": 51,
+      "files_changed": 1,
+      "complexity_delta": 0.73,
+      "recent_failure_rate": 0.19476395029897392,
+      "avg_duration": 184.51252839141665,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 249.29501729831003,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T02:00:00",
+    "features": {
+      "lines_added": 106,
+      "lines_deleted": 1,
+      "files_changed": 8,
+      "complexity_delta": 1.05,
+      "recent_failure_rate": 0.2572341885924664,
+      "avg_duration": 271.18529212883766,
+      "days_since_last_change": 29
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 306.86476081406386,
+    "passed": true,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T05:00:00",
+    "features": {
+      "lines_added": 183,
+      "lines_deleted": 4,
+      "files_changed": 2,
+      "complexity_delta": 1.79,
+      "recent_failure_rate": 0.02728879927529636,
+      "avg_duration": 336.190748272968,
+      "days_since_last_change": 12
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 304.5506404165776,
+    "passed": false,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T19:00:00",
+    "features": {
+      "lines_added": 183,
+      "lines_deleted": 74,
+      "files_changed": 4,
+      "complexity_delta": 1.09,
+      "recent_failure_rate": 0.2549815802033158,
+      "avg_duration": 341.42714606098923,
+      "days_since_last_change": 22
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 238.00967060820975,
+    "passed": false,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T14:00:00",
+    "features": {
+      "lines_added": 166,
+      "lines_deleted": 90,
+      "files_changed": 6,
+      "complexity_delta": 0.76,
+      "recent_failure_rate": 0.11267850283847122,
+      "avg_duration": 228.41900992557674,
+      "days_since_last_change": 15
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_ppo_agent",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 122.42319943169785,
+    "passed": false,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T18:00:00",
+    "features": {
+      "lines_added": 68,
+      "lines_deleted": 80,
+      "files_changed": 8,
+      "complexity_delta": -0.12,
+      "recent_failure_rate": 0.15519561045773622,
+      "avg_duration": 152.23412038536338,
+      "days_since_last_change": 24
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 138.7250903060789,
+    "passed": true,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T02:00:00",
+    "features": {
+      "lines_added": 63,
+      "lines_deleted": 100,
+      "files_changed": 4,
+      "complexity_delta": -0.37,
+      "recent_failure_rate": 0.22761876674615542,
+      "avg_duration": 151.73469317800246,
+      "days_since_last_change": 16
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 350.0268402408916,
+    "passed": true,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T06:00:00",
+    "features": {
+      "lines_added": 114,
+      "lines_deleted": 56,
+      "files_changed": 5,
+      "complexity_delta": 0.58,
+      "recent_failure_rate": 0.23070134564552952,
+      "avg_duration": 340.847285620907,
+      "days_since_last_change": 24
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 391.57026677176066,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T20:00:00",
+    "features": {
+      "lines_added": 6,
+      "lines_deleted": 91,
+      "files_changed": 10,
+      "complexity_delta": -0.85,
+      "recent_failure_rate": 0.07103809289690868,
+      "avg_duration": 357.2092951037973,
+      "days_since_last_change": 14
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 178.32491696297325,
+    "passed": true,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T16:00:00",
+    "features": {
+      "lines_added": 89,
+      "lines_deleted": 26,
+      "files_changed": 6,
+      "complexity_delta": 0.63,
+      "recent_failure_rate": 0.22537610867326702,
+      "avg_duration": 175.2843060505062,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 119.4515775417239,
+    "passed": true,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T02:00:00",
+    "features": {
+      "lines_added": 2,
+      "lines_deleted": 16,
+      "files_changed": 7,
+      "complexity_delta": -0.14,
+      "recent_failure_rate": 0.14340519490537013,
+      "avg_duration": 139.31211424754986,
+      "days_since_last_change": 3
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 62.59883852730592,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T04:00:00",
+    "features": {
+      "lines_added": 95,
+      "lines_deleted": 24,
+      "files_changed": 3,
+      "complexity_delta": 0.71,
+      "recent_failure_rate": 0.23468059211058528,
+      "avg_duration": 79.39648115967694,
+      "days_since_last_change": 3
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 227.17349599184237,
+    "passed": true,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T00:00:00",
+    "features": {
+      "lines_added": 10,
+      "lines_deleted": 45,
+      "files_changed": 9,
+      "complexity_delta": -0.35,
+      "recent_failure_rate": 0.23540202994919948,
+      "avg_duration": 201.21483767826493,
+      "days_since_last_change": 29
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 57.279726565124754,
+    "passed": false,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T20:00:00",
+    "features": {
+      "lines_added": 96,
+      "lines_deleted": 62,
+      "files_changed": 2,
+      "complexity_delta": 0.34,
+      "recent_failure_rate": 0.18460374698915413,
+      "avg_duration": 95.14740042030571,
+      "days_since_last_change": 28
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 61.52395405484498,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T16:00:00",
+    "features": {
+      "lines_added": 192,
+      "lines_deleted": 3,
+      "files_changed": 10,
+      "complexity_delta": 1.89,
+      "recent_failure_rate": 0.29376078498821606,
+      "avg_duration": 69.94091357389172,
+      "days_since_last_change": 30
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 261.91163325617345,
+    "passed": true,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T05:00:00",
+    "features": {
+      "lines_added": 18,
+      "lines_deleted": 27,
+      "files_changed": 10,
+      "complexity_delta": -0.09,
+      "recent_failure_rate": 0.1861844780819063,
+      "avg_duration": 251.33919948053122,
+      "days_since_last_change": 14
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 416.4196241338528,
+    "passed": false,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T17:00:00",
+    "features": {
+      "lines_added": 113,
+      "lines_deleted": 79,
+      "files_changed": 10,
+      "complexity_delta": 0.34,
+      "recent_failure_rate": 0.2707276501296603,
+      "avg_duration": 454.7617642470771,
+      "days_since_last_change": 26
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 381.81272614317317,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T09:00:00",
+    "features": {
+      "lines_added": 128,
+      "lines_deleted": 11,
+      "files_changed": 8,
+      "complexity_delta": 1.17,
+      "recent_failure_rate": 0.23114426760725176,
+      "avg_duration": 404.34688135491564,
+      "days_since_last_change": 10
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 275.36527789917056,
+    "passed": true,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T14:00:00",
+    "features": {
+      "lines_added": 49,
+      "lines_deleted": 43,
+      "files_changed": 9,
+      "complexity_delta": 0.06,
+      "recent_failure_rate": 0.08153288991650894,
+      "avg_duration": 293.078245748976,
+      "days_since_last_change": 12
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 468.77500457699807,
+    "passed": true,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T03:00:00",
+    "features": {
+      "lines_added": 165,
+      "lines_deleted": 27,
+      "files_changed": 10,
+      "complexity_delta": 1.38,
+      "recent_failure_rate": 0.09906917739636943,
+      "avg_duration": 438.26859496822306,
+      "days_since_last_change": 10
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 405.45875075168055,
+    "passed": false,
+    "commit_sha": "abc0001000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T03:00:00",
+    "features": {
+      "lines_added": 7,
+      "lines_deleted": 65,
+      "files_changed": 9,
+      "complexity_delta": -0.58,
+      "recent_failure_rate": 0.2970382995876751,
+      "avg_duration": 449.1174198241129,
+      "days_since_last_change": 25
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 370.6903264311926,
+    "passed": true,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T16:00:00",
+    "features": {
+      "lines_added": 132,
+      "lines_deleted": 78,
+      "files_changed": 2,
+      "complexity_delta": 0.54,
+      "recent_failure_rate": 0.25094271692032377,
+      "avg_duration": 327.7303833110009,
+      "days_since_last_change": 24
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 482.6164455453066,
+    "passed": false,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T19:00:00",
+    "features": {
+      "lines_added": 185,
+      "lines_deleted": 73,
+      "files_changed": 6,
+      "complexity_delta": 1.12,
+      "recent_failure_rate": 0.21927677479797827,
+      "avg_duration": 454.22675604613937,
+      "days_since_last_change": 28
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 200.02700529240423,
+    "passed": true,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T01:00:00",
+    "features": {
+      "lines_added": 21,
+      "lines_deleted": 92,
+      "files_changed": 3,
+      "complexity_delta": -0.71,
+      "recent_failure_rate": 0.12057057622364843,
+      "avg_duration": 241.1193645740172,
+      "days_since_last_change": 10
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 416.5556764000542,
+    "passed": true,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T00:00:00",
+    "features": {
+      "lines_added": 156,
+      "lines_deleted": 50,
+      "files_changed": 6,
+      "complexity_delta": 1.06,
+      "recent_failure_rate": 0.29902879221852363,
+      "avg_duration": 453.2181856238439,
+      "days_since_last_change": 23
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 451.9066550098855,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T08:00:00",
+    "features": {
+      "lines_added": 125,
+      "lines_deleted": 4,
+      "files_changed": 8,
+      "complexity_delta": 1.21,
+      "recent_failure_rate": 0.005686920235427739,
+      "avg_duration": 455.11782634619055,
+      "days_since_last_change": 26
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 191.08574262907155,
+    "passed": false,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T12:00:00",
+    "features": {
+      "lines_added": 58,
+      "lines_deleted": 55,
+      "files_changed": 5,
+      "complexity_delta": 0.03,
+      "recent_failure_rate": 0.16225812066069953,
+      "avg_duration": 236.20760503257904,
+      "days_since_last_change": 9
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 434.9436337917316,
+    "passed": true,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T18:00:00",
+    "features": {
+      "lines_added": 198,
+      "lines_deleted": 53,
+      "files_changed": 5,
+      "complexity_delta": 1.45,
+      "recent_failure_rate": 0.23800901910072528,
+      "avg_duration": 467.55092255064784,
+      "days_since_last_change": 13
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 81.88697751907836,
+    "passed": false,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T23:00:00",
+    "features": {
+      "lines_added": 89,
+      "lines_deleted": 89,
+      "files_changed": 10,
+      "complexity_delta": 0.0,
+      "recent_failure_rate": 0.14973783812100266,
+      "avg_duration": 96.80038700141596,
+      "days_since_last_change": 3
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 250.90490167315764,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T16:00:00",
+    "features": {
+      "lines_added": 51,
+      "lines_deleted": 20,
+      "files_changed": 3,
+      "complexity_delta": 0.31,
+      "recent_failure_rate": 0.01998722023095768,
+      "avg_duration": 253.89802097037094,
+      "days_since_last_change": 28
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_ppo_agent",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 303.85797504802383,
+    "passed": true,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T17:00:00",
+    "features": {
+      "lines_added": 73,
+      "lines_deleted": 30,
+      "files_changed": 4,
+      "complexity_delta": 0.43,
+      "recent_failure_rate": 0.13755818780706233,
+      "avg_duration": 315.2194727922027,
+      "days_since_last_change": 8
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 339.72751447756855,
+    "passed": false,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T06:00:00",
+    "features": {
+      "lines_added": 172,
+      "lines_deleted": 10,
+      "files_changed": 10,
+      "complexity_delta": 1.62,
+      "recent_failure_rate": 0.29328749285550637,
+      "avg_duration": 324.96585432187356,
+      "days_since_last_change": 10
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 251.64146919477437,
+    "passed": true,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T14:00:00",
+    "features": {
+      "lines_added": 12,
+      "lines_deleted": 34,
+      "files_changed": 9,
+      "complexity_delta": -0.22,
+      "recent_failure_rate": 0.043583425207118,
+      "avg_duration": 208.3158513233263,
+      "days_since_last_change": 8
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 163.76075091314587,
+    "passed": false,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T22:00:00",
+    "features": {
+      "lines_added": 99,
+      "lines_deleted": 85,
+      "files_changed": 9,
+      "complexity_delta": 0.14,
+      "recent_failure_rate": 0.2482826323325034,
+      "avg_duration": 139.55128443595737,
+      "days_since_last_change": 17
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 349.3639021056413,
+    "passed": true,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T16:00:00",
+    "features": {
+      "lines_added": 161,
+      "lines_deleted": 22,
+      "files_changed": 10,
+      "complexity_delta": 1.39,
+      "recent_failure_rate": 0.11036022607286329,
+      "avg_duration": 341.4472231571373,
+      "days_since_last_change": 23
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 398.0427389882515,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T19:00:00",
+    "features": {
+      "lines_added": 104,
+      "lines_deleted": 73,
+      "files_changed": 1,
+      "complexity_delta": 0.31,
+      "recent_failure_rate": 0.017133910678226127,
+      "avg_duration": 362.6819071620287,
+      "days_since_last_change": 26
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 379.9004618305188,
+    "passed": false,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T11:00:00",
+    "features": {
+      "lines_added": 24,
+      "lines_deleted": 8,
+      "files_changed": 2,
+      "complexity_delta": 0.16,
+      "recent_failure_rate": 0.1377669104685037,
+      "avg_duration": 412.72254004767996,
+      "days_since_last_change": 8
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 137.54563913270061,
+    "passed": false,
+    "commit_sha": "abc0001000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T01:00:00",
+    "features": {
+      "lines_added": 39,
+      "lines_deleted": 48,
+      "files_changed": 2,
+      "complexity_delta": -0.09,
+      "recent_failure_rate": 0.12632287137006265,
+      "avg_duration": 103.13158729652112,
+      "days_since_last_change": 20
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 183.5372681329198,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T21:00:00",
+    "features": {
+      "lines_added": 49,
+      "lines_deleted": 11,
+      "files_changed": 1,
+      "complexity_delta": 0.38,
+      "recent_failure_rate": 0.10962230136887738,
+      "avg_duration": 140.3058759343329,
+      "days_since_last_change": 24
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 192.96970481101476,
+    "passed": true,
+    "commit_sha": "abc0005000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T11:00:00",
+    "features": {
+      "lines_added": 173,
+      "lines_deleted": 37,
+      "files_changed": 9,
+      "complexity_delta": 1.36,
+      "recent_failure_rate": 0.05816785311299631,
+      "avg_duration": 181.79264758755693,
+      "days_since_last_change": 2
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_bayesian_optimization",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 442.1899750355694,
+    "passed": true,
+    "commit_sha": "abc0001000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T10:00:00",
+    "features": {
+      "lines_added": 159,
+      "lines_deleted": 54,
+      "files_changed": 1,
+      "complexity_delta": 1.05,
+      "recent_failure_rate": 0.22798827840735342,
+      "avg_duration": 485.58258555320737,
+      "days_since_last_change": 15
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 406.6173265076027,
+    "passed": true,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T13:00:00",
+    "features": {
+      "lines_added": 59,
+      "lines_deleted": 0,
+      "files_changed": 9,
+      "complexity_delta": 0.59,
+      "recent_failure_rate": 0.01560862718968562,
+      "avg_duration": 388.77544189787926,
+      "days_since_last_change": 9
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 468.1078750321641,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T18:00:00",
+    "features": {
+      "lines_added": 160,
+      "lines_deleted": 56,
+      "files_changed": 6,
+      "complexity_delta": 1.04,
+      "recent_failure_rate": 0.19993464419506107,
+      "avg_duration": 430.00278063239625,
+      "days_since_last_change": 2
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_ppo_agent",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 402.0140217469626,
+    "passed": true,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T15:00:00",
+    "features": {
+      "lines_added": 38,
+      "lines_deleted": 33,
+      "files_changed": 3,
+      "complexity_delta": 0.05,
+      "recent_failure_rate": 0.029913312982693185,
+      "avg_duration": 380.16923942243346,
+      "days_since_last_change": 18
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 262.51584485082066,
+    "passed": true,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T22:00:00",
+    "features": {
+      "lines_added": 135,
+      "lines_deleted": 56,
+      "files_changed": 1,
+      "complexity_delta": 0.79,
+      "recent_failure_rate": 0.054899652762428815,
+      "avg_duration": 217.45247374833374,
+      "days_since_last_change": 5
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 414.6853958722453,
+    "passed": false,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T03:00:00",
+    "features": {
+      "lines_added": 186,
+      "lines_deleted": 78,
+      "files_changed": 4,
+      "complexity_delta": 1.08,
+      "recent_failure_rate": 0.15245388929011516,
+      "avg_duration": 414.0901801352038,
+      "days_since_last_change": 7
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 186.87695226598302,
+    "passed": true,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T07:00:00",
+    "features": {
+      "lines_added": 94,
+      "lines_deleted": 38,
+      "files_changed": 1,
+      "complexity_delta": 0.56,
+      "recent_failure_rate": 0.01978772167745606,
+      "avg_duration": 158.12078974129665,
+      "days_since_last_change": 28
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 343.7800024848676,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T18:00:00",
+    "features": {
+      "lines_added": 106,
+      "lines_deleted": 72,
+      "files_changed": 4,
+      "complexity_delta": 0.34,
+      "recent_failure_rate": 0.1692540134085985,
+      "avg_duration": 373.279869557303,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_utils.py::test_settings",
+    "test_file": "tests/test_utils.py",
+    "duration_ms": 426.520016581174,
+    "passed": true,
+    "commit_sha": "abc0001000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T07:00:00",
+    "features": {
+      "lines_added": 50,
+      "lines_deleted": 61,
+      "files_changed": 10,
+      "complexity_delta": -0.11,
+      "recent_failure_rate": 0.19863689095560436,
+      "avg_duration": 421.34395536901104,
+      "days_since_last_change": 29
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 475.3660222029331,
+    "passed": false,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T07:00:00",
+    "features": {
+      "lines_added": 98,
+      "lines_deleted": 45,
+      "files_changed": 1,
+      "complexity_delta": 0.53,
+      "recent_failure_rate": 0.2698257107008122,
+      "avg_duration": 443.26910293614094,
+      "days_since_last_change": 26
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 256.9852674973501,
+    "passed": true,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T04:00:00",
+    "features": {
+      "lines_added": 152,
+      "lines_deleted": 55,
+      "files_changed": 8,
+      "complexity_delta": 0.97,
+      "recent_failure_rate": 0.10618997458091485,
+      "avg_duration": 211.73814004113805,
+      "days_since_last_change": 4
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 339.6626824820608,
+    "passed": true,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T16:00:00",
+    "features": {
+      "lines_added": 90,
+      "lines_deleted": 55,
+      "files_changed": 1,
+      "complexity_delta": 0.35,
+      "recent_failure_rate": 0.05162778224041879,
+      "avg_duration": 384.8210595412613,
+      "days_since_last_change": 13
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 435.13112428443816,
+    "passed": true,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T20:00:00",
+    "features": {
+      "lines_added": 193,
+      "lines_deleted": 63,
+      "files_changed": 5,
+      "complexity_delta": 1.3,
+      "recent_failure_rate": 0.1754891332126617,
+      "avg_duration": 431.48412365483705,
+      "days_since_last_change": 14
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 212.32526805153935,
+    "passed": false,
+    "commit_sha": "abc0003000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T11:00:00",
+    "features": {
+      "lines_added": 63,
+      "lines_deleted": 94,
+      "files_changed": 9,
+      "complexity_delta": -0.31,
+      "recent_failure_rate": 0.22652876277193584,
+      "avg_duration": 183.91874368667143,
+      "days_since_last_change": 5
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 385.8991444879378,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-03T05:00:00",
+    "features": {
+      "lines_added": 145,
+      "lines_deleted": 92,
+      "files_changed": 7,
+      "complexity_delta": 0.53,
+      "recent_failure_rate": 0.18008917547615538,
+      "avg_duration": 417.1622733136689,
+      "days_since_last_change": 15
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 44.44276473517036,
+    "passed": true,
+    "commit_sha": "abc0008000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T02:00:00",
+    "features": {
+      "lines_added": 44,
+      "lines_deleted": 48,
+      "files_changed": 6,
+      "complexity_delta": -0.04,
+      "recent_failure_rate": 0.0532375441257918,
+      "avg_duration": 74.86586764637443,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 270.4655050255931,
+    "passed": true,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T14:00:00",
+    "features": {
+      "lines_added": 83,
+      "lines_deleted": 100,
+      "files_changed": 9,
+      "complexity_delta": -0.17,
+      "recent_failure_rate": 0.10432288526390746,
+      "avg_duration": 267.77975307515567,
+      "days_since_last_change": 27
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_health",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 89.28737267708398,
+    "passed": false,
+    "commit_sha": "abc0002000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T04:00:00",
+    "features": {
+      "lines_added": 120,
+      "lines_deleted": 68,
+      "files_changed": 7,
+      "complexity_delta": 0.52,
+      "recent_failure_rate": 0.0033476163202145748,
+      "avg_duration": 117.9273475509868,
+      "days_since_last_change": 3
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 417.63466572591057,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T06:00:00",
+    "features": {
+      "lines_added": 126,
+      "lines_deleted": 61,
+      "files_changed": 8,
+      "complexity_delta": 0.65,
+      "recent_failure_rate": 0.0714034303300594,
+      "avg_duration": 433.9058191027339,
+      "days_since_last_change": 17
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_ppo_agent",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 471.28681114628614,
+    "passed": true,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T19:00:00",
+    "features": {
+      "lines_added": 187,
+      "lines_deleted": 27,
+      "files_changed": 3,
+      "complexity_delta": 1.6,
+      "recent_failure_rate": 0.2211130386611554,
+      "avg_duration": 497.83108222977023,
+      "days_since_last_change": 1
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 72.11316533686075,
+    "passed": true,
+    "commit_sha": "abc0001000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-06T05:00:00",
+    "features": {
+      "lines_added": 131,
+      "lines_deleted": 57,
+      "files_changed": 4,
+      "complexity_delta": 0.74,
+      "recent_failure_rate": 0.1105609607669917,
+      "avg_duration": 61.47548205041542,
+      "days_since_last_change": 6
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 147.0090533353787,
+    "passed": true,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T13:00:00",
+    "features": {
+      "lines_added": 64,
+      "lines_deleted": 40,
+      "files_changed": 10,
+      "complexity_delta": 0.24,
+      "recent_failure_rate": 0.03056223497598055,
+      "avg_duration": 123.5244679395652,
+      "days_since_last_change": 7
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 250.53600942338898,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T07:00:00",
+    "features": {
+      "lines_added": 166,
+      "lines_deleted": 67,
+      "files_changed": 4,
+      "complexity_delta": 0.99,
+      "recent_failure_rate": 0.13213801934138175,
+      "avg_duration": 246.4560877394128,
+      "days_since_last_change": 21
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 152.24845832025733,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T00:00:00",
+    "features": {
+      "lines_added": 52,
+      "lines_deleted": 93,
+      "files_changed": 2,
+      "complexity_delta": -0.41,
+      "recent_failure_rate": 0.03655810101232619,
+      "avg_duration": 132.4692715617649,
+      "days_since_last_change": 11
+    }
+  },
+  {
+    "test_name": "tests/test_connectors.py::test_simulator",
+    "test_file": "tests/test_connectors.py",
+    "duration_ms": 272.73810503258517,
+    "passed": true,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-02T14:00:00",
+    "features": {
+      "lines_added": 109,
+      "lines_deleted": 44,
+      "files_changed": 7,
+      "complexity_delta": 0.65,
+      "recent_failure_rate": 0.2306232032361228,
+      "avg_duration": 226.08853297279362,
+      "days_since_last_change": 15
+    }
+  },
+  {
+    "test_name": "tests/test_health.py::test_health_endpoint",
+    "test_file": "tests/test_health.py",
+    "duration_ms": 242.0441052015352,
+    "passed": false,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T14:00:00",
+    "features": {
+      "lines_added": 36,
+      "lines_deleted": 23,
+      "files_changed": 7,
+      "complexity_delta": 0.13,
+      "recent_failure_rate": 0.2073761250775066,
+      "avg_duration": 256.7537917202453,
+      "days_since_last_change": 29
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 428.02669865213153,
+    "passed": true,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T20:00:00",
+    "features": {
+      "lines_added": 105,
+      "lines_deleted": 67,
+      "files_changed": 6,
+      "complexity_delta": 0.38,
+      "recent_failure_rate": 0.23311257999672916,
+      "avg_duration": 417.19262809531074,
+      "days_since_last_change": 14
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 279.82289148795206,
+    "passed": false,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-01T14:00:00",
+    "features": {
+      "lines_added": 93,
+      "lines_deleted": 57,
+      "files_changed": 8,
+      "complexity_delta": 0.36,
+      "recent_failure_rate": 0.17673555660572818,
+      "avg_duration": 255.59395025820353,
+      "days_since_last_change": 17
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_query_experiments",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 100.90628862176476,
+    "passed": true,
+    "commit_sha": "abc0009000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T04:00:00",
+    "features": {
+      "lines_added": 115,
+      "lines_deleted": 87,
+      "files_changed": 1,
+      "complexity_delta": 0.28,
+      "recent_failure_rate": 0.20895373423812502,
+      "avg_duration": 85.41801405936619,
+      "days_since_last_change": 14
+    }
+  },
+  {
+    "test_name": "tests/test_api.py::test_database_connection",
+    "test_file": "tests/test_api.py",
+    "duration_ms": 41.714074175806225,
+    "passed": false,
+    "commit_sha": "abc0000000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T02:00:00",
+    "features": {
+      "lines_added": 157,
+      "lines_deleted": 89,
+      "files_changed": 3,
+      "complexity_delta": 0.68,
+      "recent_failure_rate": 0.021100602434101046,
+      "avg_duration": 58.239789946309735,
+      "days_since_last_change": 22
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_storage_upload",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 355.7187182165224,
+    "passed": false,
+    "commit_sha": "abc0007000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-05T20:00:00",
+    "features": {
+      "lines_added": 186,
+      "lines_deleted": 23,
+      "files_changed": 1,
+      "complexity_delta": 1.63,
+      "recent_failure_rate": 0.25388917312137543,
+      "avg_duration": 329.7603335002648,
+      "days_since_last_change": 8
+    }
+  },
+  {
+    "test_name": "tests/test_reasoning.py::test_ppo_agent",
+    "test_file": "tests/test_reasoning.py",
+    "duration_ms": 250.59640041583586,
+    "passed": false,
+    "commit_sha": "abc0006000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T17:00:00",
+    "features": {
+      "lines_added": 182,
+      "lines_deleted": 31,
+      "files_changed": 6,
+      "complexity_delta": 1.51,
+      "recent_failure_rate": 0.29171746970871615,
+      "avg_duration": 209.26848694652105,
+      "days_since_last_change": 19
+    }
+  },
+  {
+    "test_name": "tests/test_services.py::test_vertex_init",
+    "test_file": "tests/test_services.py",
+    "duration_ms": 471.0570184927762,
+    "passed": false,
+    "commit_sha": "abc0004000000000000000000000000000000000000",
+    "branch": "main",
+    "created_at": "2025-10-04T01:00:00",
+    "features": {
+      "lines_added": 151,
+      "lines_deleted": 66,
+      "files_changed": 1,
+      "complexity_delta": 0.85,
+      "recent_failure_rate": 0.10716610182770386,
+      "avg_duration": 448.56342844223576,
+      "days_since_last_change": 21
+    }
+  }
+]
