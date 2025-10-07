@@ -1,70 +1,73 @@
-name: CI & Reproducibility
+name: Epistemic CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
+    branches: [main]
+
+env:
+  RUNNER_USD_PER_HOUR: "0.60"
 
 jobs:
   nix-check:
+    name: Nix Flake Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
       - name: Install Nix
         uses: cachix/install-nix-action@v27
         with:
-          nix_path: nixpkgs=channel:nixos-24.05
+          extra_nix_config: |
+            experimental-features = nix-command flakes
       
-      - name: Nix flake check
-        run: nix flake check -L
+      - name: Flake check
+        run: nix flake check
 
   hermetic-repro:
+    name: Hermetic Reproducibility
     needs: nix-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
       - name: Install Nix
         uses: cachix/install-nix-action@v27
         with:
-          nix_path: nixpkgs=channel:nixos-24.05
+          extra_nix_config: |
+            experimental-features = nix-command flakes
       
       - name: First build
         run: |
           set -euo pipefail
-          nix build .#default --print-build-logs 2>&1 | tee first_build.log
+          nix build .#default --print-build-logs | tee first_build.log
           nix hash path ./result > first.hash
-          echo "First build hash:"
-          cat first.hash
       
-      - name: Clean and rebuild
+      - name: Second build (identical expected)
         run: |
           set -euo pipefail
-          rm result
-          nix build .#default --print-build-logs 2>&1 | tee second_build.log
+          rm -rf result  # Remove symlink to force rebuild
+          nix build .#default --print-build-logs | tee second_build.log
           nix hash path ./result > second.hash
-          echo "Second build hash:"
-          cat second.hash
       
       - name: Compare hashes
         run: |
           set -euo pipefail
-          echo "Comparing build hashes..."
+          echo "First build hash:"
+          cat first.hash
+          echo "Second build hash:"
+          cat second.hash
           diff -s first.hash second.hash
-          echo "✅ Builds are bit-identical!"
       
       - name: Prepare artifacts
         run: |
           mkdir -p artifact
-          echo "=== First Build Hash ===" > artifact/sha256.txt
-          cat first.hash >> artifact/sha256.txt
-          echo "" >> artifact/sha256.txt
-          echo "=== Second Build Hash ===" >> artifact/sha256.txt
+          cat first.hash > artifact/sha256.txt
+          printf "\n" >> artifact/sha256.txt
           cat second.hash >> artifact/sha256.txt
-          echo "" >> artifact/sha256.txt
-          echo "=== Comparison ===" >> artifact/sha256.txt
-          diff -s first.hash second.hash >> artifact/sha256.txt || true
           cat first_build.log second_build.log > artifact/build.log
       
       - name: Upload reproducibility artifacts
@@ -73,159 +76,113 @@ jobs:
           name: reproducibility
           path: artifact/
 
-  evidence-pack:
+  epistemic-ci:
+    name: Epistemic Test Selection
     needs: hermetic-repro
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          nix_path: nixpkgs=channel:nixos-24.05
+          python-version: '3.12'
       
-      - name: Generate REPRODUCIBILITY.md
+      - name: Install dependencies
         run: |
-          mkdir -p artifact
-          COMMIT_SHA="${{ github.sha }}"
-          DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          cat > artifact/REPRODUCIBILITY.md <<'EOF'
-          # Reproducibility Appendix
-          
-          ## Summary
-          - **Commit**: COMMIT_SHA_PLACEHOLDER
-          - **Date (UTC)**: DATE_PLACEHOLDER
-          - **Nix**: Hermetic build verified by double-build identical hash
-          - **Platform**: ubuntu-latest (GitHub Actions)
-          
-          ## Verification Method
-          
-          Two consecutive builds of the same commit produced identical output hashes,
-          proving bit-identical reproducibility.
-          
-          ### Steps Executed
-          1. Build from clean state: `nix build .#default`
-          2. Compute hash: `nix hash path ./result`
-          3. Remove result symlink: `rm result`
-          4. Rebuild: `nix build .#default`
-          5. Compute hash again: `nix hash path ./result`
-          6. Compare: Both hashes must match exactly
-          
-          ## How To Reproduce Locally
-          
-          ```bash
-          # Clone the repository
-          git clone https://github.com/GOATnote-Inc/periodicdent42.git
-          cd periodicdent42
-          git checkout COMMIT_SHA_PLACEHOLDER
-          
-          # Install Nix (if not already installed)
-          sh <(curl -L https://nixos.org/nix/install) --daemon
-          
-          # Enable flakes
-          mkdir -p ~/.config/nix
-          echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
-          
-          # Verify reproducibility
-          nix build .#default
-          HASH1=$(nix hash path ./result)
-          rm result
-          nix build .#default
-          HASH2=$(nix hash path ./result)
-          
-          # Compare
-          if [ "$HASH1" = "$HASH2" ]; then
-              echo "✅ Builds are bit-identical!"
-              echo "Hash: $HASH1"
-          else
-              echo "❌ Hashes differ (unexpected)"
-          fi
-          ```
-          
-          ## Evidence Files
-          
-          - `sha256.txt` - Both build hashes (expected identical)
-          - `build.log` - Complete build output from both builds
-          - `flake.lock` - Pinned dependency versions
-          - `environment.nix` - Environment snapshot (if present)
-          
-          ## Implications
-          
-          Bit-identical builds guarantee:
-          - **Reproducibility**: Same source → same binary
-          - **Hermeticity**: No system dependencies leaked
-          - **Auditability**: Cryptographic verification possible
-          - **Long-term**: Will work identically in 2030, 2035+
-          
-          ## Contact
-          
-          - **Repository**: https://github.com/GOATnote-Inc/periodicdent42
-          - **Contact**: info@thegoatnote.com
-          - **Documentation**: See `HERMETIC_BUILDS_VERIFIED.md`
-          EOF
-          sed -i "s/COMMIT_SHA_PLACEHOLDER/${COMMIT_SHA}/g" artifact/REPRODUCIBILITY.md
-          sed -i "s/DATE_PLACEHOLDER/${DATE}/g" artifact/REPRODUCIBILITY.md
+          python -m pip install --upgrade pip
+          pip install pandas scikit-learn joblib
       
-      - name: Copy lockfile and environment snapshot
+      - name: Generate mock CI data
         run: |
-          cp flake.lock artifact/ || true
-          # Synthesize minimal environment pin for appendix
-          if [ -f environment.nix ]; then
-            cp environment.nix artifact/
-          else
-            cat > artifact/environment.nix <<'NENV'
-          # Minimal environment snapshot for reproducibility
-          { pkgs ? import <nixpkgs> {} }:
-          pkgs.mkShell {
-            buildInputs = with pkgs; [
-              python312
-              git
-              ruff
-              postgresql_15
-            ];
-            
-            shellHook = ''
-              echo "Reproducible environment loaded"
-              echo "Python: ${pkgs.python312.version}"
-            '';
-          }
-          NENV
-          fi
+          mkdir -p data artifact
+          python3 scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12
       
-      - name: Upload evidence pack
-        uses: actions/upload-artifact@v4
-        with:
-          name: reproducibility-evidence-pack
-          path: artifact/
-      
-      - name: Optional diffoscope (best-effort)
+      - name: Train failure predictor
         run: |
-          set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y diffoscope 2>/dev/null || {
-            echo "diffoscope not available, skipping"
-            exit 0
-          }
-          
-          if command -v diffoscope >/dev/null 2>&1; then
-            echo "Running diffoscope comparison..."
-            # Rebuild twice fresh dirs for diff
-            rm -rf out1 out2 || true
-            nix build .#default --out-link out1 || true
-            nix build .#default --out-link out2 || true
-            diffoscope out1 out2 > artifact/diffoscope.txt 2>&1 || {
-              echo "diffoscope comparison completed (may show identical)"
-            }
-            
-            if [ -f artifact/diffoscope.txt ]; then
-              echo "diffoscope output saved to artifact/diffoscope.txt"
-            fi
-          fi
+          python3 scripts/train_selector.py
         continue-on-error: true
       
-      - name: Upload diffoscope if generated
-        if: always()
+      - name: Score EIG
+        run: |
+          python3 scripts/score_eig.py
+      
+      - name: Select tests
+        run: |
+          python3 scripts/select_tests.py
+      
+      - name: Generate report
+        run: |
+          python3 scripts/gen_ci_report.py
+      
+      - name: Generate reproducibility appendix
+        run: |
+          COMMIT="${{ github.sha }}"
+          DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          cat > artifact/REPRODUCIBILITY.md <<EOF
+          # Reproducibility Appendix
+          
+          ## Build Metadata
+          
+          - **Commit:** \`$COMMIT\`
+          - **Date:** $DATE
+          - **Branch:** \`${{ github.ref_name }}\`
+          - **Workflow:** ${{ github.workflow }}
+          - **Run:** ${{ github.run_id }}
+          
+          ## Hermetic Build Verification
+          
+          Nix double-build with identical hash verified in \`hermetic-repro\` job.
+          See \`artifact/sha256.txt\` for hash comparison.
+          
+          ## Epistemic CI Artifacts
+          
+          - \`ci_metrics.json\` - Information-theoretic and practical metrics
+          - \`ci_report.md\` - Human-readable summary
+          - \`eig_rankings.json\` - Per-test EIG scores
+          - \`selected_tests.json\` - Selected test list
+          
+          ## Reproducibility Instructions
+          
+          \`\`\`bash
+          # Clone and checkout
+          git clone https://github.com/${{ github.repository }}.git
+          cd \$(basename ${{ github.repository }})
+          git checkout $COMMIT
+          
+          # Verify hermetic build
+          nix build .#default
+          nix hash path ./result
+          
+          # Reproduce epistemic CI
+          python3 scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12
+          python3 scripts/train_selector.py
+          python3 scripts/score_eig.py
+          python3 scripts/select_tests.py
+          python3 scripts/gen_ci_report.py
+          \`\`\`
+          
+          ## Lockfiles
+          
+          - \`flake.lock\` - Nix dependency pins (committed)
+          - \`uv.lock\` / \`requirements*.lock\` - Python dependency pins
+          EOF
+      
+      - name: Display report
+        run: |
+          echo "=========================================="
+          echo "Epistemic CI Report"
+          echo "=========================================="
+          cat artifact/ci_report.md
+          echo ""
+          echo "=========================================="
+          echo "Metrics"
+          echo "=========================================="
+          cat artifact/ci_metrics.json
+      
+      - name: Upload epistemic-ci artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: diffoscope-report
-          path: artifact/diffoscope.txt
-          if-no-files-found: ignore
+          name: epistemic-ci-artifacts
+          path: artifact/
