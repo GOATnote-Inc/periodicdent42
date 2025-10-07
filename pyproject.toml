@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Autonomous R&D Intelligence Layer"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "MIT"}
+license = {text = "Proprietary - See LICENSE file for details"}
 
 [project.optional-dependencies]
 # Heavy scientific computing dependencies (require native libs/compilation)
