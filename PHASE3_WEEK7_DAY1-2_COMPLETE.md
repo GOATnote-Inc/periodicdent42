@@ -18,7 +18,7 @@
 2. ✅ Wrote comprehensive `NIX_SETUP_GUIDE.md`
 3. ✅ Added GitHub Actions workflow (`ci-nix.yml`)
 4. ✅ Updated copyright to "GOATnote Autonomous Research Lab Initiative"
-5. ✅ Updated contact email to info@thegoatnote.com
+5. ✅ Updated contact email to b@thegoatnote.com
 
 ---
 
@@ -203,7 +203,7 @@ Runs:
 <form aria-label="Contact form">
 
 <!-- After -->
-<form aria-label="Contact form" action="mailto:info@thegoatnote.com" method="post" enctype="text/plain">
+<form aria-label="Contact form" action="mailto:b@thegoatnote.com" method="post" enctype="text/plain">
 ```
 
 #### Alert Message
@@ -212,7 +212,7 @@ Runs:
 alert('Thanks for reaching out! A member of the autonomous lab initiative will respond shortly.');
 
 // After
-alert('Thanks for reaching out! Your inquiry will be sent to info@thegoatnote.com. A member of the GOATnote Autonomous Research Lab Initiative will respond shortly.');
+alert('Thanks for reaching out! Your inquiry will be sent to b@thegoatnote.com. A member of the GOATnote Autonomous Research Lab Initiative will respond shortly.');
 ```
 
 ---

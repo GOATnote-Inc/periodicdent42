@@ -354,7 +354,7 @@
 ## Contact & Support
 
 **Repository**: https://github.com/GOATnote-Inc/periodicdent42  
-**Email**: info@thegoatnote.com  
+**Email**: b@thegoatnote.com  
 **Documentation**: [EVIDENCE.md](./EVIDENCE.md)
 
 ---

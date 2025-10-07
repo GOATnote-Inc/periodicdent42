@@ -888,7 +888,7 @@ a production scientific computing platform with 205 experiments and 100+ tests.
 
 **📧 Contact:**
 GOATnote Autonomous Research Lab Initiative  
-info@thegoatnote.com  
+b@thegoatnote.com  
 Phase 3 Week 7 Days 5-7 (Oct 17-19, 2025)
 
 ---

@@ -401,5 +401,5 @@ Our CI verifies reproducibility:
 ---
 
 **© 2025 GOATnote Autonomous Research Lab Initiative**  
-**Contact**: info@thegoatnote.com  
+**Contact**: b@thegoatnote.com  
 **Phase 3 Week 7: Hermetic Builds - Cache Strategy**

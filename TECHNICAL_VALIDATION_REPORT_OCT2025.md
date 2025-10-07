@@ -462,7 +462,7 @@ FROM test_telemetry;
 
 **Report Compiled**: October 7, 2025  
 **Author**: GOATnote AI Agent  
-**Contact**: info@thegoatnote.com  
+**Contact**: b@thegoatnote.com  
 **Repository**: periodicdent42 (main branch)
 
 **Evidence Location**: `/Users/kiteboard/periodicdent42/`

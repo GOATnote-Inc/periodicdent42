@@ -497,6 +497,6 @@ pytest tests/ --chaos --chaos-rate 0.10 -v
 ---
 
 **© 2025 GOATnote Autonomous Research Lab Initiative**  
-**Contact:** info@thegoatnote.com  
+**Contact:** b@thegoatnote.com  
 **Phase 3 Week 8: Chaos Engineering**
 

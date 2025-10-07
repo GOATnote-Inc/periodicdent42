@@ -259,7 +259,7 @@ All metrics computed using proper statistical methods:
 ## Contact & Demo
 
 **Repository**: https://github.com/GOATnote-Inc/periodicdent42  
-**Email**: info@thegoatnote.com
+**Email**: b@thegoatnote.com
 
 ### Schedule Demo (60 minutes)
 

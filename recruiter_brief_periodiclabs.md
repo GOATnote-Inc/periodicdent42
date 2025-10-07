@@ -2,7 +2,7 @@
 ## Executive Brief for Periodic Labs
 
 **Date**: 2025-10-06  
-**Contact**: info@thegoatnote.com  
+**Contact**: b@thegoatnote.com  
 **Repository**: https://github.com/GOATnote-Inc/periodicdent42  
 **Full Evidence**: [EVIDENCE.md](./EVIDENCE.md)
 
@@ -147,7 +147,7 @@ Pass Rates:
 ## Contact & Next Steps
 
 **Questions?**  
-Email: info@thegoatnote.com  
+Email: b@thegoatnote.com  
 Repository: https://github.com/GOATnote-Inc/periodicdent42  
 Full Evidence Audit: [EVIDENCE.md](./EVIDENCE.md)
 

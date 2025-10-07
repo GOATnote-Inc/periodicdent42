@@ -713,7 +713,7 @@ Reproducibility appendix with:
 **Developed By**: GOATnote Autonomous Research Lab Initiative  
 **AI Agent**: Claude Sonnet 4.5 (Cursor)  
 **Date**: October 7, 2025  
-**Contact**: info@thegoatnote.com  
+**Contact**: b@thegoatnote.com  
 **Repository**: periodicdent42 (main branch)
 
 ---

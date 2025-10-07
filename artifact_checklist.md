@@ -305,7 +305,7 @@ hypothesis==6.140.3
 **Fix**: Run on Linux (CI) or use `sudo` on macOS
 
 ### 8.2 Contact for Support
-- **Email**: info@thegoatnote.com
+- **Email**: b@thegoatnote.com
 - **GitHub Issues**: https://github.com/GOATnote-Inc/periodicdent42/issues
 - **Documentation**: See 13 comprehensive guides in repository root
 
@@ -350,7 +350,7 @@ Based on ACM artifact evaluation criteria:
 - **Docker**: Container images available (reproducibility guarantee)
 
 ### 10.3 Contact Longevity
-- **Email**: info@thegoatnote.com (organizational, not personal)
+- **Email**: b@thegoatnote.com (organizational, not personal)
 - **ORCID**: TBD (recommended for author identification)
 
 ---

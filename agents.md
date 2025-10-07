@@ -432,7 +432,7 @@ Remember: **Honest iteration over perfect demos.** Document limitations, iterate
 **Work Completed**:
 - Hermetic builds with Nix flakes (Day 1-2 of Week 7)
 - Copyright updated to "GOATnote Autonomous Research Lab Initiative"
-- Contact email updated to info@thegoatnote.com
+- Contact email updated to b@thegoatnote.com
 - 2 commits pushed with 1,676+ lines of code/docs
 - Multi-platform CI configured (Linux + macOS)
 
@@ -459,7 +459,7 @@ Remember: **Honest iteration over perfect demos.** Document limitations, iterate
 
 4. **Website Updates**:
    - Footer: © 2025 GOATnote Autonomous Research Lab Initiative
-   - Contact form: action="mailto:info@thegoatnote.com"
+   - Contact form: action="mailto:b@thegoatnote.com"
    - Alert message updated with GOATnote branding
 
 **Deliverables Created** (1,676+ lines):

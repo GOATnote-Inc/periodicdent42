@@ -318,7 +318,7 @@ This provides **continuous assurance** that hermetic builds remain stable as the
 
 **Verified By**: GOATnote AI Agent (Claude Sonnet 4.5)  
 **Date**: October 7, 2025, 12:17 AM PDT  
-**Contact**: info@thegoatnote.com  
+**Contact**: b@thegoatnote.com  
 **Repository**: periodicdent42 (main branch, commit 87a25ed)
 
 ✅ **HERMETIC BUILDS: MISSION ACCOMPLISHED**
@@ -467,4 +467,4 @@ Full JSON Schema at `schemas/ci_run.schema.json` defines:
 
 **Status**: ✅ **Epistemic CI Operational**  
 **Integration Date**: October 7, 2025  
-**Contact**: info@thegoatnote.com
+**Contact**: b@thegoatnote.com

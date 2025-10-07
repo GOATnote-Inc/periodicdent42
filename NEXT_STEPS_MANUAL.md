@@ -329,7 +329,7 @@ cat EVIDENCE.md
 
 ## Questions?
 
-**Email**: info@thegoatnote.com  
+**Email**: b@thegoatnote.com  
 **Repository**: /Users/kiteboard/periodicdent42  
 **Documentation**: 
 - `TECHNICAL_VALIDATION_REPORT_OCT2025.md` - Comprehensive validation results

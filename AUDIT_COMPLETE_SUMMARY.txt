@@ -161,7 +161,7 @@ REPRODUCIBILITY GUARANTEES
 CONTACT & NEXT STEPS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Repository:   https://github.com/GOATnote-Inc/periodicdent42
-Email:        info@thegoatnote.com
+Email:        b@thegoatnote.com
 Full Audit:   EVIDENCE.md (comprehensive, reviewer-safe)
 Brief:        recruiter_brief_periodiclabs.md (one-page executive summary)
 Artifacts:    artifact_checklist.md (ICSE/ISSTA/SC evaluation checklist)

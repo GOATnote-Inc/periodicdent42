@@ -378,7 +378,7 @@ Experiments Reproduced:
 **Getting Help**:
 - Documentation: 13 guides in repository
 - Code examples: Every script has --help
-- Contact: info@thegoatnote.com
+- Contact: b@thegoatnote.com
 
 ---
 
