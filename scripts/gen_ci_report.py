@@ -67,6 +67,15 @@ def compute_metrics(
     entropy_before = sum(t.get("entropy_before", 0) for t in selected)
     entropy_after = sum(t.get("entropy_after", 0) for t in selected)
     delta_entropy = entropy_before - entropy_after if entropy_before > 0 else None
+
+    budget_sec = selection_stats.get("budget_sec", 0)
+    budget_usd = selection_stats.get("budget_usd", 0)
+    budget_util_time = selected_time / budget_sec if budget_sec else None
+    budget_util_cost = selected_cost / budget_usd if budget_usd else None
+
+    decision_rationale = selection_stats.get("decision_rationale") or selection_stats.get(
+        "policy_reason"
+    ) or "max_eig_under_budget"
     
     metrics = {
         "run_time_saved_sec": time_saved,
@@ -84,6 +93,12 @@ def compute_metrics(
         "bits_per_second": bits_per_second,
         "delta_entropy_bits": delta_entropy,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "information_possible_bits": full_eig,
+        "budget_sec": budget_sec,
+        "budget_usd": budget_usd,
+        "budget_utilization_time": budget_util_time,
+        "budget_utilization_cost": budget_util_cost,
+        "decision_rationale": decision_rationale,
     }
     
     return metrics
@@ -121,10 +136,15 @@ def generate_markdown_report(
                  f"({metrics['time_reduction_pct']:.1f}% reduction)")
     lines.append(f"- **Cost saved:** ${metrics['run_cost_saved_usd']:.4f} "
                  f"({metrics['cost_reduction_pct']:.1f}% reduction)")
-    lines.append(f"- **Information gained:** {metrics['bits_gained']:.2f} bits")
+    lines.append(f"- **Information gained:** {metrics['bits_gained']:.2f} / "
+                 f"{metrics['information_possible_bits']:.2f} bits")
     lines.append(f"- **Efficiency:** {metrics['bits_per_dollar']:.2f} bits per dollar")
     lines.append(f"- **Detection rate:** {metrics['detection_rate']*100:.1f}% "
                  f"({metrics['failures_caught_est']:.1f}/{metrics['failures_total_est']:.1f} failures)")
+    if metrics.get("budget_utilization_time") is not None:
+        lines.append(f"- **Budget utilization (time):** {metrics['budget_utilization_time']*100:.1f}%")
+    if metrics.get("budget_utilization_cost") is not None:
+        lines.append(f"- **Budget utilization (cost):** {metrics['budget_utilization_cost']*100:.1f}%")
     lines.append("")
     
     # Information Theory Metrics
@@ -133,6 +153,7 @@ def generate_markdown_report(
     lines.append("| Metric | Value |")
     lines.append("|--------|-------|")
     lines.append(f"| Total EIG | {metrics['bits_gained']:.3f} bits |")
+    lines.append(f"| Possible EIG | {metrics['information_possible_bits']:.3f} bits |")
     lines.append(f"| Bits per dollar | {metrics['bits_per_dollar']:.3f} |")
     lines.append(f"| Bits per second | {metrics['bits_per_second']:.5f} |")
     if metrics['delta_entropy_bits'] is not None:
@@ -149,6 +170,14 @@ def generate_markdown_report(
     lines.append(f"| Cost saved | ${metrics['run_cost_saved_usd']:.4f} ({metrics['cost_reduction_pct']:.1f}%) |")
     lines.append(f"| Failures caught (est.) | {metrics['failures_caught_est']:.2f} / {metrics['failures_total_est']:.2f} |")
     lines.append(f"| Detection rate | {metrics['detection_rate']*100:.1f}% |")
+    if metrics.get("budget_utilization_time") is not None:
+        lines.append(
+            f"| Budget utilization (time) | {metrics['budget_utilization_time']*100:.1f}% |"
+        )
+    if metrics.get("budget_utilization_cost") is not None:
+        lines.append(
+            f"| Budget utilization (cost) | {metrics['budget_utilization_cost']*100:.1f}% |"
+        )
     lines.append("")
     
     # Top Selected Tests by EIG
@@ -304,13 +333,17 @@ def emit_experiment_ledger(
             "eig_bits": test.get("eig_bits", 0),
             "eig_rank": rank,
         }
-        
+
         # Add optional fields
         if test.get("failure_type"):
             test_entry["failure_type"] = test["failure_type"]
         if test.get("metrics"):
             test_entry["metrics"] = test["metrics"]
-        
+        if test.get("entropy_before") is not None:
+            test_entry["entropy_before"] = test["entropy_before"]
+        if test.get("entropy_after") is not None:
+            test_entry["entropy_after"] = test["entropy_after"]
+
         tests_ledger.append(test_entry)
     
     # Construct ledger matching schema
@@ -322,10 +355,10 @@ def emit_experiment_ledger(
         "tests_selected": metrics["tests_selected"],
         "tests_total": metrics["tests_total"],
         "information_gained_bits": metrics["bits_gained"],
-        "information_possible_bits": sum(t.get("eig_bits", 0) for t in all_tests),
+        "information_possible_bits": metrics["information_possible_bits"],
         "efficiency_bits_per_dollar": metrics["bits_per_dollar"],
-        "budget_sec": selection_stats.get("budget_sec", 0),
-        "budget_usd": selection_stats.get("budget_usd", 0),
+        "budget_sec": metrics["budget_sec"],
+        "budget_usd": metrics["budget_usd"],
         "walltime_sec": sum(t["duration_sec"] for t in selected),
         "cost_usd": sum(t["cost_usd"] for t in selected),
         "detection_rate": metrics["detection_rate"],
@@ -335,6 +368,12 @@ def emit_experiment_ledger(
         "selection_strategy": "epistemic",
         "ml_model_version": ml_model_version,
         "ml_model_f1": ml_model_f1,
+        "budget_utilization": {
+            "time": metrics.get("budget_utilization_time"),
+            "cost": metrics.get("budget_utilization_cost"),
+        },
+        "decision_rationale": metrics.get("decision_rationale"),
+        "delta_entropy_bits": metrics.get("delta_entropy_bits"),
     }
     
     # Write ledger

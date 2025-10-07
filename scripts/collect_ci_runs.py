@@ -20,9 +20,8 @@ import pathlib
 import random
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 # Domain-specific test suites
@@ -192,7 +191,211 @@ def generate_mock_run(
     return run
 
 
-def collect_real_run(runner_usd_per_hour: float = 0.60) -> Dict[str, Any]:
+def run_git_command(args: Iterable[str]) -> str:
+    """Run a git command and return stdout.
+
+    A thin wrapper exists so unit tests can monkeypatch this helper without needing
+    an actual git repository. All git invocations in this module should flow through
+    this function for testability.
+    """
+
+    result = subprocess.run(
+        ["git", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+
+    return result.stdout
+
+
+def _candidate_merge_bases() -> List[str]:
+    """Return candidate refs that may act as a diff base."""
+
+    env_candidates = [
+        os.getenv("GITHUB_BASE_SHA"),
+        os.getenv("GITHUB_BEFORE_SHA"),
+    ]
+
+    base_ref = os.getenv("GITHUB_BASE_REF")
+    if base_ref:
+        env_candidates.append(f"origin/{base_ref}")
+
+    env_candidates.extend([
+        os.getenv("CI_MERGE_BASE"),
+        "origin/main",
+        "origin/master",
+    ])
+
+    return [c for c in env_candidates if c]
+
+
+def resolve_merge_base(run_cmd=run_git_command) -> Optional[str]:
+    """Resolve a git merge base to diff against.
+
+    The function tries multiple fallbacks so it works both locally and in CI.
+    Returns ``None`` if no base could be determined.
+    """
+
+    for candidate in _candidate_merge_bases():
+        try:
+            ref = run_cmd(["merge-base", "HEAD", candidate]).strip()
+            if ref:
+                return ref
+        except RuntimeError:
+            continue
+
+    # Fallback to previous commit if repository has history.
+    try:
+        parent = run_cmd(["rev-parse", "HEAD^"]).strip()
+        if parent:
+            return parent
+    except RuntimeError:
+        return None
+
+    return None
+
+
+def compute_changed_files(
+    base: Optional[str],
+    run_cmd=run_git_command,
+) -> List[str]:
+    """Return list of changed files compared to the base commit."""
+
+    if base:
+        try:
+            diff_output = run_cmd(["diff", "--name-only", f"{base}..HEAD"])
+            files = [line.strip() for line in diff_output.splitlines() if line.strip()]
+            if files:
+                return files
+        except RuntimeError:
+            pass
+
+    # Fallback to working tree status if diff fails (e.g., shallow checkout).
+    try:
+        status_output = run_cmd(["status", "--porcelain"])
+        files = [line.split(maxsplit=1)[-1] for line in status_output.splitlines() if line]
+        return files
+    except RuntimeError:
+        return []
+
+
+def compute_diff_stats(
+    base: Optional[str],
+    run_cmd=run_git_command,
+) -> Tuple[int, int]:
+    """Compute lines added/deleted compared to ``base``.
+
+    Returns ``(lines_added, lines_deleted)``. Uses best-effort fallbacks.
+    """
+
+    if base:
+        try:
+            numstat = run_cmd(["diff", "--numstat", f"{base}..HEAD"])
+            added, deleted = 0, 0
+            for line in numstat.splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                    added += int(parts[0])
+                    deleted += int(parts[1])
+            return added, deleted
+        except RuntimeError:
+            pass
+
+    return 0, 0
+
+
+def load_pytest_results(
+    report_path: pathlib.Path,
+    runner_usd_per_hour: float,
+) -> Tuple[List[Dict[str, Any]], float, float]:
+    """Load pytest JSON report data into telemetry-friendly structure.
+
+    Parameters
+    ----------
+    report_path:
+        Path to a ``pytest --json-report`` output file.
+    runner_usd_per_hour:
+        Cost of a CI runner per hour. Used to convert duration to dollars.
+
+    Returns
+    -------
+    tuple
+        ``(tests, total_duration, total_cost)`` where ``tests`` is ready for
+        serialization in the CI run payload. If the report cannot be read an
+        empty list is returned.
+    """
+
+    if not report_path.exists():
+        return [], 0.0, 0.0
+
+    data = json.loads(report_path.read_text(encoding="utf-8"))
+    reports = data.get("tests") or data.get("reports") or []
+    tests: List[Dict[str, Any]] = []
+    total_duration = 0.0
+    total_cost = 0.0
+
+    for report in reports:
+        # Some json-report variants store outcome data under ``call``.
+        stage = report.get("when") or report.get("phase")
+        if stage and stage != "call":
+            continue
+
+        nodeid = report.get("nodeid") or report.get("node_id")
+        if not nodeid:
+            continue
+
+        outcome_raw = report.get("outcome") or report.get("result") or "pass"
+        outcome_map = {"passed": "pass", "failed": "fail", "skipped": "skip"}
+        outcome = outcome_map.get(str(outcome_raw).lower(), outcome_raw)
+        duration = float(report.get("duration", 0.0))
+        total_duration += duration
+        cost = duration * runner_usd_per_hour / 3600.0
+        total_cost += cost
+
+        metadata = report.get("metadata", {})
+        domain = metadata.get("domain", "generic")
+        suite = metadata.get("suite", domain)
+        failure_type = metadata.get("failure_type")
+
+        test_payload: Dict[str, Any] = {
+            "name": nodeid,
+            "suite": suite,
+            "domain": domain,
+            "duration_sec": duration,
+            "result": outcome,
+            "cost_usd": cost,
+            "timestamp": report.get("start", datetime.now(timezone.utc).isoformat()),
+            "model_uncertainty": metadata.get("model_uncertainty"),
+        }
+
+        entropy_before = metadata.get("entropy_before")
+        entropy_after = metadata.get("entropy_after")
+        if entropy_before is not None:
+            test_payload["entropy_before"] = entropy_before
+        if entropy_after is not None:
+            test_payload["entropy_after"] = entropy_after
+
+        if failure_type:
+            test_payload["failure_type"] = failure_type
+
+        metrics = metadata.get("metrics") or {}
+        if metrics:
+            test_payload["metrics"] = metrics
+
+        tests.append(test_payload)
+
+    return tests, total_duration, total_cost
+
+
+def collect_real_run(
+    runner_usd_per_hour: float = 0.60,
+    pytest_report: Optional[pathlib.Path] = None,
+    budget_fraction: float = 0.5,
+) -> Dict[str, Any]:
     """Collect real CI run data from environment variables.
     
     Args:
@@ -202,19 +405,49 @@ def collect_real_run(runner_usd_per_hour: float = 0.60) -> Dict[str, Any]:
         CIRun dict (minimal, to be enriched by pytest plugin)
     """
     # Basic run metadata from GitHub Actions env
+    commit_sha = os.getenv("GITHUB_SHA") or get_git_sha()
+    branch = os.getenv("GITHUB_REF_NAME") or os.getenv("GITHUB_HEAD_REF") or "unknown"
+
+    merge_base = resolve_merge_base()
+    changed_files = compute_changed_files(merge_base)
+    lines_added, lines_deleted = compute_diff_stats(merge_base)
+
+    pytest_path = pytest_report or pathlib.Path(
+        os.getenv("PYTEST_JSON_REPORT", "artifact/pytest-report.json")
+    )
+
+    tests, total_duration, total_cost = load_pytest_results(pytest_path, runner_usd_per_hour)
+
+    walltime_env = os.getenv("CI_DURATION_SEC")
+    walltime = float(walltime_env) if walltime_env else total_duration
+
+    budget_sec = float(os.getenv("CI_BUDGET_SEC", "0") or "0")
+    budget_usd = float(os.getenv("CI_BUDGET_USD", "0") or "0")
+
+    if not budget_sec and total_duration:
+        budget_sec = total_duration * budget_fraction
+
+    if not budget_usd and total_cost:
+        budget_usd = total_cost * budget_fraction
+
     run = {
-        "commit": os.getenv("GITHUB_SHA", "unknown"),
-        "branch": os.getenv("GITHUB_REF_NAME", "unknown"),
-        "changed_files": [],  # To be filled by git diff
-        "lines_added": 0,
-        "lines_deleted": 0,
-        "walltime_sec": float(os.getenv("CI_DURATION_SEC", "0") or "0"),
-        "tests": [],  # To be filled by pytest telemetry
-        "budget_sec": 0,  # To be computed
+        "commit": commit_sha,
+        "branch": branch,
+        "changed_files": changed_files,
+        "lines_added": lines_added,
+        "lines_deleted": lines_deleted,
+        "walltime_sec": walltime,
+        "cpu_sec": float(os.getenv("CI_CPU_SEC", "0") or "0"),
+        "mem_gb_sec": float(os.getenv("CI_MEM_GB_SEC", "0") or "0"),
+        "tests": tests,
+        "budget_sec": budget_sec,
+        "budget_usd": budget_usd,
         "runner_usd_per_hour": runner_usd_per_hour,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "budget_fraction": budget_fraction,
+        "pytest_report_path": str(pytest_path) if pytest_path.exists() else None,
     }
-    
+
     return run
 
 
@@ -258,6 +491,7 @@ def emit_run_metadata(seed: Optional[int], output_dir: pathlib.Path) -> None:
         "seed": seed,
         "script": "collect_ci_runs.py",
         "reproducible": seed is not None,
+        "python_version": sys.version.split()[0],
     }
     
     artifact_dir = output_dir / "artifact"
@@ -300,6 +534,18 @@ def main() -> int:
         help="CI runner cost per hour (USD)"
     )
     parser.add_argument(
+        "--pytest-report",
+        type=pathlib.Path,
+        default=None,
+        help="Optional pytest JSON report to ingest"
+    )
+    parser.add_argument(
+        "--budget-fraction",
+        type=float,
+        default=float(os.getenv("CI_BUDGET_FRACTION", 0.5)),
+        help="Budget fraction to apply when CI_BUDGET_{SEC,USD} not provided"
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         metavar="N",
@@ -325,7 +571,11 @@ def main() -> int:
         run = generate_mock_run(args.mock, args.inject_failures, args.runner_cost)
     else:
         print("📊 Collecting real CI run data", flush=True)
-        run = collect_real_run(args.runner_cost)
+        run = collect_real_run(
+            runner_usd_per_hour=args.runner_cost,
+            pytest_report=args.pytest_report,
+            budget_fraction=args.budget_fraction,
+        )
     
     # Append to JSONL
     with output_path.open("a", encoding="utf-8") as f:
