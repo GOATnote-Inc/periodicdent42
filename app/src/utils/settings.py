@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     ENABLE_METRICS: bool = True
     ENABLE_TRACING: bool = True
     
+    # Dual-model timeout configuration (seconds)
+    FLASH_TIMEOUT_S: int = 5     # Flash target: <2s, allow 2.5x headroom
+    PRO_TIMEOUT_S: int = 45      # Pro target: ~20s, allow 2.25x headroom
+    
     # Security settings
     API_KEY: Optional[str] = None  # API key for authentication (set in Secret Manager)
     ALLOWED_ORIGINS: str = ""  # Comma-separated list of allowed CORS origins
