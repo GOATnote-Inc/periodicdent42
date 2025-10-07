@@ -94,3 +94,4 @@ temp/
 *.service-url
 cloud-sql-proxy
 .benchmarks/
+result

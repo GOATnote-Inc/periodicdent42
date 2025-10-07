@@ -30,7 +30,7 @@ Hermetic builds eliminate "works on my machine" issues by ensuring **bit-identic
 curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
 
 # Option 2: Official installer
-sh <(curl -L https://nixos.org/nix/install)
+sh <(curl -L https://nixos.org//nixinstall)
 ```
 
 **Note**: You'll be prompted for your password (sudo). This is normal and safe.
