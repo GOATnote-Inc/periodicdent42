@@ -28,30 +28,77 @@ Built on hermetic Nix builds for reproducibility, the system supports multi-doma
 ### Day-1 Setup
 
 ```bash
-# 1. Clone repository
+# 1. Clone repository at a known commit
 git clone https://github.com/GOATnote-Inc/periodicdent42.git
 cd periodicdent42
 
-# 2. Install dependencies (Python 3.11+ required)
-pip install pandas scikit-learn joblib pytest pytest-cov pytest-benchmark
+# 2. (Optional but recommended) Verify hermetic toolchain
+nix --version || curl -L https://nixos.org/nix/install | sh
+make repro                            # builds twice and compares hashes
 
-# 3. Run epistemic CI pipeline (reproducible with seed)
-make mock SEED=42
+# 3. Create an isolated Python 3.12 environment
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip wheel
+pip install -r requirements.txt       # light deps
+pip install -r requirements-dev.lock  # pinned test/tooling stack
 
-# 4. View results
-cat artifact/ci_report.md        # Human-readable summary
-cat artifact/ci_metrics.json      # Structured metrics (JSON)
-cat experiments/ledger/*.json     # Experiment telemetry
+# 4. Export canonical runtime knobs for reproducibility
+export RUNNER_USD_PER_HOUR=0.60
+export CI_BUDGET_FRACTION=0.50
+export EPISTEMIC_SEED=42
+
+# 5. Generate deterministic mock telemetry and run epistemic CI
+python scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12 --seed "$EPISTEMIC_SEED"
+python scripts/train_selector.py --seed "$EPISTEMIC_SEED"
+python scripts/score_eig.py
+python scripts/select_tests.py
+python scripts/gen_ci_report.py --seed "$EPISTEMIC_SEED"
+
+# 6. Inspect artifacts + provenance
+cat artifact/ci_report.md             # Human-readable summary
+cat artifact/ci_metrics.json          # Structured metrics
+ls experiments/ledger                 # Per-run ledger (json)
 ```
 
-**Expected Output:**
+**Expected Output (seed = 42):**
 ```
 ✅ Generated 100 mock tests (failure rate: 12.0%)
 ✅ Trained ML model: F1=0.45 ± 0.16 (N=100 synthetic runs)
-✅ Selected 67/100 tests (50% budget)
-✅ Information gained: 54.16 bits (72.7% of maximum)
-✅ Efficiency: 426.49 bits/$ (47% improvement)
-✅ Detection rate: 79.3% (21.9 / 27.6 est. failures)
+✅ Selected ~67/100 tests (≈50% budget)
+✅ Information gained: ≈54.2 bits (≈72.7% of maximum)
+✅ Efficiency: ≈426 bits/$ (≈47% improvement)
+✅ Detection rate: ≈79% (≈22 / 28 est. failures)
+```
+
+### Day-1 Repro Checklist (90-second audit)
+
+1. **Environment parity** – record `python --version`, `pip freeze` and `nix --version` in `artifact/run_meta.json` (emitted automatically).
+2. **Data determinism** – confirm `data/ci_runs.jsonl` only changes when rerunning `collect_ci_runs.py`; stash or DVC-track before modifying real telemetry.
+3. **Model provenance** – verify `models/metadata.json` contains the seed, git SHA, and env hash from your run.
+4. **Budget sanity** – adjust `CI_BUDGET_FRACTION` or pass `--budget-sec/--budget-usd` to `scripts/select_tests.py` when validating other regimes.
+5. **Ledger emission** – ensure a new JSON file appears in `experiments/ledger/` for every `gen_ci_report.py` invocation.
+
+### Local CI Reproduction
+
+```bash
+# Run the full scripted pipeline with baked-in budgets and cleanup
+make mock SEED=42
+
+# Re-run scoring/selection only (assumes data already present)
+make epistemic-ci
+
+# Execute pinned unit + integration tests with coverage
+pytest -v --tb=short --cov=services --cov-report=term-missing
+
+# Enforce ≥85% coverage (mirrors CI gate)
+pytest --cov=scripts --cov-report=term --cov-report=json --cov-fail-under=85
+
+# Performance + budget guardrails
+pytest tests/test_performance_benchmarks.py --benchmark-only -v
+
+# Optional: regenerate reproducibility appendix + ledger in one go
+python scripts/gen_ci_report.py --seed "$EPISTEMIC_SEED"
 ```
 
 ### Support Matrix

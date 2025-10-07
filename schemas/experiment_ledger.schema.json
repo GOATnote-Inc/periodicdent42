@@ -157,6 +157,16 @@
             "type": "object",
             "description": "Domain-specific metrics (convergence error, binding affinity, etc.)",
             "additionalProperties": true
+          },
+          "entropy_before": {
+            "type": "number",
+            "description": "Entropy before executing the test (bits)",
+            "minimum": 0
+          },
+          "entropy_after": {
+            "type": "number",
+            "description": "Entropy after executing the test (bits)",
+            "minimum": 0
           }
         }
       }
@@ -173,6 +183,31 @@
     "ml_model_f1": {
       "type": ["number", "null"],
       "description": "ML model F1 score on test set (null if stub model)"
+    },
+    "budget_utilization": {
+      "type": "object",
+      "description": "Budget utilization ratios for the selected suite",
+      "properties": {
+        "time": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Fraction of time budget used"
+        },
+        "cost": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Fraction of cost budget used"
+        }
+      },
+      "additionalProperties": false
+    },
+    "decision_rationale": {
+      "type": "string",
+      "description": "Summary of why this selection policy was chosen"
+    },
+    "delta_entropy_bits": {
+      "type": ["number", "null"],
+      "description": "Total entropy reduction delivered by the selected suite"
     }
   }
 }
