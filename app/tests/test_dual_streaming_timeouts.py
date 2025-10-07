@@ -179,13 +179,18 @@ async def test_normal_case_no_timeouts(client, set_models, mock_db):
 @pytest.mark.asyncio
 async def test_stream_never_hangs_on_exception(client, set_models, mock_db):
     """
-    Test that stream always closes with 'done' even on unexpected exceptions.
+    Test that stream always closes with 'done' even when model returns error response.
     
-    Flash raises an exception (not timeout).
+    Flash returns an error response (caught exception).
+    Pro continues and succeeds.
     
     Expected SSE ordering:
-    1. error (Flash exception)
-    2. done (always emitted)
+    1. preliminary (Flash error response - still sent as preliminary)
+    2. final (Pro response)
+    3. done (always emitted)
+    
+    Note: Model exceptions are caught and returned as error responses within the
+    preliminary/final events, not as separate SSE error events.
     """
     set_models(
         flash=FakeModel(delay=0.01, exc=ValueError("Simulated Flash error")),
@@ -195,10 +200,21 @@ async def test_stream_never_hangs_on_exception(client, set_models, mock_db):
     async with client as c:
         async with c.stream("POST", STREAM_PATH, json=PAYLOAD) as r:
             events = []
+            preliminary_data = None
             
             async for ev, data in sse_events(r.aiter_lines()):
                 events.append(ev)
+                if ev == "preliminary":
+                    import json
+                    preliminary_data = json.loads(data)
             
             # Assert 'done' is always last
             assert events[-1] == "done", f"Stream must always end with 'done', got: {events}"
-            assert "error" in events, f"Expected error event, got: {events}"
+            
+            # Assert normal event flow (model exceptions don't create SSE error events)
+            assert events == ["preliminary", "final", "done"], f"Expected normal flow with error in response, got: {events}"
+            
+            # Assert Flash response contains error
+            assert preliminary_data is not None
+            assert "error" in preliminary_data["response"], "Flash response should contain error field"
+            assert preliminary_data["response"]["confidence"] == "error"

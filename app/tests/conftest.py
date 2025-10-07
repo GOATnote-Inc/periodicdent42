@@ -15,9 +15,14 @@ from unittest.mock import MagicMock
 # ---- Global tiny timeouts so tests are fast & deterministic
 @pytest.fixture(autouse=True)
 def _tiny_timeouts(monkeypatch):
-    """Set tiny timeouts for deterministic timeout tests."""
+    """Set tiny timeouts for deterministic timeout tests and mock Vertex AI."""
     monkeypatch.setenv("FLASH_TIMEOUT_S", "0.05")
     monkeypatch.setenv("PRO_TIMEOUT_S", "0.05")
+    
+    # Mock Vertex AI initialization
+    monkeypatch.setattr("src.services.vertex._initialized", True)
+    monkeypatch.setattr("src.services.vertex.is_initialized", lambda: True)
+    
     yield
 
 
@@ -148,12 +153,42 @@ def set_models(monkeypatch):
 
 # ---- Async HTTPX client against the ASGI app
 @pytest.fixture(scope="function")
-def client():
-    """HTTPX async client for testing SSE endpoints (sync fixture returning async context)."""
+def client(set_models):
+    """
+    HTTPX async client for testing SSE endpoints.
+    
+    Initializes the agent before creating client (since startup event doesn't run in tests).
+    """
     import httpx
     from src.api.main import app
+    from src.reasoning.dual_agent import DualModelAgent
+    import src.api.main as main_module
     
-    # Return the client as a context manager, not async
+    # Initialize agent (startup event doesn't run in tests)
+    # Use dummy models that will be replaced by set_models() in each test
+    if main_module.agent is None:
+        from .conftest import FakeModel
+        flash_dummy = FakeModel(delay=0.01)
+        pro_dummy = FakeModel(delay=0.01)
+        
+        # Temporarily patch to create agent
+        import src.services.vertex as vertex_module
+        old_flash = vertex_module.get_flash_model
+        old_pro = vertex_module.get_pro_model
+        
+        vertex_module.get_flash_model = lambda: flash_dummy
+        vertex_module.get_pro_model = lambda: pro_dummy
+        
+        try:
+            main_module.agent = DualModelAgent(
+                project_id="test-project",
+                location="us-central1"
+            )
+        finally:
+            vertex_module.get_flash_model = old_flash
+            vertex_module.get_pro_model = old_pro
+    
+    # Return the client as a context manager
     transport = httpx.ASGITransport(app=app)
     return httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=10.0)
 
