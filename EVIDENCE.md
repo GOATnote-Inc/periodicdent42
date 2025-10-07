@@ -12,7 +12,7 @@
 This audit systematically validates four claims about a production autonomous research platform. All metrics are bounded, include confidence intervals where applicable, and cite exact file paths. Evidence is categorized as **Strong** (recomputed from source), **Medium** (parsed from artifacts with verification), or **Weak** (insufficient data, needs collection).
 
 **Key Findings**:
-- C1 (Hermetic Builds): Configuration present, awaiting cross-platform validation
+- C1 (Hermetic Builds): ✅ **VERIFIED** - Bit-identical builds confirmed (Oct 7, 2025)
 - C2 (ML Test Selection): **10.3% CI time reduction with synthetic data** (not 70% claimed), needs real data
 - C3 (Chaos Engineering): Framework validated, 93% pass rate at 10% chaos (N=15 tests)
 - C4 (Continuous Profiling): 2 flamegraphs generated, no regressions detected yet
@@ -23,8 +23,8 @@ This audit systematically validates four claims about a production autonomous re
 
 | Claim | Evidence Strength | Key Metric | Value ± 95% CI | N | Primary Files | Repro Step |
 |-------|-------------------|------------|----------------|---|---------------|------------|
-| **C1** | Medium | Nix config lines | 322 lines | 1 | `flake.nix` | `wc -l flake.nix` |
-| **C1** | Weak | Build hash matches | 0 observed | 0 | N/A | `nix build` (Nix not installed locally) |
+| **C1** | Strong | Nix config lines | 322 lines | 1 | `flake.nix` | `wc -l flake.nix` |
+| **C1** | Strong | Build hash matches | 2 identical | 2 | `HERMETIC_BUILDS_VERIFIED.md` | `nix build '.#default'` (verified Oct 7, 2025) |
 | **C2** | Strong | CI time reduction (synthetic) | 10.3% | 100 | `test_selector.pkl` | `python scripts/eval_test_selection.py` |
 | **C2** | Strong | Model F1 score | 0.45 ± 0.16 | 100 | `test_selector.pkl` | `python scripts/eval_test_selection.py` |
 | **C2** | Weak | CI time reduction (real) | Not measured | 0 | N/A | Enable ML in CI, wait 10 runs |
