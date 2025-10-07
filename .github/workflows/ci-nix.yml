@@ -188,13 +188,13 @@ jobs:
     
     steps:
       - name: Download macOS build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: macos-build-hash
         continue-on-error: true
       
       - name: Download Linux build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: linux-build-hash
         continue-on-error: true
