@@ -40,9 +40,9 @@ class Settings(BaseSettings):
     ENABLE_METRICS: bool = True
     ENABLE_TRACING: bool = True
     
-    # Dual-model timeout configuration (seconds)
-    FLASH_TIMEOUT_S: int = 5     # Flash target: <2s, allow 2.5x headroom
-    PRO_TIMEOUT_S: int = 45      # Pro target: ~20s, allow 2.25x headroom
+    # Dual-model timeout configuration (seconds - float for sub-second precision in tests)
+    FLASH_TIMEOUT_S: float = 5.0     # Flash target: <2s, allow 2.5x headroom
+    PRO_TIMEOUT_S: float = 45.0      # Pro target: ~20s, allow 2.25x headroom
     
     # Security settings
     API_KEY: Optional[str] = None  # API key for authentication (set in Secret Manager)
