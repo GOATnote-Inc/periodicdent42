@@ -96,6 +96,29 @@ def mock_db_session():
         yield session
 
 
+@pytest.fixture(autouse=True)
+def setup_agent():
+    """Initialize agent for all tests with mocked Vertex models."""
+    from src.api import main
+    
+    # Create dummy models that will be replaced by test-specific fakes
+    fake_flash_default = FakeFlashProvider(delay_ms=300)
+    fake_pro_default = FakeProProvider(delay_ms=2000)
+    
+    with patch('src.reasoning.dual_agent.get_flash_model', return_value=fake_flash_default), \
+         patch('src.reasoning.dual_agent.get_pro_model', return_value=fake_pro_default):
+        
+        main.agent = DualModelAgent(
+            project_id="test-project",
+            location="us-central1"
+        )
+        
+        yield
+        
+        # Cleanup after test
+        main.agent = None
+
+
 def parse_sse_stream(content: str) -> list:
     """
     Parse SSE stream into list of events.
