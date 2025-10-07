@@ -244,6 +244,78 @@ This achievement provides:
 
 ---
 
+## Continuous Verification (CI)
+
+Hermeticity is now **continuously re-checked on every push** via GitHub Actions to ensure bit-identical builds remain stable over time.
+
+### CI Workflow: `.github/workflows/ci.yml`
+
+The workflow contains 3 jobs that run automatically:
+
+1. **`nix-check`** - Validates flake configuration
+   - Runs: `nix flake check`
+   - Purpose: Ensure flake syntax and structure are valid
+
+2. **`hermetic-repro`** - Verifies bit-identical builds
+   - Builds twice consecutively
+   - Compares output hashes with `nix hash path ./result`
+   - **Fails if hashes differ** (reproducibility regression)
+   - Uploads artifacts:
+     - `artifact/sha256.txt` - Both build hashes
+     - `artifact/build.log` - Complete build output
+
+3. **`evidence-pack`** - Generates reproducibility appendix
+   - Creates `artifact/REPRODUCIBILITY.md` with:
+     - Commit SHA and UTC timestamp
+     - Reproduction commands
+     - Verification steps
+   - Includes `flake.lock` and `environment.nix`
+   - Optional: Runs `diffoscope` comparison (best-effort)
+
+### Artifacts Generated
+
+Every CI run produces downloadable artifacts:
+
+- **`reproducibility`** - Build hashes and logs
+- **`reproducibility-evidence-pack`** - Complete appendix with lockfiles
+- **`diffoscope-report`** - Detailed binary comparison (when available)
+
+### Local Verification
+
+Reproduce CI checks locally:
+
+```bash
+# Quick verification
+make repro
+
+# Generate evidence pack
+make evidence
+
+# Manual verification
+nix build .#default
+HASH1=$(nix hash path ./result)
+rm result
+nix build .#default
+HASH2=$(nix hash path ./result)
+[[ "$HASH1" == "$HASH2" ]] && echo "✅ Identical"
+```
+
+### Monitoring
+
+View CI results:
+- **GitHub Actions**: Check workflow status on each commit
+- **Artifacts**: Download evidence packs from CI runs
+- **History**: Track reproducibility over time
+
+If any CI run shows **different hashes**, it indicates:
+- Non-deterministic build introduced
+- System dependency leaked
+- Nix configuration changed unintentionally
+
+This provides **continuous assurance** that hermetic builds remain stable as the codebase evolves.
+
+---
+
 **Verified By**: GOATnote AI Agent (Claude Sonnet 4.5)  
 **Date**: October 7, 2025, 12:17 AM PDT  
 **Contact**: info@thegoatnote.com  

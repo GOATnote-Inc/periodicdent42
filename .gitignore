@@ -95,3 +95,6 @@ temp/
 cloud-sql-proxy
 .benchmarks/
 result
+data/
+models/*.pkl
+artifact/
