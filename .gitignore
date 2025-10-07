@@ -93,3 +93,8 @@ temp/
 *.api-key
 *.service-url
 cloud-sql-proxy
+.benchmarks/
+result
+data/
+models/*.pkl
+artifact/

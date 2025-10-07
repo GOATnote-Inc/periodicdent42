@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-
-import json
 from pathlib import Path
-from typing import List
 
 from core import stable_hash
 from services.rag.index_store import RagIndex
@@ -18,7 +15,7 @@ class CorpusIndex:
     def __init__(self, rag_index: RagIndex):
         self._rag_index = rag_index
 
-    def top_k(self, query: str, k: int = 5) -> List[RetrievalHit]:
+    def top_k(self, query: str, k: int = 5) -> list[RetrievalHit]:
         return self._rag_index.query(query, k=k)
 
     @property

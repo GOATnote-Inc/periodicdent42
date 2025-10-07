@@ -23,10 +23,26 @@ dev = [
     "pytest-asyncio==0.21.1",
     "pytest-cov==4.1.0",
     "pytest-mock==3.12.0",
-    "hypothesis==6.92.1",
+    "pytest-benchmark==4.0.0",  # Phase 2: Continuous benchmarking
+    "hypothesis==6.92.1",        # Phase 2: Property-based testing
+    "mutmut==2.4.4",             # Phase 2: Mutation testing
+    "numpy==1.26.2",             # Phase 2: Numerical accuracy tests
     "mypy==1.7.1",
-    "black==23.11.0",
+    "black==25.9.0",
     "ruff==0.1.6",
+    # Required by test files and services
+    "pydantic>=2.0",
+    "alembic>=1.12",
+    "sqlalchemy>=2.0",
+    "pyyaml>=6.0",  # Required by llm_router
+    # Phase 3: ML-powered test selection
+    "scikit-learn==1.3.2",
+    "pandas==2.1.4",
+    "joblib==1.3.2",
+]
+# Data versioning and experiment reproducibility
+science = [
+    "dvc[gs]==3.30.0",          # Phase 2: Data Version Control with Google Cloud Storage
 ]
 
 [tool.pytest.ini_options]
@@ -40,6 +56,12 @@ markers = [
     "chem: tests requiring heavy chemistry libraries (pyscf, rdkit, ase)",
     "slow: tests that take >5 seconds to run",
     "integration: integration tests requiring external services",
+    "benchmark: performance benchmarking tests (Phase 2)",
+    "property: property-based tests using Hypothesis (Phase 2)",
+    "numerical: numerical accuracy tests (Phase 2)",
+    "ml_test_selection: tests for ML-powered test selection (Phase 3)",
+    "chaos_safe: tests that should not experience chaos engineering failures (Phase 3)",
+    "chaos_critical: tests that always experience chaos for thorough validation (Phase 3)",
 ]
 
 [tool.mypy]

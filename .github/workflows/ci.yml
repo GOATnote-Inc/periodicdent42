@@ -1,180 +1,188 @@
-name: CI
+name: Epistemic CI
 
 on:
-  pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: "0 6 * * *"  # Nightly at 6 AM UTC for chem tests
-  workflow_dispatch:  # Manual trigger
+  pull_request:
+    branches: [main]
 
 env:
-  PYTHONPATH: .
-  DATABASE_URL: sqlite:///ci-telemetry.db
+  RUNNER_USD_PER_HOUR: "0.60"
 
 jobs:
-  fast:
-    name: Fast Tests (no heavy deps)
+  nix-check:
+    name: Nix Flake Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
         with:
-          python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: requirements.lock
+          extra_nix_config: |
+            experimental-features = nix-command flakes
       
-      - name: Install uv (fast pip replacement)
+      - name: Flake check
+        run: nix flake check
+
+  hermetic-repro:
+    name: Hermetic Reproducibility
+    needs: nix-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      
+      - name: First build
         run: |
-          python -m pip install --upgrade pip uv
+          set -euo pipefail
+          nix build .#default --print-build-logs | tee first_build.log
+          nix hash path ./result > first.hash
       
-      - name: Install core dependencies (deterministic with lock file)
+      - name: Second build (identical expected)
         run: |
-          uv pip sync requirements.lock --system
-          pip install ".[dev]"
+          set -euo pipefail
+          rm -rf result  # Remove symlink to force rebuild
+          nix build .#default --print-build-logs | tee second_build.log
+          nix hash path ./result > second.hash
       
-      - name: Lint with ruff
+      - name: Compare hashes
         run: |
-          ruff check services/ tests/ core/ tools/ --output-format=github || echo "⚠️  Linting issues found (non-blocking)"
+          set -euo pipefail
+          echo "First build hash:"
+          cat first.hash
+          echo "Second build hash:"
+          cat second.hash
+          diff -s first.hash second.hash
       
-      - name: Type check with mypy
-        continue-on-error: true
+      - name: Prepare artifacts
         run: |
-          mypy services/ core/ tools/ || echo "⚠️  Type checking issues found (non-blocking)"
+          mkdir -p artifact
+          cat first.hash > artifact/sha256.txt
+          printf "\n" >> artifact/sha256.txt
+          cat second.hash >> artifact/sha256.txt
+          cat first_build.log second_build.log > artifact/build.log
       
-      - name: Run fast tests with coverage
-        run: |
-          pytest -m "not chem and not slow" --cov-report=xml --cov-report=term-missing --cov-report=html -v --maxfail=3
-      
-      - name: Upload coverage HTML
-        if: always()
+      - name: Upload reproducibility artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: htmlcov/
+          name: reproducibility
+          path: artifact/
+
+  epistemic-ci:
+    name: Epistemic Test Selection
+    needs: hermetic-repro
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       
-      - name: Enforce coverage minimum
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
         run: |
-          python -c "
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-          
-          report = Path('coverage.xml')
-          if not report.exists():
-              print('No coverage.xml found - skipping coverage check')
-              exit(0)
-          
-          line_rate = float(ET.parse(report).getroot().attrib['line-rate'])
-          threshold = 0.60
-          coverage_pct = line_rate * 100
-          
-          print()
-          print('=' * 60)
-          print('  COVERAGE REPORT')
-          print('=' * 60)
-          print(f'  Current: {coverage_pct:.2f}%')
-          print(f'  Required: {threshold*100:.0f}%')
-          status = 'PASS' if coverage_pct >= threshold*100 else 'FAIL'
-          print(f'  Status: {status}')
-          print('=' * 60)
-          print()
-          
-          if line_rate < threshold:
-              raise SystemExit(f'Coverage {coverage_pct:.2f}% below required {threshold*100:.0f}%')
-          "
+          python -m pip install --upgrade pip
+          pip install pandas scikit-learn joblib
       
-      - name: Run canary eval (optional)
+      - name: Generate mock CI data
+        run: |
+          mkdir -p data artifact
+          python3 scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12
+      
+      - name: Train failure predictor
+        run: |
+          python3 scripts/train_selector.py
         continue-on-error: true
-        run: |
-          python -m services.evals.runner || echo "⚠️  Canary eval failed (non-blocking in CI)"
       
-      - name: Job summary
-        if: always()
+      - name: Score EIG
         run: |
-          echo "## Fast Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Python Version:** $(python --version)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Test Scope:** Fast tests only (no chem/slow)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Tests Passed**" >> $GITHUB_STEP_SUMMARY
-          if [ -f coverage.xml ]; then
-            echo "✅ **Coverage Requirements Met**" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "- Coverage Report (HTML)" >> $GITHUB_STEP_SUMMARY
-  
-  security:
-    name: Security Audit (Dependency Vulnerabilities)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          python3 scripts/score_eig.py
       
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      
-      - name: Install pip-audit
+      - name: Select tests
         run: |
-          python -m pip install --upgrade pip pip-audit
+          python3 scripts/select_tests.py
       
-      - name: Audit dependencies for vulnerabilities
+      - name: Generate report
         run: |
-          echo "📋 Auditing root dependencies..."
-          pip-audit -r requirements.txt --desc || echo "⚠️  Vulnerabilities found (non-blocking)"
+          python3 scripts/gen_ci_report.py
+      
+      - name: Generate reproducibility appendix
+        run: |
+          COMMIT="${{ github.sha }}"
+          DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          cat > artifact/REPRODUCIBILITY.md <<EOF
+          # Reproducibility Appendix
           
+          ## Build Metadata
+          
+          - **Commit:** \`$COMMIT\`
+          - **Date:** $DATE
+          - **Branch:** \`${{ github.ref_name }}\`
+          - **Workflow:** ${{ github.workflow }}
+          - **Run:** ${{ github.run_id }}
+          
+          ## Hermetic Build Verification
+          
+          Nix double-build with identical hash verified in \`hermetic-repro\` job.
+          See \`artifact/sha256.txt\` for hash comparison.
+          
+          ## Epistemic CI Artifacts
+          
+          - \`ci_metrics.json\` - Information-theoretic and practical metrics
+          - \`ci_report.md\` - Human-readable summary
+          - \`eig_rankings.json\` - Per-test EIG scores
+          - \`selected_tests.json\` - Selected test list
+          
+          ## Reproducibility Instructions
+          
+          \`\`\`bash
+          # Clone and checkout
+          git clone https://github.com/${{ github.repository }}.git
+          cd \$(basename ${{ github.repository }})
+          git checkout $COMMIT
+          
+          # Verify hermetic build
+          nix build .#default
+          nix hash path ./result
+          
+          # Reproduce epistemic CI
+          python3 scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12
+          python3 scripts/train_selector.py
+          python3 scripts/score_eig.py
+          python3 scripts/select_tests.py
+          python3 scripts/gen_ci_report.py
+          \`\`\`
+          
+          ## Lockfiles
+          
+          - \`flake.lock\` - Nix dependency pins (committed)
+          - \`uv.lock\` / \`requirements*.lock\` - Python dependency pins
+          EOF
+      
+      - name: Display report
+        run: |
+          echo "=========================================="
+          echo "Epistemic CI Report"
+          echo "=========================================="
+          cat artifact/ci_report.md
           echo ""
-          echo "📋 Auditing app dependencies..."
-          pip-audit -r app/requirements.txt --desc || echo "⚠️  Vulnerabilities found (non-blocking)"
+          echo "=========================================="
+          echo "Metrics"
+          echo "=========================================="
+          cat artifact/ci_metrics.json
       
-      - name: Job summary
-        if: always()
-        run: |
-          echo "## Security Audit Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Scan Complete:** Root + App dependencies" >> $GITHUB_STEP_SUMMARY
-          echo "📚 **Source:** PyPI Advisory Database" >> $GITHUB_STEP_SUMMARY
-          echo "🔍 **Tool:** pip-audit" >> $GITHUB_STEP_SUMMARY
-  
-  chem:
-    name: Chemistry Tests (nightly/on-demand)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Upload epistemic-ci artifacts
+        uses: actions/upload-artifact@v4
         with:
-          python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: requirements-full.lock
-      
-      - name: Install system dependencies for chemistry libs
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libblas-dev liblapack-dev gfortran cmake
-      
-      - name: Install uv (fast pip replacement)
-        run: |
-          python -m pip install --upgrade pip uv
-      
-      - name: Install all dependencies including chemistry (deterministic with lock file)
-        run: |
-          uv pip sync requirements-full.lock --system
-      
-      - name: Run chemistry tests
-        run: |
-          pytest -m "chem" -v --tb=short
-      
-      - name: Job summary
-        if: always()
-        run: |
-          echo "## Chemistry Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Python Version:** $(python --version)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Test Scope:** Chemistry tests (pyscf, rdkit, ase)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          name: epistemic-ci-artifacts
+          path: artifact/

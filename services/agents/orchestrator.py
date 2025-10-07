@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import List
 
 from services.rag.models import ChatRequest, ChatResponse
 from services.rag.pipeline import ChatPipeline, PipelineResult
@@ -19,7 +18,7 @@ class ToolCall:
 
 @dataclass
 class AgentTrace:
-    steps: List[ToolCall]
+    steps: list[ToolCall]
 
 
 class Orchestrator:

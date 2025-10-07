@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 from services.rag.models import Citation
 
@@ -16,7 +15,7 @@ class GuardrailResult:
 PII_PATTERNS = ["@", "phone", "ssn"]
 
 
-def run_guardrails(query: str, citations: List[Citation]) -> List[GuardrailResult]:
+def run_guardrails(query: str, citations: list[Citation]) -> list[GuardrailResult]:
     flags: list[GuardrailResult] = []
     contains_pii = any(pattern in query.lower() for pattern in PII_PATTERNS)
     flags.append(GuardrailResult(name="pii", passed=not contains_pii, details="basic heuristic"))

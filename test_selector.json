@@ -1,0 +1,14 @@
+{
+  "model_type": "RandomForestClassifier",
+  "feature_names": [
+    "lines_added",
+    "lines_deleted",
+    "files_changed",
+    "complexity_delta",
+    "recent_failure_rate",
+    "avg_duration",
+    "days_since_last_change"
+  ],
+  "trained_at": "2025-10-06 17:29:11",
+  "version": "1.0.0"
+}

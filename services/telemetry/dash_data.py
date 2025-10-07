@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 from services.telemetry.store import TelemetryStore
 
@@ -9,7 +8,7 @@ from services.telemetry.store import TelemetryStore
 @dataclass
 class DemoDashboard:
     total_chats: int
-    arms: List[str]
+    arms: list[str]
 
 
 def build_demo_dashboard(store: TelemetryStore) -> DemoDashboard:

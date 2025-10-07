@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 from services.evals.metrics import MetricResult, exact_match, faithfulness, rouge_l
 from services.rag.index import load_eval_dataset
@@ -13,13 +12,13 @@ from services.rag.pipeline import ChatPipeline
 @dataclass
 class EvalExampleResult:
     example_id: str
-    metrics: List[MetricResult]
+    metrics: list[MetricResult]
 
 
 @dataclass
 class EvalRun:
     run_id: str
-    results: List[EvalExampleResult]
+    results: list[EvalExampleResult]
 
 
 def run_offline_eval(dataset_path: Path | None = None) -> EvalRun:

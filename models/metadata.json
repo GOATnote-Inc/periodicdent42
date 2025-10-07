@@ -1,0 +1,9 @@
+{
+  "timestamp": "2025-10-07T03:56:43.941949Z",
+  "rows": 1,
+  "f1": null,
+  "precision": null,
+  "recall": null,
+  "note": "Insufficient data (1/50 rows). Collect 49 more CI runs to train baseline model.",
+  "status": "stub"
+}

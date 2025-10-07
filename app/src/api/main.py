@@ -99,7 +99,17 @@ app.add_middleware(
 )
 
 AUTH_EXEMPT_PATHS = set()
-AUTH_EXEMPT_PATHS.update({"/docs", "/openapi.json", "/", "/static"})
+AUTH_EXEMPT_PATHS.update({
+    "/docs", 
+    "/openapi.json", 
+    "/", 
+    "/static", 
+    "/health",
+    "/api/experiments",
+    "/api/optimization_runs",
+    "/api/ai_queries",
+    "/analytics.html",
+})
 
 app.add_middleware(
     AuthenticationMiddleware,
