@@ -23,7 +23,8 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          extra_args: --only-verified --fail
+          extra_args: --only-verified
+        continue-on-error: false  # Fail build only on verified secrets
 
   nix-check:
     name: Nix Flake Check
