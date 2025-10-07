@@ -2,17 +2,21 @@
 """Generate epistemic CI metrics and human-readable report.
 
 Computes information-theoretic and practical metrics from test selection results.
+Emits experiment ledger for uncertainty telemetry tracking.
 
 Usage:
     python scripts/gen_ci_report.py
 """
 
 import argparse
+import hashlib
 import json
+import os
 import pathlib
+import subprocess
 import sys
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 
 def compute_metrics(
@@ -210,6 +214,139 @@ def generate_markdown_report(
     return "\n".join(lines)
 
 
+def get_git_sha() -> str:
+    """Get current git commit SHA."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def get_env_hash() -> str:
+    """Compute hash of relevant environment variables for reproducibility."""
+    env_keys = sorted([
+        "PYTHON_VERSION",
+        "PYTEST_VERSION",
+        "RUNNER_USD_PER_HOUR",
+        "CI_BUDGET_FRACTION",
+    ])
+    env_str = "|".join(f"{k}={os.getenv(k, '')}" for k in env_keys)
+    return hashlib.sha256(env_str.encode()).hexdigest()[:16]
+
+
+def get_branch_name() -> str:
+    """Get current git branch name."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def emit_experiment_ledger(
+    run_id: str,
+    metrics: Dict[str, Any],
+    selected: List[Dict[str, Any]],
+    all_tests: List[Dict[str, Any]],
+    selection_stats: Dict[str, Any],
+    seed: Optional[int],
+    ledger_dir: pathlib.Path
+) -> None:
+    """Emit experiment ledger with uncertainty telemetry.
+    
+    Args:
+        run_id: Unique run identifier
+        metrics: Computed metrics
+        selected: Selected tests
+        all_tests: All available tests
+        selection_stats: Selection statistics
+        seed: Random seed (None if not set)
+        ledger_dir: Directory for ledger files
+    """
+    commit_sha = get_git_sha()
+    
+    # Load ML model metadata if available
+    model_meta_path = pathlib.Path("models/metadata.json")
+    ml_model_f1 = None
+    ml_model_version = "unknown"
+    if model_meta_path.exists():
+        try:
+            model_meta = json.loads(model_meta_path.read_text())
+            ml_model_f1 = model_meta.get("f1")
+            ml_model_version = "selector-v1.pkl"
+        except Exception:
+            pass
+    
+    # Build per-test data with enriched metrics
+    tests_ledger = []
+    selected_names = {t["name"] for t in selected}
+    
+    for rank, test in enumerate(all_tests, 1):
+        test_entry = {
+            "name": test["name"],
+            "suite": test.get("domain", test.get("suite", "generic")),
+            "selected": test["name"] in selected_names,
+            "duration_sec": test.get("duration_sec", 0),
+            "cost_usd": test.get("cost_usd", 0),
+            "result": test.get("result", "skip"),
+            "model_uncertainty": test.get("model_uncertainty", None),
+            "eig_bits": test.get("eig_bits", 0),
+            "eig_rank": rank,
+        }
+        
+        # Add optional fields
+        if test.get("failure_type"):
+            test_entry["failure_type"] = test["failure_type"]
+        if test.get("metrics"):
+            test_entry["metrics"] = test["metrics"]
+        
+        tests_ledger.append(test_entry)
+    
+    # Construct ledger matching schema
+    ledger = {
+        "run_id": run_id,
+        "timestamp": metrics["timestamp"],
+        "commit_sha": commit_sha,
+        "branch": get_branch_name(),
+        "tests_selected": metrics["tests_selected"],
+        "tests_total": metrics["tests_total"],
+        "information_gained_bits": metrics["bits_gained"],
+        "information_possible_bits": sum(t.get("eig_bits", 0) for t in all_tests),
+        "efficiency_bits_per_dollar": metrics["bits_per_dollar"],
+        "budget_sec": selection_stats.get("budget_sec", 0),
+        "budget_usd": selection_stats.get("budget_usd", 0),
+        "walltime_sec": sum(t["duration_sec"] for t in selected),
+        "cost_usd": sum(t["cost_usd"] for t in selected),
+        "detection_rate": metrics["detection_rate"],
+        "seed": seed,
+        "env_hash": get_env_hash(),
+        "tests": tests_ledger,
+        "selection_strategy": "epistemic",
+        "ml_model_version": ml_model_version,
+        "ml_model_f1": ml_model_f1,
+    }
+    
+    # Write ledger
+    ledger_dir.mkdir(parents=True, exist_ok=True)
+    ledger_path = ledger_dir / f"{run_id}.json"
+    
+    with ledger_path.open("w", encoding="utf-8") as f:
+        json.dump(ledger, f, indent=2)
+    
+    print(f"📝 Emitted experiment ledger to {ledger_path}", flush=True)
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Generate epistemic CI report")
@@ -233,6 +370,17 @@ def main() -> int:
         default="artifact/ci_report.md",
         help="Output report markdown"
     )
+    parser.add_argument(
+        "--ledger-dir",
+        default="experiments/ledger",
+        help="Directory for experiment ledger files"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed used for this run (for reproducibility tracking)"
+    )
     
     args = parser.parse_args()
     
@@ -240,6 +388,7 @@ def main() -> int:
     rankings_path = pathlib.Path(args.rankings)
     metrics_path = pathlib.Path(args.metrics_out)
     report_path = pathlib.Path(args.report_out)
+    ledger_dir = pathlib.Path(args.ledger_dir)
     
     print("=" * 80, flush=True)
     print("📊 Epistemic CI Report Generation", flush=True)
@@ -277,6 +426,18 @@ def main() -> int:
     
     print(f"\n✅ Saved metrics to {metrics_path}", flush=True)
     print(f"✅ Saved report to {report_path}", flush=True)
+    
+    # Emit experiment ledger
+    run_id = get_git_sha()[:12]  # Use first 12 chars of commit SHA
+    emit_experiment_ledger(
+        run_id=run_id,
+        metrics=metrics,
+        selected=selected,
+        all_tests=all_tests,
+        selection_stats=selection_stats,
+        seed=args.seed,
+        ledger_dir=ledger_dir
+    )
     
     # Print summary
     print(f"\n📈 Summary:", flush=True)

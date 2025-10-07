@@ -8,19 +8,21 @@ Usage:
     # Real CI run
     python scripts/collect_ci_runs.py
     
-    # Mock data with controlled failure rate
-    python scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12
+    # Mock data with controlled failure rate (deterministic with seed)
+    python scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12 --seed 42
 """
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
 import random
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 # Domain-specific test suites
@@ -216,6 +218,58 @@ def collect_real_run(runner_usd_per_hour: float = 0.60) -> Dict[str, Any]:
     return run
 
 
+def get_git_sha() -> str:
+    """Get current git commit SHA."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def get_env_hash() -> str:
+    """Compute hash of relevant environment variables for reproducibility."""
+    env_keys = sorted([
+        "PYTHON_VERSION",
+        "PYTEST_VERSION",
+        "RUNNER_USD_PER_HOUR",
+        "CI_BUDGET_FRACTION",
+    ])
+    env_str = "|".join(f"{k}={os.getenv(k, '')}" for k in env_keys)
+    return hashlib.sha256(env_str.encode()).hexdigest()[:16]
+
+
+def emit_run_metadata(seed: Optional[int], output_dir: pathlib.Path) -> None:
+    """Emit reproducibility metadata to artifact/run_meta.json.
+    
+    Args:
+        seed: Random seed used (None if not set)
+        output_dir: Directory for metadata artifact
+    """
+    metadata = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "git_sha": get_git_sha(),
+        "env_hash": get_env_hash(),
+        "seed": seed,
+        "script": "collect_ci_runs.py",
+        "reproducible": seed is not None,
+    }
+    
+    artifact_dir = output_dir / "artifact"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    
+    meta_path = artifact_dir / "run_meta.json"
+    with meta_path.open("w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    
+    print(f"📝 Emitted metadata to {meta_path}", flush=True)
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -245,11 +299,25 @@ def main() -> int:
         default=0.60,
         help="CI runner cost per hour (USD)"
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        metavar="N",
+        help="Random seed for reproducibility (default: random)"
+    )
     
     args = parser.parse_args()
     
+    # Set random seed for reproducibility
+    if args.seed is not None:
+        random.seed(args.seed)
+        print(f"🎲 Using random seed: {args.seed}", flush=True)
+    
     output_path = pathlib.Path(args.out)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Emit reproducibility metadata
+    emit_run_metadata(args.seed, output_path.parent.parent if output_path.parent.name == "data" else output_path.parent)
     
     # Generate or collect run
     if args.mock:

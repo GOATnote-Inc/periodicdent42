@@ -6,8 +6,8 @@ based on CI run metadata. It gracefully handles insufficient data and
 provides clear feedback on training progress.
 
 Usage:
-    # Train on collected CI data
-    python scripts/train_selector.py
+    # Train on collected CI data (reproducible with seed)
+    python scripts/train_selector.py --seed 42
     
     # Custom paths
     python scripts/train_selector.py --data data/ci_runs.jsonl --out models/selector-v2.pkl
@@ -17,8 +17,12 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
+import os
 import pathlib
+import random
+import subprocess
 import sys
 import datetime as dt
 from typing import List, Dict, Any, Optional
@@ -64,11 +68,62 @@ def write_stub_model(out_path: pathlib.Path, meta_path: pathlib.Path, rows: int,
     meta_path.write_text(json.dumps(metadata, indent=2))
 
 
+def get_git_sha() -> str:
+    """Get current git commit SHA."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def get_env_hash() -> str:
+    """Compute hash of relevant environment variables for reproducibility."""
+    env_keys = sorted([
+        "PYTHON_VERSION",
+        "SKLEARN_SEED",
+        "NUMPY_SEED",
+    ])
+    env_str = "|".join(f"{k}={os.getenv(k, '')}" for k in env_keys)
+    return hashlib.sha256(env_str.encode()).hexdigest()[:16]
+
+
+def emit_training_metadata(seed: Optional[int], artifact_dir: pathlib.Path) -> None:
+    """Emit reproducibility metadata to artifact/train_meta.json.
+    
+    Args:
+        seed: Random seed used (None if not set)
+        artifact_dir: Directory for metadata artifact
+    """
+    metadata = {
+        "timestamp": dt.datetime.utcnow().isoformat() + "Z",
+        "git_sha": get_git_sha(),
+        "env_hash": get_env_hash(),
+        "seed": seed,
+        "script": "train_selector.py",
+        "reproducible": seed is not None,
+    }
+    
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    
+    meta_path = artifact_dir / "train_meta.json"
+    with meta_path.open("w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    
+    print(f"📝 Emitted training metadata to {meta_path}", flush=True)
+
+
 def train_baseline_model(
     data_path: pathlib.Path,
     out_path: pathlib.Path,
     meta_path: pathlib.Path,
-    verbose: bool = False
+    verbose: bool = False,
+    seed: Optional[int] = 42
 ) -> int:
     """Train baseline ML model for test selection.
     
@@ -77,6 +132,7 @@ def train_baseline_model(
         out_path: Path to save trained model
         meta_path: Path to save metadata
         verbose: Print detailed progress
+        seed: Random seed for reproducibility
         
     Returns:
         0 on success (even with stub model)
@@ -149,19 +205,19 @@ def train_baseline_model(
     
     # Train/test split
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, random_state=42, stratify=y
+        X, y, test_size=0.25, random_state=seed, stratify=y
     )
     
     print(f"📦 Training set: {len(X_train)} samples", flush=True)
     print(f"📦 Test set: {len(X_test)} samples", flush=True)
     
     # Train model
-    print(f"🤖 Training Gradient Boosting classifier...", flush=True)
+    print(f"🤖 Training Gradient Boosting classifier (seed={seed})...", flush=True)
     clf = GradientBoostingClassifier(
         n_estimators=100,
         max_depth=5,
         learning_rate=0.1,
-        random_state=42
+        random_state=seed
     )
     clf.fit(X_train, y_train)
     
@@ -207,11 +263,17 @@ def train_baseline_model(
         "precision": precision,
         "recall": recall,
         "failure_rate": float(failure_rate),
+        "seed": seed,
+        "reproducible": True,
         "status": "trained"
     }
     
     meta_path.write_text(json.dumps(metadata, indent=2))
     print(f"💾 Saved metadata to {meta_path}", flush=True)
+    
+    # Emit reproducibility metadata
+    artifact_dir = out_path.parent.parent / "artifact"
+    emit_training_metadata(seed, artifact_dir)
     
     return 0
 
@@ -241,6 +303,13 @@ def main() -> int:
         action="store_true",
         help="Print detailed training progress"
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        metavar="N",
+        default=42,
+        help="Random seed for reproducibility (default: 42)"
+    )
     
     args = parser.parse_args()
     
@@ -257,7 +326,11 @@ def main() -> int:
     print("🎯 ML Test Selection - Model Training", flush=True)
     print("=" * 80, flush=True)
     
-    result = train_baseline_model(data_path, out_path, meta_path, args.verbose)
+    if args.seed is not None:
+        random.seed(args.seed)
+        print(f"🎲 Using random seed: {args.seed}", flush=True)
+    
+    result = train_baseline_model(data_path, out_path, meta_path, args.verbose, args.seed)
     
     print("=" * 80, flush=True)
     

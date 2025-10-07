@@ -10,6 +10,23 @@ env:
   RUNNER_USD_PER_HOUR: "0.60"
 
 jobs:
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for trufflehog
+      
+      - name: Run Trufflehog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
   nix-check:
     name: Nix Flake Check
     runs-on: ubuntu-latest
@@ -28,7 +45,7 @@ jobs:
 
   hermetic-repro:
     name: Hermetic Reproducibility
-    needs: nix-check
+    needs: [secrets-scan, nix-check]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -77,32 +94,37 @@ jobs:
           path: artifact/
 
   epistemic-ci:
-    name: Epistemic Test Selection
+    name: Epistemic CI (${{ matrix.os}}, Python ${{ matrix.python-version }})
     needs: hermetic-repro
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.11', '3.12']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas scikit-learn joblib
+          pip install pandas scikit-learn joblib pytest pytest-cov
       
-      - name: Generate mock CI data
+      - name: Generate mock CI data (with seed for reproducibility)
         run: |
           mkdir -p data artifact
-          python3 scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12
+          python3 scripts/collect_ci_runs.py --mock 100 --inject-failures 0.12 --seed 42
       
-      - name: Train failure predictor
+      - name: Train failure predictor (reproducible)
         run: |
-          python3 scripts/train_selector.py
-        continue-on-error: true
+          python3 scripts/train_selector.py --seed 42
       
       - name: Score EIG
         run: |
@@ -112,9 +134,9 @@ jobs:
         run: |
           python3 scripts/select_tests.py
       
-      - name: Generate report
+      - name: Generate report (with ledger emission)
         run: |
-          python3 scripts/gen_ci_report.py
+          python3 scripts/gen_ci_report.py --seed 42
       
       - name: Generate reproducibility appendix
         run: |
@@ -184,5 +206,67 @@ jobs:
       - name: Upload epistemic-ci artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: epistemic-ci-artifacts
-          path: artifact/
+          name: epistemic-ci-artifacts-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            artifact/
+            experiments/ledger/
+  
+  coverage-gate:
+    name: Coverage Gate (≥85%)
+    needs: epistemic-ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pandas scikit-learn joblib
+      
+      - name: Run tests with coverage
+        run: |
+          pytest --cov=scripts --cov-report=term --cov-report=json --cov-fail-under=85
+        continue-on-error: false
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.json
+  
+  performance-benchmarks:
+    name: Performance Benchmarks & Budget Guards
+    needs: hermetic-repro
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-benchmark pandas scikit-learn joblib
+      
+      - name: Run performance benchmarks
+        env:
+          MAX_CI_COST_USD: "1.00"
+          MAX_CI_WALLTIME_SEC: "1800"
+        run: |
+          pytest tests/test_performance_benchmarks.py --benchmark-only -v
+      
+      - name: Check budget caps
+        run: |
+          python tests/test_performance_benchmarks.py

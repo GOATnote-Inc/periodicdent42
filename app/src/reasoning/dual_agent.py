@@ -3,6 +3,12 @@ Dual-model AI agent using Gemini 2.5 Flash + Pro in parallel.
 
 Flash provides instant preliminary responses (<2s).
 Pro provides verified, high-accuracy responses (10-30s).
+
+Enhanced with:
+- Configurable timeouts (FLASH_TIMEOUT_S, PRO_TIMEOUT_S)
+- Proper cancellation on timeout/error
+- Structured error types for SSE streaming
+- Metrics collection for observability
 """
 
 import asyncio
@@ -11,6 +17,13 @@ from typing import Dict, Any, Tuple
 import logging
 
 from src.services.vertex import get_flash_model, get_pro_model
+from src.utils.settings import settings
+from src.utils.metrics import (
+    observe_latency,
+    increment_timeout,
+    increment_error,
+    increment_cancellation
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +50,46 @@ class DualModelAgent:
         prompt: str,
         context: Dict[str, Any],
     ) -> Tuple[asyncio.Task, asyncio.Task]:
-        """Launch Flash and Pro queries concurrently and return their tasks."""
+        """
+        Launch Flash and Pro queries concurrently with timeouts.
+        
+        Each task is wrapped with asyncio.wait_for() to enforce timeout.
+        Timeouts are configurable via environment variables:
+        - FLASH_TIMEOUT_S (default: 5s)
+        - PRO_TIMEOUT_S (default: 45s)
+        
+        Returns:
+            (flash_task, pro_task) - Both wrapped with timeout enforcement
+        """
+        flash_timeout = settings.FLASH_TIMEOUT_S
+        pro_timeout = settings.PRO_TIMEOUT_S
+        
+        # Wrap each query with timeout
+        async def flash_with_timeout():
+            try:
+                return await asyncio.wait_for(
+                    self._query_flash(prompt, context),
+                    timeout=flash_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Flash timeout after {flash_timeout}s")
+                increment_timeout("flash")
+                raise
 
-        flash_task = asyncio.create_task(self._query_flash(prompt, context))
-        pro_task = asyncio.create_task(self._query_pro(prompt, context))
+        async def pro_with_timeout():
+            try:
+                return await asyncio.wait_for(
+                    self._query_pro(prompt, context),
+                    timeout=pro_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Pro timeout after {pro_timeout}s")
+                increment_timeout("pro")
+                raise
+
+        flash_task = asyncio.create_task(flash_with_timeout())
+        pro_task = asyncio.create_task(pro_with_timeout())
+        
         return flash_task, pro_task
 
     async def query_parallel(
@@ -94,6 +143,9 @@ class DualModelAgent:
             
             latency_ms = (time.time() - start_time) * 1000
             
+            # Record metrics
+            observe_latency("flash", latency_ms)
+            
             # Try to get usage metadata if available
             usage = {}
             try:
@@ -116,13 +168,15 @@ class DualModelAgent:
         
         except Exception as e:
             logger.error(f"Flash model error: {e}")
+            increment_error(e.__class__.__name__)
             return {
                 "model": "gemini-2.5-flash",
                 "content": f"Error: {str(e)}",
                 "latency_ms": (time.time() - start_time) * 1000,
                 "is_preliminary": True,
                 "confidence": "error",
-                "error": str(e)
+                "error": str(e),
+                "error_class": e.__class__.__name__
             }
     
     async def _query_pro(self, prompt: str, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -150,6 +204,9 @@ class DualModelAgent:
             
             latency_ms = (time.time() - start_time) * 1000
             
+            # Record metrics
+            observe_latency("pro", latency_ms)
+            
             # Parse reasoning steps
             reasoning_steps = self._extract_reasoning_steps(response.text)
             
@@ -176,13 +233,15 @@ class DualModelAgent:
         
         except Exception as e:
             logger.error(f"Pro model error: {e}")
+            increment_error(e.__class__.__name__)
             return {
                 "model": "gemini-2.5-pro",
                 "content": f"Error: {str(e)}",
                 "latency_ms": (time.time() - start_time) * 1000,
                 "is_preliminary": False,
                 "confidence": "error",
-                "error": str(e)
+                "error": str(e),
+                "error_class": e.__class__.__name__
             }
     
     def _build_flash_prompt(self, prompt: str, context: Dict[str, Any]) -> str:

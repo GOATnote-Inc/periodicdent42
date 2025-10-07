@@ -4,7 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +21,10 @@ from src.utils.compliance import generate_request_id
 from src.utils.settings import settings
 from src.reasoning.dual_agent import DualModelAgent
 from src.services.vertex import init_vertex, is_initialized
-from src.utils.sse import sse_event, sse_error
+from src.utils.sse import sse_event, sse_error, sse_done
+from src.models.telemetry import DualRunRecord, ModelTrace, create_model_trace, now_iso
+from src.utils.retry import retry_async
+from src.utils.metrics import time_operation, increment_cancellation
 from src.services.storage import get_storage
 from src.lab.campaign import get_campaign_runner, CampaignReport
 from src.services import db
@@ -223,11 +226,19 @@ async def health(request: Request):
 @app.post("/api/reasoning/query")
 async def query_with_feedback(body: QueryRequest, request: Request):
     """
-    Query endpoint with dual-model streaming.
+    Query endpoint with dual-model streaming and audit logging.
     
     Returns Server-Sent Events (SSE):
     1. `event: preliminary` - Fast Flash response (<2s)
     2. `event: final` - Verified Pro response (10-30s)
+    3. `event: error` - Error details (if applicable)
+    4. `event: done` - Always sent to signal completion
+    
+    Enhanced with:
+    - Configurable timeouts (FLASH_TIMEOUT_S, PRO_TIMEOUT_S)
+    - Proper cancellation on timeout/error
+    - Deferred audit logging with retry (never blocks stream)
+    - trace_id propagated in all events
     
     Args:
         body: Query request with prompt and context
@@ -244,51 +255,197 @@ async def query_with_feedback(body: QueryRequest, request: Request):
     prompt = body.query
     context = body.context
 
-    request_id = generate_request_id()
+    run_id = generate_request_id()
     logger.info(
-        "Query received [request_id=%s, query_length=%d]",
-        request_id,
+        "Query received [run_id=%s, query_length=%d]",
+        run_id,
         len(prompt),
     )
     
     async def event_stream():
-        """Stream SSE events for Flash then Pro."""
+        """
+        Stream SSE events for Flash then Pro with audit logging.
+        
+        Always emits 'done' event, even on errors, so clients never hang.
+        """
+        started_at = now_iso()
+        flash_trace = None
+        pro_trace = None
+        status = "ok"
+        
+        flash_task = None
+        pro_task = None
+        
         try:
-            # Launch both models in parallel via the agent helper
-            flash_task, pro_task = agent.start_query_tasks(prompt, context)
-            
-            # Stream Flash response immediately
-            flash_response = await flash_task
-            yield sse_event("preliminary", {
-                "response": flash_response,
-                "message": "⚡ Quick preview - computing verified response..."
-            })
-            
-            logger.info(
-                "Flash response sent [request_id=%s, latency_ms=%s]",
-                request_id,
-                flash_response.get("latency_ms"),
-            )
-            
-            # Stream Pro response when ready
-            pro_response = await pro_task
-            yield sse_event("final", {
-                "response": pro_response,
-                "message": "✅ Verified response ready"
-            })
-            
-            logger.info(
-                "Pro response sent [request_id=%s, latency_ms=%s]",
-                request_id,
-                pro_response.get("latency_ms"),
-            )
+            with time_operation("sse_handler_duration"):
+                # Launch both models in parallel with timeouts
+                flash_task, pro_task = agent.start_query_tasks(prompt, context)
+                
+                # Await Flash first for immediate feedback
+                flash_start = now_iso()
+                try:
+                    flash_response = await flash_task
+                    flash_trace = create_model_trace(
+                        model="gemini-2.5-flash",
+                        started_at=flash_start,
+                        ended_at=now_iso(),
+                        response=flash_response
+                    )
+                    
+                    # Stream Flash response
+                    yield sse_event("preliminary", {
+                        "response": flash_response,
+                        "message": "⚡ Quick preview - computing verified response...",
+                        "trace_id": run_id
+                    })
+                    
+                    logger.info(
+                        "Flash response sent [run_id=%s, latency_ms=%s]",
+                        run_id,
+                        flash_response.get("latency_ms"),
+                    )
+                
+                except asyncio.TimeoutError:
+                    # Flash timed out - cancel Pro and report error
+                    logger.warning(f"Flash timeout [run_id={run_id}]")
+                    flash_trace = create_model_trace(
+                        model="gemini-2.5-flash",
+                        started_at=flash_start,
+                        ended_at=now_iso(),
+                        error=asyncio.TimeoutError("Flash timeout")
+                    )
+                    pro_task.cancel()
+                    increment_cancellation()
+                    status = "timeout"
+                    
+                    yield sse_error(
+                        error="Flash model timed out",
+                        code="flash_timeout",
+                        error_type="timeout",
+                        retryable=True
+                    )
+                    return  # Exit early, done event sent in finally
+                
+                except asyncio.CancelledError:
+                    logger.warning(f"Flash cancelled [run_id={run_id}]")
+                    status = "cancelled"
+                    raise  # Propagate cancellation
+                
+                except Exception as e:
+                    logger.error(f"Flash error [run_id={run_id}]: {e}")
+                    flash_trace = create_model_trace(
+                        model="gemini-2.5-flash",
+                        started_at=flash_start,
+                        ended_at=now_iso(),
+                        error=e
+                    )
+                    pro_task.cancel()
+                    increment_cancellation()
+                    status = "error"
+                    
+                    yield sse_error(
+                        error=f"Flash model error: {str(e)}",
+                        code="flash_error",
+                        error_type="error",
+                        retryable=False
+                    )
+                    return  # Exit early
+                
+                # Await Pro response
+                pro_start = now_iso()
+                try:
+                    pro_response = await pro_task
+                    pro_trace = create_model_trace(
+                        model="gemini-2.5-pro",
+                        started_at=pro_start,
+                        ended_at=now_iso(),
+                        response=pro_response
+                    )
+                    
+                    # Stream Pro response
+                    yield sse_event("final", {
+                        "response": pro_response,
+                        "message": "✅ Verified response ready",
+                        "trace_id": run_id
+                    })
+                    
+                    logger.info(
+                        "Pro response sent [run_id=%s, latency_ms=%s]",
+                        run_id,
+                        pro_response.get("latency_ms"),
+                    )
+                
+                except asyncio.TimeoutError:
+                    logger.warning(f"Pro timeout [run_id={run_id}]")
+                    pro_trace = create_model_trace(
+                        model="gemini-2.5-pro",
+                        started_at=pro_start,
+                        ended_at=now_iso(),
+                        error=asyncio.TimeoutError("Pro timeout")
+                    )
+                    status = "timeout"
+                    
+                    yield sse_error(
+                        error="Pro model timed out",
+                        code="pro_timeout",
+                        error_type="timeout",
+                        retryable=True
+                    )
+                    return
+                
+                except asyncio.CancelledError:
+                    logger.warning(f"Pro cancelled [run_id={run_id}]")
+                    status = "cancelled"
+                    raise
+                
+                except Exception as e:
+                    logger.error(f"Pro error [run_id={run_id}]: {e}")
+                    pro_trace = create_model_trace(
+                        model="gemini-2.5-pro",
+                        started_at=pro_start,
+                        ended_at=now_iso(),
+                        error=e
+                    )
+                    status = "error"
+                    
+                    yield sse_error(
+                        error=f"Pro model error: {str(e)}",
+                        code="pro_error",
+                        error_type="error",
+                        retryable=False
+                    )
+                    return
+        
+        except asyncio.CancelledError:
+            logger.info(f"Request cancelled [run_id={run_id}]")
+            status = "cancelled"
+            # Don't yield error for cancellation - client initiated
         
         except Exception as e:
-            logger.error(f"Error in event stream: {e}")
+            logger.error(f"Unexpected error in event stream [run_id={run_id}]: {e}", exc_info=True)
+            status = "error"
             yield sse_error(
                 error="Internal server error",
-                code="stream_failure"
+                code="stream_failure",
+                error_type="error",
+                retryable=False
             )
+        
+        finally:
+            # Always emit 'done' event and log audit record
+            yield sse_done(trace_id=run_id)
+            
+            # Fire-and-forget audit logging (never blocks stream)
+            asyncio.create_task(_log_dual_run(
+                run_id=run_id,
+                prompt=prompt,
+                context=context,
+                flash_trace=flash_trace,
+                pro_trace=pro_trace,
+                status=status,
+                started_at=started_at,
+                ended_at=now_iso()
+            ))
     
     response = StreamingResponse(
         event_stream(),
@@ -296,12 +453,95 @@ async def query_with_feedback(body: QueryRequest, request: Request):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Request-ID": run_id,
         }
     )
 
-    response.headers.setdefault("X-Request-ID", request_id)
-
     return response
+
+
+async def _log_dual_run(
+    run_id: str,
+    prompt: str,
+    context: dict,
+    flash_trace: Optional[ModelTrace],
+    pro_trace: Optional[ModelTrace],
+    status: str,
+    started_at: str,
+    ended_at: str
+) -> None:
+    """
+    Deferred audit logging with retry and idempotency.
+    
+    Uses run_id as idempotency key. Never blocks the SSE stream.
+    Retries up to 5 times with exponential backoff.
+    
+    Args:
+        run_id: Unique request ID
+        prompt: User query
+        context: Query context
+        flash_trace: Flash execution trace (or None)
+        pro_trace: Pro execution trace (or None)
+        status: Overall request status
+        started_at: Request start timestamp
+        ended_at: Request end timestamp
+    """
+    record = DualRunRecord(
+        run_id=run_id,
+        project=settings.PROJECT_ID,
+        location=settings.LOCATION,
+        input={
+            "prompt": prompt,
+            "context": context
+        },
+        flash=flash_trace,
+        pro=pro_trace,
+        status=status,
+        started_at=started_at,
+        ended_at=ended_at
+    )
+    
+    async def persist():
+        """Inner function to persist record (for retry)."""
+        session = db.get_session()
+        if session is None:
+            logger.warning(f"Database not available, skipping audit log [run_id={run_id}]")
+            return
+        
+        try:
+            # Use ExperimentRun table with run_id as primary key (idempotent)
+            run = db.ExperimentRun(
+                id=run_id,
+                query=record.input.get("prompt", ""),
+                context=record.input.get("context", {}),
+                flash_response=record.flash.dict() if record.flash else None,
+                pro_response=record.pro.dict() if record.pro else None,
+                flash_latency_ms=record.flash.latency_ms if record.flash else None,
+                pro_latency_ms=record.pro.latency_ms if record.pro else None,
+                user_id="anonymous"  # TODO: Auth integration
+            )
+            
+            # Upsert semantics: ignore conflicts on run_id
+            session.merge(run)
+            session.commit()
+            
+            logger.info(f"Audit record persisted [run_id={run_id}, status={status}]")
+        
+        except Exception as e:
+            logger.error(f"Failed to persist audit record [run_id={run_id}]: {e}")
+            session.rollback()
+            raise
+        
+        finally:
+            session.close()
+    
+    # Retry with exponential backoff (never raises, returns None on failure)
+    await retry_async(
+        persist,
+        attempts=5,
+        backoff=(0.25, 3.0),
+        error_msg=f"Audit log persistence [run_id={run_id}]"
+    )
 
 
 @app.get("/")
