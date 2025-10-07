@@ -17,10 +17,13 @@ import pytest
 import sys
 from pathlib import Path
 
-# Add app to path
-APP_ROOT = Path(__file__).resolve().parents[1] / "app"
+# Add app to path (tests/ is at repo root, app/ is sibling)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+APP_ROOT = REPO_ROOT / "app"
 if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Import test telemetry collector if available
 try:

@@ -1,0 +1,9 @@
+{
+  "f1_score": 0.04878048780487805,
+  "best_model": "Gradient Boosting",
+  "training_samples": 1920,
+  "test_samples": 480,
+  "failure_rate": 0.07041666666666667,
+  "estimated_ci_reduction": 97.29166666666667,
+  "recommended_threshold": 0.3
+}
