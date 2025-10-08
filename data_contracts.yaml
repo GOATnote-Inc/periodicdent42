@@ -1,0 +1,71 @@
+# Dataset Contracts Manifest
+#
+# Tracks dataset versions, checksums, and lineage for reproducibility.
+# Updated automatically by DVC hooks and validated in CI before training/evaluation.
+# 
+# This file is the single source of truth for dataset integrity.
+# Any checksum mismatch in CI will block merges (block_on_mismatch=true).
+
+version: "1.0"
+last_updated: "2025-10-07T00:00:00Z"
+project: "periodicdent42"
+
+datasets:
+  ci_telemetry:
+    name: "CI Test Telemetry"
+    description: "Historical CI test results for epistemic test selection"
+    path: "data/ci_runs.jsonl"
+    dvc_tracked: false
+    schema_version: "1.0"
+    checksum_type: "sha256"
+    checksum: null  # Computed on first run
+    last_verified_commit: null
+    row_count: null
+    size_mb: null
+    retention_days: 365  # 12 months for raw telemetry
+    
+  training_data:
+    name: "ML Training Data"
+    description: "Preprocessed training data for failure prediction model"
+    path: "data/training_data.json"
+    dvc_tracked: false
+    schema_version: "1.0"
+    checksum_type: "sha256"
+    checksum: null
+    last_verified_commit: null
+    row_count: null
+    size_mb: null
+    retention_days: 365
+  
+  models:
+    name: "Trained ML Models"
+    description: "Serialized failure prediction models"
+    path: "models/"
+    dvc_tracked: false
+    schema_version: "1.0"
+    checksum_type: "sha256"
+    checksum: null
+    last_verified_commit: null
+    artifact_count: null
+    size_mb: null
+    retention_days: null  # Indefinite retention for models
+
+# Validation rules
+validation:
+  enforce_checksums: true    # Require checksums (fail if missing)
+  block_on_mismatch: true    # Fail CI build if checksum mismatch
+  allow_missing: false       # Fail if dataset not found
+  max_age_days: 90          # Warn if dataset not verified in 90 days
+  fail_on_age: false        # Don't fail build on age warning
+
+# DVC configuration (optional)
+dvc:
+  remote_url: "gs://periodicdent42-dvc-data"
+  remote_name: "gcs"
+  enabled: false  # Set to true once DVC is initialized
+
+# Audit trail
+audit:
+  last_validation: null
+  last_validation_status: null
+  validation_count: 0
