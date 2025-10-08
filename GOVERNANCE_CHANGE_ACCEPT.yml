@@ -1,0 +1,35 @@
+# Governance Change Acceptance
+#
+# Waivers for temporary regression acceptance with expiration.
+# Use sparingly and document rationale clearly.
+#
+# Format per waiver:
+#   - metric: <metric_name>           # e.g., ece, coverage, brier
+#     reason: "<explanation>"          # Why this regression is acceptable
+#     pr: <pr_number>                  # PR number (for tracking)
+#     expires_at: "YYYY-MM-DDTHH:MM:SSZ" # ISO 8601 UTC timestamp
+#     max_delta: <float>               # Maximum allowed delta from baseline (optional)
+#     min_value: <float>               # Minimum acceptable value (optional)
+#     max_value: <float>               # Maximum acceptable value (optional)
+
+waivers:
+  # Example waiver (remove or modify for actual use):
+  # - metric: ece
+  #   reason: "Intentional calibration trade-off for new temperature scaling"
+  #   pr: 123
+  #   expires_at: "2025-12-31T23:59:59Z"
+  #   max_delta: 0.03
+  # 
+  # - metric: coverage
+  #   reason: "Codegen spike; comprehensive tests coming in next PR"
+  #   pr: 124
+  #   expires_at: "2025-11-15T00:00:00Z"
+  #   min_value: 0.80
+
+# Notes:
+# - Waivers apply ONLY if:
+#   1. PR number matches (if in PR context)
+#   2. Current time < expires_at
+#   3. Regression within specified bounds
+# - Expired waivers are automatically ignored
+# - Waived regressions appear in reports with ⚠️ warning

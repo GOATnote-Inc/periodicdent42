@@ -49,6 +49,25 @@ def get_config() -> Dict[str, Any]:
         "CI_RUN_ID": os.getenv("CI_RUN_ID", os.getenv("GITHUB_RUN_ID", "local")),
         "GIT_SHA": os.getenv("GIT_SHA", os.getenv("GITHUB_SHA", "unknown")),
         "GIT_BRANCH": os.getenv("GIT_BRANCH", os.getenv("GITHUB_REF_NAME", "main")),
+        
+        # Regression detection
+        "BASELINE_WINDOW": int(os.getenv("BASELINE_WINDOW", "20")),
+        "WINSOR_PCT": float(os.getenv("WINSOR_PCT", "0.05")),
+        "Z_THRESH": float(os.getenv("Z_THRESH", "2.5")),
+        "PH_DELTA": float(os.getenv("PH_DELTA", "0.005")),
+        "PH_LAMBDA": float(os.getenv("PH_LAMBDA", "0.05")),
+        "MD_THRESH": float(os.getenv("MD_THRESH", "9.0")),
+        "AUTO_ISSUE_ON_REGRESSION": os.getenv("AUTO_ISSUE_ON_REGRESSION", "true").lower() == "true",
+        "FAIL_ON_FLAKY": os.getenv("FAIL_ON_FLAKY", "false").lower() == "true",
+        "ALLOW_NIGHTLY_REGRESSION": os.getenv("ALLOW_NIGHTLY_REGRESSION", "false").lower() == "true",
+        
+        # Absolute thresholds for regression detection
+        "ABS_THRESH_COVERAGE": float(os.getenv("ABS_THRESH_COVERAGE", "0.02")),
+        "ABS_THRESH_ECE": float(os.getenv("ABS_THRESH_ECE", "0.02")),
+        "ABS_THRESH_BRIER": float(os.getenv("ABS_THRESH_BRIER", "0.01")),
+        "ABS_THRESH_ACCURACY": float(os.getenv("ABS_THRESH_ACCURACY", "0.01")),
+        "ABS_THRESH_LOSS": float(os.getenv("ABS_THRESH_LOSS", "0.01")),
+        "ABS_THRESH_ENTROPY": float(os.getenv("ABS_THRESH_ENTROPY", "0.02")),
     }
 
 

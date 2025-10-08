@@ -1,4 +1,4 @@
-.PHONY: help repro evidence train collect-mock mock epistemic-ci clean data-pull data-push data-check data-init validate ci-local ci-gates test-provenance aggregate-evidence report-html
+.PHONY: help repro evidence train collect-mock mock epistemic-ci clean data-pull data-push data-check data-init validate ci-local ci-gates test-provenance aggregate-evidence report-html baseline detect notify flaky-scan qa
 
 help:
 	@echo "GOATnote Autonomous R&D Intelligence Layer - Makefile"
@@ -10,6 +10,13 @@ help:
 	@echo "  test-provenance - Run provenance integration tests"
 	@echo "  aggregate-evidence - Aggregate CI runs into rollup summary"
 	@echo "  report-html   - Generate HTML evidence report"
+	@echo ""
+	@echo "=== Regression Detection ==="
+	@echo "  baseline      - Update rolling baseline from successful runs"
+	@echo "  detect        - Detect regressions (z-score + Page-Hinkley)"
+	@echo "  notify        - Send GitHub PR comments/checks (if token present)"
+	@echo "  flaky-scan    - Scan for flaky tests (JUnit XML analysis)"
+	@echo "  qa            - Run full QA suite (baseline + detect + flaky)"
 	@echo ""
 	@echo "=== Reproducibility ==="
 	@echo "  repro         - Verify hermetic builds locally (run twice, compare hashes)"
@@ -221,4 +228,33 @@ ci-local: clean
 	@echo "  - evidence/report.html (open in browser)"
 	@echo "  - evidence/packs/provenance_pack_*.zip"
 	@echo "  - coverage.json + htmlcov/"
+	@echo ""
+
+# === REGRESSION DETECTION TARGETS ===
+
+baseline:
+	@echo "=== Updating Rolling Baseline ==="
+	@python3 scripts/baseline_update.py
+
+detect:
+	@echo "=== Detecting Regressions ==="
+	@python3 scripts/detect_regression.py
+
+notify:
+	@echo "=== Sending GitHub Notifications ==="
+	@python3 scripts/notify_github.py || echo "⚠️  GitHub notifications unavailable (token/context missing)"
+
+flaky-scan:
+	@echo "=== Scanning for Flaky Tests ==="
+	@python3 scripts/flaky_scan.py
+
+qa: baseline detect flaky-scan
+	@echo "=========================================="
+	@echo "✅ QA Suite Complete!"
+	@echo "=========================================="
+	@echo ""
+	@echo "Reports:"
+	@echo "  - evidence/baselines/rolling_baseline.json"
+	@echo "  - evidence/regressions/regression_report.{json,md}"
+	@echo "  - evidence/regressions/flaky_tests.json"
 	@echo ""
