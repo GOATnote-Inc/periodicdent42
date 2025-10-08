@@ -12,16 +12,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY app/requirements.txt .
+COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code from app directory
-COPY app/ .
+# Copy application code
+COPY . .
 
-# Copy configs from root
-COPY configs/ /app/configs/
+# Note: configs/ directory expected at parent level (handled by Cloud Build context)
+# For local builds: ensure configs/ is available or comment out lab/campaign features
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
