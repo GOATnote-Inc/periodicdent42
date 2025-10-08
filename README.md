@@ -1,5 +1,9 @@
 # matprov: ML-Guided Materials Discovery with Physics-Informed Features
 
+> **🏢 Ownership**: This repository is owned and maintained by **GOATnote Autonomous Research Lab Initiative** (Dr. Brandon Dent, MD).  
+> Mentions of third parties are for application/demonstration context only and do not imply ownership.  
+> **License**: See [LICENSE](./LICENSE) | **Compliance**: [COMPLIANCE_ATTRIBUTION.md](./COMPLIANCE_ATTRIBUTION.md)
+
 <div align="center">
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)

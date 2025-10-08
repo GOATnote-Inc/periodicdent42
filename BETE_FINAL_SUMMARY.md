@@ -10,7 +10,7 @@
 
 ## 🎯 Mission Accomplished
 
-Successfully delivered **production-grade BETE-NET superconductor screening** for Periodic Labs with:
+Successfully delivered **production-grade BETE-NET superconductor screening** with:
 - **10^5× speedup** vs DFT (5s vs 8 CPU-weeks per material)
 - **Complete audit trail** (SHA-256 provenance, evidence packs)
 - **Full stack integration** (FastAPI + Next.js + Cloud SQL + CLI)
@@ -280,7 +280,7 @@ pytest tests/test_bete*.py -v -m bete --cov=src.bete_net_io
 
 ## 📈 Cost-Benefit Analysis
 
-### ROI for Periodic Labs
+### ROI for Autonomous Research Labs (Example Use Case)
 
 | Metric | DFT | BETE-NET | Improvement |
 |--------|-----|----------|-------------|
@@ -435,7 +435,7 @@ pytest tests/test_bete*.py -v -m bete --cov=src.bete_net_io
 
 - **BETE-NET Authors**: University of Florida Hennig Group (Apache 2.0)
 - **Materials Project**: MP Team (Materials Project API)
-- **Periodic Labs**: GOATnote Autonomous Research Lab Initiative
+- **GOATnote**: GOATnote Autonomous Research Lab Initiative
 - **Original Prompt**: Expert Cursor Prompt by user (high-quality specification)
 
 ---

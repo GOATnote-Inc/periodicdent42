@@ -1,5 +1,5 @@
 """
-BETE-NET inference wrapper for Periodic Labs.
+BETE-NET inference wrapper for autonomous research platforms.
 
 This module provides production-grade inference for electron-phonon coupling
 and superconductor Tc prediction using the BETE-NET ensemble.

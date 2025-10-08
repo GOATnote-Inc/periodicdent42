@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Successfully implemented **production-grade BETE-NET superconductor screening** for Periodic Labs. This integration enables screening of electron-phonon superconductors at **~10^5× speedup vs DFT** (5 seconds vs 8 CPU-weeks per material), with full audit trail, evidence packs, and reproducibility guarantees.
+Successfully implemented **production-grade BETE-NET superconductor screening** for autonomous research platforms. This integration enables screening of electron-phonon superconductors at **~10^5× speedup vs DFT** (5 seconds vs 8 CPU-weeks per material), with full audit trail, evidence packs, and reproducibility guarantees.
 
 **Key Value Proposition**:
 - **Throughput**: 720 materials/hour on 8-core CPU (vs ~6 materials/year with DFT)
@@ -452,7 +452,7 @@ SELECT * FROM top_superconductors;
 - **Throughput**: 720 materials/hour (8-core CPU)
 - **Total Cost** (1000 materials): $0.024
 
-### ROI for Periodic Labs
+### ROI for Autonomous Research Labs (Example Use Case)
 
 | Metric | DFT | BETE-NET | Improvement |
 |--------|-----|----------|-------------|
@@ -502,7 +502,7 @@ SELECT * FROM top_superconductors;
 
 - **BETE-NET Authors**: University of Florida Hennig Group
 - **Materials Project**: Materials Project Team (MP API)
-- **Periodic Labs**: GOATnote Autonomous Research Lab Initiative
+- **GOATnote**: GOATnote Autonomous Research Lab Initiative
 - **Original Prompt**: Expert Cursor Prompt by user
 
 ---

@@ -1,4 +1,4 @@
-# BETE-NET Deployment Guide - Periodic Labs
+# BETE-NET Deployment Guide - GOATnote Autonomous Research Lab
 
 **Status**: 🟡 **Foundation Complete** (Model Integration Pending)  
 **Version**: 1.0.0  
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-This guide covers deployment of **BETE-NET superconductor screening** into Periodic Labs' production stack. BETE-NET predicts electron-phonon coupling (λ) and superconducting Tc from crystal structures, enabling **~10^5× speedup vs DFT** (5s vs 8 CPU-weeks per material).
+This guide covers deployment of **BETE-NET superconductor screening** into autonomous research platforms. BETE-NET predicts electron-phonon coupling (λ) and superconducting Tc from crystal structures, enabling **~10^5× speedup vs DFT** (5s vs 8 CPU-weeks per material).
 
 **Implementation Status**:
 - ✅ **Licensing & Attribution**: Apache 2.0 compliance complete
@@ -142,7 +142,7 @@ third_party/bete_net/models/
 
 See [BETE-NET Training Guide](https://github.com/henniggroup/BETE-NET/blob/main/TRAINING.md).
 
-**Not recommended** for Periodic Labs use case (inference-only).
+**Not recommended** for inference-only deployments.
 
 ---
 

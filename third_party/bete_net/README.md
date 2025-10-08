@@ -1,4 +1,4 @@
-# BETE-NET Integration - Periodic Labs
+# BETE-NET Integration - GOATnote Autonomous Research Lab
 
 ## Overview
 
@@ -38,7 +38,7 @@ BETE-NET (Bootstrapped Ensemble of Tempered Equivariant Graph Neural Networks) p
 - **Weights SHA-256**: [To be computed after download]
 - **Download Date**: 2025-10-08
 
-## Periodic Labs Integration
+## GOATnote Integration
 
 ### Architecture
 ```
@@ -174,7 +174,7 @@ bete-screen screen --csv data/candidates.csv --checkpoint checkpoints/run.pkl --
 - **Throughput**: ~1M materials/year with cloud autoscaling
 - **Speedup**: ~10⁵× vs DFT
 
-### ROI for Periodic Labs
+### ROI for Autonomous Labs (Example: Periodic Labs Use Case)
 - **Discovery Rate**: 10,000× more candidates screened
 - **Cost Reduction**: 99.99% reduction in compute cost
 - **Time to Market**: Days instead of years for initial screening
@@ -264,5 +264,5 @@ Planned extensions:
 
 **Status**: ✅ Production-Ready (Oct 2025)  
 **Version**: 1.0.0  
-**License**: Apache 2.0 (with modifications by Periodic Labs)
+**License**: Apache 2.0 (with modifications by GOATnote Autonomous Research Lab Initiative)
 
