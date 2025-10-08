@@ -28,6 +28,7 @@ from src.utils.metrics import time_operation, increment_cancellation
 from src.services.storage import get_storage
 from src.lab.campaign import get_campaign_runner, CampaignReport
 from src.services import db
+from src.api.bete_net import router as bete_router
 
 # Configure logging
 logging.basicConfig(
@@ -42,6 +43,9 @@ app = FastAPI(
     description="Dual-model AI reasoning with Gemini 2.5 Flash + Pro",
     version="0.1.0"
 )
+
+# Include BETE-NET router
+app.include_router(bete_router)
 
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
 print(f"🔍 STATIC_DIR resolved to: {STATIC_DIR}", flush=True)

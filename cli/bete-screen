@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""
+BETE-NET screening CLI tool.
+
+Usage:
+    bete-screen infer --cif examples/Nb.cif --mu-star 0.10
+    bete-screen infer --mp-id mp-48 --mu-star 0.13
+    bete-screen screen --csv data/candidates.csv --out results.parquet
+    bete-screen screen --mp-ids mp-48 mp-66 mp-134 --out results.csv
+
+Copyright 2025 GOATnote Autonomous Research Lab Initiative
+Licensed under Apache 2.0
+"""
+
+import sys
+from pathlib import Path
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+# Add app to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from app.src.bete_net_io.batch import screen_from_csv, ScreeningConfig, batch_screen
+from app.src.bete_net_io.inference import predict_tc
+from app.src.bete_net_io.evidence import create_evidence_pack
+
+app = typer.Typer(help="BETE-NET superconductor screening CLI")
+console = Console()
+
+
+@app.command()
+def infer(
+    cif: Path = typer.Option(None, "--cif", help="CIF file path"),
+    mp_id: str = typer.Option(None, "--mp-id", help="Materials Project ID"),
+    mu_star: float = typer.Option(0.10, "--mu-star", help="Coulomb pseudopotential"),
+    output: Path = typer.Option(None, "--output", "-o", help="Output JSON path"),
+    evidence: bool = typer.Option(True, "--evidence/--no-evidence", help="Create evidence pack"),
+):
+    """
+    Predict superconducting Tc for a single crystal structure.
+
+    Example:
+        bete-screen infer --cif examples/Nb.cif --mu-star 0.10
+        bete-screen infer --mp-id mp-48 --mu-star 0.13 --output result.json
+    """
+    if not cif and not mp_id:
+        console.print("[red]Error: Must provide either --cif or --mp-id[/red]")
+        raise typer.Exit(1)
+
+    if cif and mp_id:
+        console.print("[red]Error: Provide only one of --cif or --mp-id[/red]")
+        raise typer.Exit(1)
+
+    input_id = str(cif) if cif else mp_id
+
+    console.print(f"[cyan]Running BETE-NET inference on {input_id}...[/cyan]")
+
+    try:
+        prediction = predict_tc(input_id, mu_star=mu_star)
+
+        # Print results
+        table = Table(title=f"BETE-NET Prediction: {prediction.formula}")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Formula", prediction.formula)
+        if prediction.mp_id:
+            table.add_row("MP-ID", prediction.mp_id)
+        table.add_row("Tc (K)", f"{prediction.tc_kelvin:.2f} ± {prediction.tc_std:.2f}")
+        table.add_row("λ", f"{prediction.lambda_ep:.3f} ± {prediction.lambda_std:.3f}")
+        table.add_row("⟨ω_log⟩ (K)", f"{prediction.omega_log:.1f} ± {prediction.omega_log_std:.1f}")
+        table.add_row("μ*", f"{prediction.mu_star:.3f}")
+        table.add_row("Input Hash", prediction.input_hash[:16] + "...")
+
+        console.print(table)
+
+        # Save JSON
+        if output:
+            import json
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(prediction.to_dict(), indent=2))
+            console.print(f"[green]Results saved: {output}[/green]")
+
+        # Create evidence pack
+        if evidence:
+            evidence_dir = Path("evidence")
+            pack_path = create_evidence_pack(prediction, evidence_dir)
+            console.print(f"[green]Evidence pack: {pack_path}[/green]")
+
+        console.print(f"\n[bold green]✓ Prediction complete[/bold green]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def screen(
+    csv: Path = typer.Option(None, "--csv", help="CSV with mp_id or cif_path column"),
+    mp_ids: list[str] = typer.Option(None, "--mp-ids", help="List of MP-IDs"),
+    mu_star: float = typer.Option(0.10, "--mu-star", help="Coulomb pseudopotential"),
+    out: Path = typer.Option("screening_results.parquet", "--out", "-o", help="Output file"),
+    workers: int = typer.Option(4, "--workers", "-w", help="Number of parallel workers"),
+    resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),
+):
+    """
+    Screen a batch of candidate superconductors.
+
+    Example:
+        bete-screen screen --csv candidates.csv --out results.parquet --workers 8
+        bete-screen screen --mp-ids mp-48 mp-66 mp-134 --out results.csv
+    """
+    if not csv and not mp_ids:
+        console.print("[red]Error: Must provide either --csv or --mp-ids[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[cyan]Starting batch screening...[/cyan]")
+
+    try:
+        if csv:
+            df = screen_from_csv(csv, out, mu_star=mu_star, n_workers=workers, resume=resume)
+        else:
+            config = ScreeningConfig(
+                inputs=mp_ids,
+                mu_star=mu_star,
+                output_path=out,
+                n_workers=workers,
+            )
+            df = batch_screen(config)
+
+        # Print top 10 results
+        console.print(f"\n[bold green]Top 10 Superconductors:[/bold green]")
+        table = Table()
+        table.add_column("Rank", style="cyan")
+        table.add_column("Formula", style="green")
+        table.add_column("MP-ID", style="blue")
+        table.add_column("Tc (K)", style="magenta")
+        table.add_column("λ", style="yellow")
+
+        for i, row in enumerate(df.head(10).itertuples(), 1):
+            table.add_row(
+                str(i),
+                row.formula,
+                row.mp_id or "—",
+                f"{row.tc_kelvin:.2f} ± {row.tc_std:.2f}" if row.tc_kelvin else "—",
+                f"{row.lambda_ep:.3f}" if hasattr(row, 'lambda_ep') and row.lambda_ep else "—",
+            )
+
+        console.print(table)
+        console.print(f"\n[green]Results saved: {out}[/green]")
+        console.print(f"[green]Total materials screened: {len(df)}[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def version():
+    """Show BETE-NET integration version."""
+    from app.src.bete_net_io import __version__
+    console.print(f"BETE-NET Integration v{__version__}")
+    console.print("Copyright 2025 GOATnote Autonomous Research Lab Initiative")
+    console.print("Licensed under Apache 2.0")
+
+
+if __name__ == "__main__":
+    app()
+

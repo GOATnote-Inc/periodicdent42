@@ -17,6 +17,14 @@ chem = [
     "rdkit==2023.9.1",
     "ase==3.22.1",
 ]
+# BETE-NET superconductor screening
+bete = [
+    "pymatgen==2024.3.1",     # Crystal structure loading and Materials Project API
+    "matplotlib==3.8.2",      # α²F(ω) plot generation
+    "typer==0.9.0",           # CLI tool
+    "rich==13.7.0",           # CLI pretty printing
+    "tqdm==4.66.1",           # Progress bars
+]
 # Development and testing
 dev = [
     "pytest==7.4.3",
@@ -62,6 +70,7 @@ markers = [
     "ml_test_selection: tests for ML-powered test selection (Phase 3)",
     "chaos_safe: tests that should not experience chaos engineering failures (Phase 3)",
     "chaos_critical: tests that always experience chaos for thorough validation (Phase 3)",
+    "bete: tests for BETE-NET superconductor screening",
 ]
 
 [tool.mypy]
