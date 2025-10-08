@@ -28,9 +28,15 @@ try:
     from src.bete_net_io.evidence import create_evidence_pack
     from src.bete_net_io.inference import predict_tc
     BETE_ENABLED = True
+    IMPORT_ERROR = None
 except ImportError as e:
     BETE_ENABLED = False
     IMPORT_ERROR = str(e)
+    # Define placeholder classes/functions so the module can still load
+    ScreeningConfig = None
+    batch_screen = None
+    create_evidence_pack = None
+    predict_tc = None
     logger.warning(f"BETE-NET dependencies not available: {e}. Endpoints will return 501.")
 
 # Evidence packs storage
