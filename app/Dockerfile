@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# Cache-busting argument (set to current timestamp to force rebuild)
+ARG CACHE_BUST=unknown
+
 # Set working directory
 WORKDIR /app
 
