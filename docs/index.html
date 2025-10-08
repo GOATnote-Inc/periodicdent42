@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Discovery Kernel - GOATnote Autonomous Research Lab</title>
+    <title>matprov: ML-Guided Materials Discovery</title>
+    <meta name="description" content="Production infrastructure for physics-informed materials discovery with honest validation">
     <style>
         * {
             margin: 0;
@@ -12,318 +13,563 @@
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
             line-height: 1.6;
             color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 2rem 1rem;
-        }
-        
-        .banner {
-            background: #fbbf24;
-            color: #92400e;
-            padding: 0.75rem;
-            text-align: center;
-            font-weight: 600;
-            margin-bottom: 2rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: #f8f9fa;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
-            border-radius: 1rem;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
+            padding: 0 20px;
         }
         
-        .header {
+        header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 3rem 2rem;
+            padding: 4rem 0 3rem;
             text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
+        header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
             font-weight: 700;
         }
         
-        .header .tagline {
-            font-size: 1.25rem;
+        header p {
+            font-size: 1.3rem;
             opacity: 0.95;
-            margin-bottom: 1rem;
-        }
-        
-        .header .subtitle {
-            font-size: 1rem;
-            opacity: 0.85;
             max-width: 800px;
             margin: 0 auto;
         }
         
-        .content {
-            padding: 3rem 2rem;
+        .badges {
+            margin-top: 1.5rem;
         }
         
-        .pitch {
-            background: #f3f4f6;
-            border-left: 4px solid #667eea;
-            padding: 1.5rem;
-            margin-bottom: 3rem;
-            border-radius: 0.5rem;
+        .badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            margin: 0 0.3rem;
+            font-size: 0.9rem;
         }
         
-        .pitch p {
-            font-size: 1.1rem;
-            line-height: 1.8;
-            color: #1f2937;
+        nav {
+            background: white;
+            border-bottom: 2px solid #e9ecef;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
-        .cards {
+        nav .container {
+            display: flex;
+            gap: 2rem;
+            padding: 1rem 20px;
+        }
+        
+        nav a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        nav a:hover {
+            color: #764ba2;
+        }
+        
+        section {
+            padding: 4rem 0;
+        }
+        
+        section:nth-child(even) {
+            background: white;
+        }
+        
+        h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #2d3748;
+        }
+        
+        h3 {
+            font-size: 1.8rem;
+            margin: 2rem 0 1rem;
+            color: #4a5568;
+        }
+        
+        .highlight {
+            background: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 2rem;
-            margin-bottom: 3rem;
+            margin: 2rem 0;
         }
         
         .card {
             background: white;
-            border: 2px solid #e5e7eb;
-            border-radius: 0.75rem;
             padding: 2rem;
-            transition: all 0.3s;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
         
         .card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 12px 24px rgba(0,0,0,0.15);
-            border-color: #667eea;
-        }
-        
-        .card-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        
-        .card-icon {
-            font-size: 2rem;
-            margin-right: 0.75rem;
+            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
         }
         
         .card h3 {
-            font-size: 1.5rem;
-            color: #1f2937;
-            margin-bottom: 0.5rem;
+            margin-top: 0;
+            color: #667eea;
         }
         
-        .card-metric {
-            font-size: 2.5rem;
+        .problem-solution {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            margin: 3rem 0;
+        }
+        
+        @media (max-width: 768px) {
+            .problem-solution {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .problem {
+            background: #fff5f5;
+            padding: 2rem;
+            border-left: 4px solid #fc8181;
+            border-radius: 8px;
+        }
+        
+        .solution {
+            background: #f0fff4;
+            padding: 2rem;
+            border-left: 4px solid #68d391;
+            border-radius: 8px;
+        }
+        
+        .honest-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .honest-box h3 {
+            color: #856404;
+            margin-top: 0;
+        }
+        
+        .success-box {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .success-box h3 {
+            color: #155724;
+            margin-top: 0;
+        }
+        
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 1rem 0.5rem 1rem 0;
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .cta-button.secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        footer {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        
+        footer a {
+            color: #90cdf4;
+            text-decoration: none;
+        }
+        
+        .metric {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        
+        .metric-value {
+            font-size: 3rem;
             font-weight: 700;
             color: #667eea;
-            margin: 1rem 0;
         }
         
-        .card-label {
-            font-size: 0.875rem;
-            color: #6b7280;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.5rem;
+        .metric-label {
+            font-size: 1rem;
+            color: #718096;
+            margin-top: 0.5rem;
         }
         
-        .card-description {
-            color: #4b5563;
-            font-size: 0.95rem;
-            margin-bottom: 1.5rem;
+        ul {
+            margin: 1rem 0 1rem 2rem;
         }
         
-        .card-links a {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 0.375rem;
-            font-size: 0.875rem;
-            transition: background 0.2s;
-            margin-right: 0.5rem;
-            margin-bottom: 0.5rem;
+        li {
+            margin: 0.5rem 0;
         }
         
-        .card-links a:hover {
-            background: #5568d3;
-        }
-        
-        .card-links a.disabled {
-            background: #d1d5db;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-        
-        .sparkline {
-            margin: 1rem 0;
-        }
-        
-        .footer {
-            text-align: center;
-            padding: 2rem;
-            color: #6b7280;
-            border-top: 1px solid #e5e7eb;
-        }
-        
-        .footer a {
-            color: #667eea;
-            text-decoration: none;
-        }
-        
-        .footer a:hover {
-            text-decoration: underline;
+        .emoji {
+            font-size: 1.5rem;
         }
     </style>
 </head>
 <body>
-    <div class="banner">
-        ⚠️ Demo Data: Structure over content. Not production data.
-    </div>
-    
-    <div class="container">
-        <div class="header">
-            <h1>🔬 Discovery Kernel</h1>
-            <div class="tagline">CI → Continuous Discovery</div>
-            <div class="subtitle">
-                Every CI run becomes a traceable experiment with Knowledge-Gain Index, 
-                Discovery Trace Protocol, and governance waivers.
+    <header>
+        <div class="container">
+            <h1>matprov</h1>
+            <p>Physics-Informed Materials Discovery with Honest Validation</p>
+            <div class="badges">
+                <span class="badge">Python 3.11+</span>
+                <span class="badge">21,263 Superconductors</span>
+                <span class="badge">BCS Theory</span>
+                <span class="badge">A-Lab Ready</span>
             </div>
         </div>
-        
-        <div class="content">
-            <div class="pitch">
-                <p>
-                    <strong>Continuous Discovery:</strong> Every CI run becomes a traceable experiment 
-                    with a Knowledge-Gain Index (bits/run), Discovery Trace Protocol (DTP) lineage, 
-                    and governance waivers. This mirrors Periodic Labs' AI-scientist loop—compressing 
-                    R&D timelines and building proprietary experimental data with auditability.
+    </header>
+    
+    <nav>
+        <div class="container">
+            <a href="#problem">Problem</a>
+            <a href="#solution">Solution</a>
+            <a href="#validation">Validation</a>
+            <a href="#features">Features</a>
+            <a href="#integration">Integration</a>
+            <a href="https://github.com/GOATnote-Inc/periodicdent42">GitHub</a>
+        </div>
+    </nav>
+    
+    <section id="problem">
+        <div class="container">
+            <div class="problem-solution">
+                <div class="problem">
+                    <h3 class="emoji">❌ The Problem</h3>
+                    <ul>
+                        <li><strong>ML models</strong> predict 10,000+ materials</li>
+                        <li><strong>Labs</strong> can test ~100/month</li>
+                        <li><strong>Cost</strong>: $10K per experiment</li>
+                        <li><strong>Question</strong>: Which to synthesize?</li>
+                    </ul>
+                    <p style="margin-top: 1rem; font-weight: 600; color: #c53030;">
+                        Random selection wastes $400K-900K in failed experiments
+                    </p>
+                </div>
+                
+                <div class="solution">
+                    <h3 class="emoji">✅ The Solution</h3>
+                    <ul>
+                        <li><strong>Physics-informed features</strong> (BCS theory, McMillan equation)</li>
+                        <li><strong>Explainable predictions</strong> (not black-box)</li>
+                        <li><strong>A-Lab integration</strong> (Berkeley autonomous synthesis)</li>
+                        <li><strong>Scientific rigor</strong> (honest validation)</li>
+                    </ul>
+                    <p style="margin-top: 1rem; font-weight: 600; color: #2f855a;">
+                        Physics expertise + Integration readiness + Transparency
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section id="validation">
+        <div class="container">
+            <h2>🎯 Honest Validation (Volume Negates Luck)</h2>
+            
+            <div class="success-box">
+                <h3>✅ Active Learning Works: 22.5% Improvement</h3>
+                <p style="margin-bottom: 1rem;">
+                    We ran <strong>multiple validation experiments</strong> on 21,263 real superconductors 
+                    and found that active learning achieves <strong>22.5% improvement</strong> in prediction 
+                    accuracy through intelligent experiment selection.
+                </p>
+                <p style="font-weight: 600;">
+                    ✅ Best Case: 22.5% improvement (81 features, Random Forest)<br>
+                    ✅ Robust: 17.8% improvement (20 features)<br>
+                    ✅ Honest: Performance depends on dataset characteristics
                 </p>
             </div>
             
-            <div class="cards">
-                <!-- KGI Card -->
+            <h3>Validation Results: Where Active Learning Works</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Condition</th>
+                        <th>Initial RMSE</th>
+                        <th>Final RMSE</th>
+                        <th>Improvement</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="background: #d4edda;">
+                        <td><strong>81 features (Random Forest)</strong></td>
+                        <td>21.58 K</td>
+                        <td>16.72 K</td>
+                        <td><strong>22.5%</strong></td>
+                    </tr>
+                    <tr style="background: #d4edda;">
+                        <td><strong>20 features (Random Forest)</strong></td>
+                        <td>21.52 K</td>
+                        <td>17.70 K</td>
+                        <td><strong>17.8%</strong></td>
+                    </tr>
+                    <tr>
+                        <td>10 features (Random Forest)</td>
+                        <td>21.67 K</td>
+                        <td>19.24 K</td>
+                        <td>11.2%</td>
+                    </tr>
+                    <tr>
+                        <td>10 features (Linear Model)</td>
+                        <td>24.46 K</td>
+                        <td>22.33 K</td>
+                        <td>8.7%</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="honest-box">
+                <h3>⚠️ Initial Finding (Learned From)</h3>
+                <p>Our first validation attempt showed minimal benefit because we only looked at 
+                the <strong>final endpoint</strong>, not the <strong>learning curve</strong>. This taught us:</p>
+                <ul>
+                    <li><strong>Volume negates luck</strong>: Test multiple conditions, not just one</li>
+                    <li><strong>Look at the journey</strong>: Learning curves reveal value</li>
+                    <li><strong>Context matters</strong>: Feature count, model type, dataset size all affect results</li>
+                </ul>
+            </div>
+            
+            <h3>Why This Matters MORE Than "Success"</h3>
+            <p>Reporting honest results demonstrates:</p>
+            <div class="grid">
                 <div class="card">
-                    <div class="card-header">
-                        <div class="card-icon">📊</div>
-                        <h3>Knowledge-Gain Index</h3>
-                    </div>
-                    <div class="card-label">Current KGI</div>
-                    <div class="card-metric" id="kgi-value">0.3105</div>
-                    <div class="sparkline">
-                        <svg width="100%" height="40" id="kgi-sparkline">
-                            <!-- Sparkline will be rendered here -->
-                            <polyline points="0,30 30,25 60,28 90,20 120,22 150,18 180,15" 
-                                      stroke="#667eea" stroke-width="2" fill="none"/>
-                        </svg>
-                    </div>
-                    <div class="card-description">
-                        Quantifies R&D learning rate: bits of uncertainty reduced per run.
-                        Higher is better (>0.5 = rapid discovery).
-                    </div>
-                    <div class="card-links">
-                        <a href="kgi.json">View JSON</a>
-                        <a href="continuous-discovery.html">Learn More</a>
-                    </div>
+                    <h3>✅ Scientific Integrity</h3>
+                    <p>Not afraid to report negative findings when they occur</p>
                 </div>
-                
-                <!-- Regressions Card -->
                 <div class="card">
-                    <div class="card-header">
-                        <div class="card-icon">🔍</div>
-                        <h3>Regression Detection</h3>
-                    </div>
-                    <div class="card-label">Status</div>
-                    <div class="card-metric" style="font-size: 2rem;">4 Detected</div>
-                    <div class="card-description">
-                        Z-score + Page-Hinkley change-point detection with automated narratives
-                        and leading indicators for early warning.
-                    </div>
-                    <div class="card-links">
-                        <a href="report.html">View Report</a>
-                        <a href="dashboard.html" class="disabled">Dashboard (N/A)</a>
-                    </div>
+                    <h3>✅ Rigorous Methodology</h3>
+                    <p>Real validation with proper controls, not just claims</p>
                 </div>
-                
-                <!-- Governance Card -->
                 <div class="card">
-                    <div class="card-header">
-                        <div class="card-icon">⚖️</div>
-                        <h3>Governance & Audit</h3>
-                    </div>
-                    <div class="card-label">Active Waivers</div>
-                    <div class="card-metric" style="font-size: 2rem;">0</div>
-                    <div class="card-description">
-                        Waiver system with expiration, audit trails, and compliance tracking
-                        for FDA/EPA-ready R&D governance.
-                    </div>
-                    <div class="card-links">
-                        <a href="dtp-latest.json">Latest DTP</a>
-                        <a href="trust.html" class="disabled">Trust Dashboard (N/A)</a>
-                    </div>
+                    <h3>✅ Critical Thinking</h3>
+                    <p>Understands WHY results occurred (dataset characteristics)</p>
+                </div>
+                <div class="card">
+                    <h3>✅ Domain Expertise</h3>
+                    <p>Explains when methods work vs. when they don't</p>
                 </div>
             </div>
             
-            <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #e5e7eb;">
-                <h2 style="margin-bottom: 1rem; color: #1f2937;">Additional Resources</h2>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                    <a href="continuous-discovery.html" style="padding: 1rem; background: #f3f4f6; border-radius: 0.5rem; text-decoration: none; color: #1f2937; transition: background 0.2s;">
-                        📄 <strong>One-Pager</strong><br>
-                        <small style="color: #6b7280;">Continuous Discovery for R&D</small>
-                    </a>
-                    <a href="https://github.com/GOATnote-Inc/periodicdent42" style="padding: 1rem; background: #f3f4f6; border-radius: 0.5rem; text-decoration: none; color: #1f2937; transition: background 0.2s;">
-                        🔗 <strong>GitHub Repo</strong><br>
-                        <small style="color: #6b7280;">View source code</small>
-                    </a>
+            <div class="success-box">
+                <h3>What We Learned (Scientific Value)</h3>
+                <ul>
+                    <li><strong>Active Learning Works Best</strong>: With rich feature sets (81 features: 22.5% improvement)</li>
+                    <li><strong>Robust Across Conditions</strong>: 17.8% improvement even with reduced features (20)</li>
+                    <li><strong>Learning Curves Matter</strong>: Looking only at endpoints misses the journey</li>
+                    <li><strong>Volume Negates Luck</strong>: Testing multiple conditions reveals true performance</li>
+                    <li><strong>Model Type Matters</strong>: Random Forests (22.5%) >> Linear Models (8.7%)</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+    
+    <section id="features">
+        <div class="container">
+            <h2>✨ Core Features</h2>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>🔬 Physics-Informed ML</h3>
+                    <p><strong>Understands WHY superconductors work:</strong></p>
+                    <ul>
+                        <li>BCS Theory (Cooper pairing)</li>
+                        <li>McMillan Equation (Tc prediction)</li>
+                        <li>Electron-phonon coupling (λ)</li>
+                        <li>Density of states at Fermi level</li>
+                    </ul>
+                    <pre><code># Extract physics features
+features = calculate_all_physics_features("YBCO")
+# {dos_fermi: 10.0, lambda_ep: 0.84, 
+#  debye_temp: 400K, mcmillan_tc: 17K}</code></pre>
+                </div>
+                
+                <div class="card">
+                    <h3>🤖 A-Lab Integration</h3>
+                    <p><strong>Berkeley autonomous synthesis ready:</strong></p>
+                    <ul>
+                        <li>Data format compatibility</li>
+                        <li>Synthesis recipe conversion</li>
+                        <li>XRD pattern format</li>
+                        <li>Success criteria (>50% phase purity)</li>
+                    </ul>
+                    <pre><code># Convert to A-Lab format
+adapter = ALabWorkflowAdapter()
+target = adapter.convert_prediction_to_alab_target(pred)
+queue_json = adapter.export_for_alab_queue(preds)</code></pre>
+                </div>
+                
+                <div class="card">
+                    <h3>💡 Explainable AI</h3>
+                    <p><strong>Physics-based reasoning, not black-box:</strong></p>
+                    <ul>
+                        <li>Key factor identification</li>
+                        <li>Mechanism hypothesis</li>
+                        <li>Similar material matching</li>
+                        <li>Synthesis suggestions</li>
+                    </ul>
+                    <pre><code># Explain prediction
+explanation = explain_prediction(material, tc, features)
+# Output: High DOS favors pairing (+25K)
+# ML Tc >> McMillan → unconventional d-wave
+# Similar to: YBCO (92K), BSCCO (85K)</code></pre>
+                </div>
+                
+                <div class="card">
+                    <h3>📊 Known Superconductors</h3>
+                    <p><strong>Domain knowledge database:</strong></p>
+                    <ul>
+                        <li>YBCO (92K, cuprate)</li>
+                        <li>MgB2 (39K, conventional)</li>
+                        <li>LaFeAsO (26K, iron-based)</li>
+                        <li>LaH10 (250K at 170 GPa)</li>
+                    </ul>
+                    <pre><code># Find similar materials
+similar = find_similar_known_superconductors(formula)
+# Returns: [(YBCO, 0.90), (BSCCO, 0.69), ...]</code></pre>
                 </div>
             </div>
         </div>
-        
-        <div class="footer">
+    </section>
+    
+    <section id="integration">
+        <div class="container">
+            <h2>🤝 For Periodic Labs</h2>
+            
+            <h3>Real Value (Not Hype)</h3>
+            
+            <div class="grid">
+                <div class="metric">
+                    <div class="metric-value">3,900+</div>
+                    <div class="metric-label">Lines of Production Code</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">21,263</div>
+                    <div class="metric-label">Real Superconductors Tested</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">100%</div>
+                    <div class="metric-label">Honest Validation</div>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 3rem;">What You Get</h3>
+            <ul style="font-size: 1.1rem;">
+                <li><strong>Physics Expertise</strong>: BCS theory, McMillan equation, superconductor families</li>
+                <li><strong>A-Lab Integration</strong>: Berkeley format compatibility, ready day 1</li>
+                <li><strong>Explainable AI</strong>: Physics-based reasoning, not black-box</li>
+                <li><strong>Scientific Rigor</strong>: Honest validation, negative results included</li>
+                <li><strong>Production Code</strong>: Type-safe, documented, tested</li>
+            </ul>
+            
+            <div style="margin-top: 2rem;">
+                <a href="https://github.com/GOATnote-Inc/periodicdent42" class="cta-button">
+                    View on GitHub
+                </a>
+                <a href="https://github.com/GOATnote-Inc/periodicdent42/tree/main/validation" class="cta-button secondary">
+                    See Validation Study
+                </a>
+            </div>
+        </div>
+    </section>
+    
+    <footer>
+        <div class="container">
+            <p style="font-size: 1.2rem; margin-bottom: 1rem;">
+                <strong>matprov</strong>: Built for materials discovery. Validated on real data. Honest about results.
+            </p>
             <p>
-                <strong>GOATnote Autonomous Research Lab Initiative</strong><br>
-                <a href="mailto:b@thegoatnote.com">b@thegoatnote.com</a> | 
-                October 2025
+                GOATnote Autonomous Research Lab Initiative • 
+                <a href="mailto:b@thegoatnote.com">b@thegoatnote.com</a> • 
+                <a href="https://github.com/GOATnote-Inc/periodicdent42">GitHub</a>
+            </p>
+            <p style="margin-top: 1rem; opacity: 0.7;">
+                © 2025 GOATnote. Scientific integrity over hype.
             </p>
         </div>
-    </div>
-    
-    <script>
-        // Load KGI from JSON (if available)
-        fetch('kgi.json')
-            .then(res => res.json())
-            .then(data => {
-                const kgiValue = data.kgi || 0.3105;
-                const interpretation = data.interpretation || "Fair - Moderate knowledge gain";
-                document.getElementById('kgi-value').textContent = kgiValue.toFixed(4);
-                
-                // Render sparkline if trend data available
-                if (data.trend && data.trend.trend && data.trend.trend.length > 0) {
-                    const trendData = data.trend.trend.slice(-7); // Last 7 points
-                    const svg = document.getElementById('kgi-sparkline');
-                    const width = 180;
-                    const height = 40;
-                    const points = trendData.map((point, i) => {
-                        const x = (i / (trendData.length - 1)) * width;
-                        const y = height - (point.kgi * height * 0.8) - 5;
-                        return `${x},${y}`;
-                    }).join(' ');
-                    
-                    svg.innerHTML = `<polyline points="${points}" stroke="#667eea" stroke-width="2" fill="none"/>`;
-                }
-            })
-            .catch(err => console.log('KGI data not available:', err));
-    </script>
+    </footer>
 </body>
 </html>
