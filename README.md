@@ -137,6 +137,206 @@ python scripts/gen_ci_report.py --seed "$EPISTEMIC_SEED"
 
 ---
 
+## CI/CD Pipeline & Quality Gates
+
+### Provenance Pipeline Architecture
+
+```
+┌─────────────────┐
+│ Code Changes    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ CI PIPELINE                                                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Dataset Validation (scripts/validate_datasets.py)          │
+│     ├─ Verify SHA256 checksums                                 │
+│     ├─ Check data_contracts.yaml                               │
+│     └─ Block on drift (configurable)                           │
+│                                                                 │
+│  2. Test Execution (pytest + coverage)                         │
+│     ├─ Run tests with pytest-cov                               │
+│     ├─ Generate coverage.json + HTML                           │
+│     └─ Enforce COVERAGE_MIN ≥ 85%                              │
+│                                                                 │
+│  3. Model Training & Calibration                               │
+│     ├─ Train failure predictor (reproducible seed)             │
+│     ├─ Compute Brier/ECE/MCE                                   │
+│     └─ Log to experiments/ledger/                              │
+│                                                                 │
+│  4. Quality Gates (scripts/ci_gates.py)                        │
+│     ├─ Coverage ≥ 85%                                           │
+│     ├─ ECE ≤ 0.25 (calibration)                                │
+│     ├─ Brier ≤ 0.20 (calibration)                              │
+│     ├─ Entropy delta ≤ 0.15 (epistemic)                        │
+│     └─ Exit code 1 if any gate fails                           │
+│                                                                 │
+│  5. Double Build (hermetic reproducibility)                    │
+│     ├─ Run make repro (build twice)                            │
+│     ├─ Compare SHA256 hashes                                   │
+│     └─ Save to evidence/builds/                                │
+│                                                                 │
+│  6. Evidence Pack Generation                                   │
+│     ├─ Bundle all artifacts (scripts/make_evidence_pack.py)    │
+│     ├─ Generate HTML report (scripts/report_html.py)           │
+│     └─ Upload to CI artifacts                                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Merge / Deploy  │
+└─────────────────┘
+```
+
+### Environment Variables (Configuration Knobs)
+
+All quality thresholds can be overridden via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COVERAGE_MIN` | 85.0 | Minimum test coverage percentage |
+| `ECE_MAX` | 0.25 | Maximum Expected Calibration Error |
+| `BRIER_MAX` | 0.20 | Maximum Brier Score |
+| `MCE_MAX` | 0.30 | Maximum Calibration Error |
+| `MAX_ENTROPY_DELTA` | 0.15 | Maximum entropy change (epistemic) |
+| `MIN_EIG_BITS` | 0.01 | Minimum Expected Information Gain |
+| `MIN_DETECTION_RATE` | 0.80 | Minimum failure detection rate |
+| `REQUIRE_IDENTICAL_BUILDS` | true | Enforce bit-identical double builds |
+| `ENFORCE_CHECKSUMS` | true | Require dataset checksum validation |
+| `BLOCK_ON_MISMATCH` | true | Fail CI on dataset drift |
+
+**Example usage:**
+```bash
+# Lower coverage threshold for experimental branches
+export COVERAGE_MIN=75.0
+
+# Relax calibration for early development
+export ECE_MAX=0.30 BRIER_MAX=0.25
+
+# Run CI gates locally
+make ci-gates
+```
+
+### Make Targets (Developer Experience)
+
+```bash
+# Run full CI pipeline locally
+make ci-local
+
+# Run dataset validation + quality gates
+make validate
+
+# Check all quality thresholds
+make ci-gates
+
+# Run provenance tests
+make test-provenance
+
+# Generate HTML evidence report
+make report-html
+
+# Create evidence pack
+make evidence
+
+# Aggregate CI run history
+make aggregate-evidence
+```
+
+### CI Artifacts (Evidence Pack)
+
+Every CI run produces an evidence pack (`provenance_pack_{gitsha}_{ts}.zip`) containing:
+
+```
+provenance_pack_dc37590b_20251008_011755.zip
+├── MANIFEST.json                    # File listing + checksums
+├── data_contracts.yaml              # Dataset contract manifest
+├── coverage.json                    # Test coverage report
+├── artifact/ci_report.md            # Human-readable summary
+├── artifact/ci_metrics.json         # Structured metrics
+├── artifact/selected_tests.json     # Test selection decisions
+├── artifact/eig_rankings.json       # Per-test EIG scores
+├── experiments/ledger/*.jsonl       # Experiment ledger entries
+├── evidence/builds/first.hash       # First build hash
+├── evidence/builds/second.hash      # Second build hash
+├── CHANGELOG_*.md                   # Changelogs
+├── PROVENANCE_*.md                  # Provenance reports
+└── EVIDENCE.md                      # Evidence audit
+```
+
+**Download from CI:**
+```bash
+# GitHub Actions (download latest artifact)
+gh run download --name provenance-pack
+
+# Extract and inspect
+unzip provenance_pack_*.zip
+open evidence/report.html
+```
+
+### Quality Gates Report Format
+
+The CI gates script produces a formatted report:
+
+```
+====================================================================================================
+CI QUALITY GATES REPORT
+====================================================================================================
+
+✅ PASS | Coverage             |  90.5000 vs  85.0000 | Coverage: 90.50%
+✅ PASS | ECE                  |   0.1500 vs   0.2500 | Expected Calibration Error
+✅ PASS | Brier                |   0.1200 vs   0.2000 | Brier Score
+✅ PASS | MCE                  |   0.2200 vs   0.3000 | Maximum Calibration Error
+✅ PASS | Entropy Delta        |   0.1000 vs   0.1500 | Information gain bounded
+✅ PASS | Min EIG              |   0.0500 vs   0.0100 | Tests provide info gain
+
+====================================================================================================
+SUMMARY: 6 passed, 0 failed
+====================================================================================================
+
+✅ ALL CI GATES PASSED
+```
+
+### Local CI Verification (90 seconds)
+
+```bash
+# Run full CI sequence locally
+make ci-local
+
+# Steps executed:
+# 1. Validate datasets (checksums)
+# 2. Generate mock data (seed=42)
+# 3. Run provenance tests (15 tests)
+# 4. Train ML model (reproducible)
+# 5. Score EIG & select tests
+# 6. Generate CI report
+# 7. Check quality gates
+# 8. Generate evidence pack + HTML report
+
+# Inspect outputs:
+open evidence/report.html              # Interactive dashboard
+cat artifact/ci_report.md              # Terminal-friendly summary
+ls evidence/packs/provenance_pack*.zip # Download-ready artifact
+```
+
+### Simulating Gate Failures (Testing)
+
+```bash
+# Force coverage gate to fail
+export COVERAGE_MIN=200
+make ci-gates
+# Expected: ❌ FAIL | Coverage | 90.5000 vs 200.0000
+
+# Force calibration gate to fail
+export ECE_MAX=0.01
+make ci-gates
+# Expected: ❌ FAIL | ECE | 0.1500 vs 0.0100
+```
+
+---
+
 ## Current Performance (Honest Assessment)
 
 ### Synthetic Data Results (N=100 mock tests)
