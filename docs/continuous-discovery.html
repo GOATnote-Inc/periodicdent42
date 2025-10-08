@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Continuous Discovery - GOATnote Research Lab</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.8;
+            color: #1f2937;
+            background: #f9fafb;
+            padding: 2rem 1rem;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            color: #111827;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            font-size: 1.25rem;
+            color: #6b7280;
+            margin-bottom: 2rem;
+            font-style: italic;
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: #374151;
+            margin: 2rem 0 1rem 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        p {
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+        
+        .highlight {
+            background: #fef3c7;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-weight: 600;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        
+        .feature {
+            background: #f3f4f6;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid #667eea;
+        }
+        
+        .feature h3 {
+            font-size: 1.25rem;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .feature p {
+            font-size: 1rem;
+            margin-bottom: 0;
+            color: #4b5563;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 2rem;
+            padding: 0.75rem 1.5rem;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            transition: background 0.2s;
+        }
+        
+        .back-link:hover {
+            background: #5568d3;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Continuous Discovery</h1>
+        <div class="subtitle">Transforming CI/CD into an AI-Scientist Loop</div>
+        
+        <p>
+            Traditional CI/CD runs tests and reports pass/fail—useful for preventing bugs, but 
+            <span class="highlight">blind to knowledge gain</span>. Periodic Labs' research 
+            infrastructure transforms every CI run into a formal <strong>discovery experiment</strong> 
+            with quantified learning rates, complete audit trails, and governance-ready lineage.
+        </p>
+        
+        <h2>The AI-Scientist Loop</h2>
+        
+        <p>
+            Modern R&D demands <strong>hypothesis → experiment → learn</strong> cycles that run 
+            24/7, not quarterly. Our Discovery Kernel accelerates this loop by:
+        </p>
+        
+        <div class="feature-grid">
+            <div class="feature">
+                <h3>📊 Quantifying Learning</h3>
+                <p>
+                    Knowledge-Gain Index (KGI) measures bits of uncertainty reduced per run. 
+                    High KGI (>0.5) = rapid discovery; low KGI (<0.1) = learning plateau 
+                    requiring exploration.
+                </p>
+            </div>
+            
+            <div class="feature">
+                <h3>🔬 Formal Lineage</h3>
+                <p>
+                    Discovery Trace Protocol (DTP) tracks hypothesis → inputs → execution → 
+                    observations → validation with complete provenance (git SHA, dataset hashes, 
+                    model versions).
+                </p>
+            </div>
+            
+            <div class="feature">
+                <h3>⚡ Compression</h3>
+                <p>
+                    Autonomous experimentation runs 10x faster than manual cycles. Leading 
+                    indicators detect regressions 1-2 runs early, saving costly failures.
+                </p>
+            </div>
+        </div>
+        
+        <h2>Proprietary Experimental Data</h2>
+        
+        <p>
+            <strong>Data is the moat.</strong> While competitors run manual experiments quarterly, 
+            our system generates hundreds of validated experiments monthly. Each DTP record is:
+        </p>
+        
+        <ul style="margin-left: 2rem; margin-bottom: 1.5rem;">
+            <li><strong>Reproducible:</strong> Bit-identical re-runs with fixed seeds</li>
+            <li><strong>Governed:</strong> Waiver system with expiration and approval chains</li>
+            <li><strong>Validated:</strong> Human-in-the-loop tags (confirmed, replicated, refuted)</li>
+            <li><strong>Traceable:</strong> Complete provenance from hypothesis to knowledge</li>
+        </ul>
+        
+        <p>
+            This systematic data collection builds <span class="highlight">proprietary knowledge bases</span> 
+            that compound over time—critical for semiconductors, space systems, defense applications, 
+            and energy R&D where regulatory compliance demands audit trails.
+        </p>
+        
+        <h2>Interpretable KPIs for Decision-Makers</h2>
+        
+        <p>
+            Executives need metrics beyond "tests passed." The Discovery Kernel provides:
+        </p>
+        
+        <ul style="margin-left: 2rem; margin-bottom: 1.5rem;">
+            <li><strong>KGI (bits/run):</strong> Quantified R&D learning rate with dollar ROI</li>
+            <li><strong>Epistemic Efficiency:</strong> Uncertainty reduction trends over time</li>
+            <li><strong>Leading Indicators:</strong> Early warning system (1-2 runs ahead)</li>
+            <li><strong>Governance Compliance:</strong> Waiver status, expiration tracking</li>
+        </ul>
+        
+        <p>
+            These KPIs translate directly to business outcomes: faster time-to-market, reduced 
+            experimental costs, and defensible IP with complete lineage documentation.
+        </p>
+        
+        <h2>Serving Mission-Critical Industries</h2>
+        
+        <p>
+            Semiconductors, space, defense, and energy R&D share three requirements:
+        </p>
+        
+        <ol style="margin-left: 2rem; margin-bottom: 1.5rem;">
+            <li><strong>Speed:</strong> Compress 12-month validation cycles to 3-6 months</li>
+            <li><strong>Trust:</strong> Auditable lineage for FDA/EPA/ITAR compliance</li>
+            <li><strong>Scale:</strong> 1000s of experiments without 1000s of scientists</li>
+        </ol>
+        
+        <p>
+            The Discovery Kernel delivers all three: <strong>autonomous experimentation</strong> 
+            (speed), <strong>DTP audit trails</strong> (trust), and <strong>24/7 operation</strong> (scale). 
+            Every experiment has a hypothesis ID, human validation tag, and uncertainty quantification—
+            ready for regulatory submission or patent filing.
+        </p>
+        
+        <div style="background: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; margin: 2rem 0;">
+            <p style="margin: 0; font-style: italic; color: #4b5563;">
+                <strong>Bottom line:</strong> Transform CI into Continuous Discovery. Quantify learning 
+                (KGI). Track lineage (DTP). Build proprietary data. Compress timelines 10x. 
+                Serve regulated industries with interpretable, auditable KPIs.
+            </p>
+        </div>
+        
+        <a href="index.html" class="back-link">← Back to Dashboard</a>
+        
+        <div class="footer">
+            <p>
+                <strong>GOATnote Autonomous Research Lab Initiative</strong><br>
+                For inquiries: <a href="mailto:b@thegoatnote.com" style="color: #667eea; text-decoration: none;">b@thegoatnote.com</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
