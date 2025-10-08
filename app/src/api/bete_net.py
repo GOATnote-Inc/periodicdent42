@@ -16,12 +16,20 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from src.bete_net_io.batch import ScreeningConfig, batch_screen
-from src.bete_net_io.evidence import create_evidence_pack
-from src.bete_net_io.inference import predict_tc
+# Try to import BETE-NET modules, fall back to disabled mode if dependencies missing
+try:
+    from src.bete_net_io.batch import ScreeningConfig, batch_screen
+    from src.bete_net_io.evidence import create_evidence_pack
+    from src.bete_net_io.inference import predict_tc
+    BETE_ENABLED = True
+except ImportError as e:
+    BETE_ENABLED = False
+    IMPORT_ERROR = str(e)
+    logger = logging.getLogger(__name__)
+    logger.warning(f"BETE-NET dependencies not available: {e}. Endpoints will return 501.")
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bete", tags=["BETE-NET"])
@@ -104,6 +112,16 @@ async def predict_endpoint(request: PredictRequest):
     }
     ```
     """
+    if not BETE_ENABLED:
+        return JSONResponse(
+            status_code=501,
+            content={
+                "error": "BETE-NET not available",
+                "detail": f"Missing dependencies: {IMPORT_ERROR}",
+                "hint": "Install with: pip install pymatgen matplotlib scipy"
+            }
+        )
+    
     try:
         request.validate_input()
     except ValueError as e:
@@ -178,6 +196,16 @@ async def screen_endpoint(request: ScreenRequest, background_tasks: BackgroundTa
     }
     ```
     """
+    if not BETE_ENABLED:
+        return JSONResponse(
+            status_code=501,
+            content={
+                "error": "BETE-NET not available",
+                "detail": f"Missing dependencies: {IMPORT_ERROR}",
+                "hint": "Install with: pip install pymatgen matplotlib scipy"
+            }
+        )
+    
     if not request.mp_ids and not request.cif_contents:
         raise HTTPException(
             status_code=400, detail="Must provide either mp_ids or cif_contents"
