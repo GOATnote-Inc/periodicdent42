@@ -51,6 +51,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting middleware (must be before rate limiter)
+from .middleware.rate_limit_middleware import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
+# Rate limiting
+from .rate_limit import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Startup event to initialize database
 @app.on_event("startup")
 async def startup_event():
@@ -149,8 +161,9 @@ class PerformanceResponse(BaseModel):
 
 # Endpoints
 @app.get("/health")
+@limiter.exempt  # Health check should not be rate limited
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint (no rate limit)"""
     return {"status": "healthy", "service": "matprov-api", "version": "0.1.0"}
 
 
