@@ -71,7 +71,8 @@ def generate_mock_test(
     name: str,
     domain: str,
     failure_prob: float = 0.1,
-    runner_usd_per_hour: float = 0.60
+    runner_usd_per_hour: float = 0.60,
+    base_timestamp: Optional[datetime] = None
 ) -> Dict[str, Any]:
     """Generate a single mock test result.
     
@@ -80,6 +81,7 @@ def generate_mock_test(
         domain: Test domain (materials|protein|robotics|generic)
         failure_prob: Probability of test failure
         runner_usd_per_hour: CI runner cost per hour
+        base_timestamp: Optional fixed timestamp for deterministic generation
         
     Returns:
         Test dict matching schema
@@ -99,6 +101,9 @@ def generate_mock_test(
         # Passing tests should have lower predicted failure prob
         model_uncertainty = random.uniform(0.05, 0.4)
     
+    # Use fixed timestamp if provided, otherwise use current time
+    timestamp = base_timestamp if base_timestamp is not None else datetime.now(timezone.utc)
+    
     test = {
         "name": name,
         "suite": domain,
@@ -106,7 +111,7 @@ def generate_mock_test(
         "duration_sec": duration,
         "result": result,
         "cost_usd": duration * runner_usd_per_hour / 3600.0,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": timestamp.isoformat(),
         "model_uncertainty": model_uncertainty,
     }
     
@@ -137,7 +142,8 @@ def generate_mock_test(
 def generate_mock_run(
     n_tests: int,
     failure_prob: float = 0.1,
-    runner_usd_per_hour: float = 0.60
+    runner_usd_per_hour: float = 0.60,
+    base_timestamp: Optional[datetime] = None
 ) -> Dict[str, Any]:
     """Generate a mock CI run with N tests.
     
@@ -145,6 +151,7 @@ def generate_mock_run(
         n_tests: Number of tests to generate
         failure_prob: Probability of test failure
         runner_usd_per_hour: CI runner cost per hour
+        base_timestamp: Optional fixed timestamp for deterministic generation
         
     Returns:
         CIRun dict matching schema
@@ -159,7 +166,8 @@ def generate_mock_run(
                 test_name,
                 domain,
                 failure_prob,
-                runner_usd_per_hour
+                runner_usd_per_hour,
+                base_timestamp
             ))
     
     # Trim to exactly n_tests
@@ -168,6 +176,9 @@ def generate_mock_run(
     # Compute CI run metadata
     walltime = sum(t["duration_sec"] for t in all_tests)
     total_cost = sum(t["cost_usd"] for t in all_tests)
+    
+    # Use fixed timestamp if provided, otherwise use current time
+    timestamp = base_timestamp if base_timestamp is not None else datetime.now(timezone.utc)
     
     run = {
         "commit": f"mock-{random.randint(100000, 999999):06x}",
@@ -185,7 +196,7 @@ def generate_mock_run(
         "budget_sec": walltime * 0.5,  # Default budget: 50% of full suite
         "budget_usd": total_cost * 0.5,
         "runner_usd_per_hour": runner_usd_per_hour,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": timestamp.isoformat(),
     }
     
     return run

@@ -45,6 +45,7 @@ class TestResult(BaseModel):
         return v
     
     class Config:
+        protected_namespaces = ()  # Allow model_* field names
         json_schema_extra = {
             "example": {
                 "name": "tests/test_materials.py::test_lattice_stability",
@@ -235,6 +236,7 @@ class ExperimentLedgerEntry(BaseModel):
         return v.lower()
     
     class Config:
+        protected_namespaces = ()  # Allow model_* field names
         json_schema_extra = {
             "example": {
                 "run_id": "abc123def456",

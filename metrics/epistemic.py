@@ -23,7 +23,11 @@ def bernoulli_entropy(p: float) -> float:
         - Returns 1.0 for p=0.5 (maximum uncertainty)
         - Numerically stable for p near 0 or 1
     """
-    # Clamp to avoid log(0)
+    # Handle exact edge cases first (before clamping)
+    if p == 0.0 or p == 1.0:
+        return 0.0
+    
+    # Clamp to avoid log(0) for near-zero/near-one values
     p = max(1e-10, min(1 - 1e-10, p))
     
     if p <= 0 or p >= 1:
