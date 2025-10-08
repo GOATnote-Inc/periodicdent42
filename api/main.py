@@ -51,6 +51,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Startup event to initialize database
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup"""
+    from .database import init_db
+    init_db()
+    print("✅ API startup complete - database initialized")
+
+# Include authentication router
+from .routers.auth import router as auth_router
+app.include_router(auth_router)
+
 # Database dependency
 def get_db():
     """Get database session"""
