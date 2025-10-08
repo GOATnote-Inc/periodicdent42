@@ -1,0 +1,10 @@
+{
+  "coverage": 0.70,
+  "ece": 0.25,
+  "brier": 0.18,
+  "entropy_delta_mean": 0.12,
+  "timestamp": "2025-10-08T00:00:00Z",
+  "git_sha": "abc1008",
+  "ci_run_id": "run_008",
+  "build_hash_equal": true
+}

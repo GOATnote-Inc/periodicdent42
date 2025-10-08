@@ -1,0 +1,7 @@
+{"coverage": 0.87, "ece": 0.12, "brier": 0.10, "entropy_delta_mean": 0.05, "timestamp": "2025-10-01T00:00:00Z", "git_sha": "abc1001", "ci_run_id": "run_001", "build_hash_equal": true}
+{"coverage": 0.86, "ece": 0.13, "brier": 0.11, "entropy_delta_mean": 0.06, "timestamp": "2025-10-02T00:00:00Z", "git_sha": "abc1002", "ci_run_id": "run_002", "build_hash_equal": true}
+{"coverage": 0.88, "ece": 0.11, "brier": 0.09, "entropy_delta_mean": 0.04, "timestamp": "2025-10-03T00:00:00Z", "git_sha": "abc1003", "ci_run_id": "run_003", "build_hash_equal": true}
+{"coverage": 0.87, "ece": 0.12, "brier": 0.10, "entropy_delta_mean": 0.05, "timestamp": "2025-10-04T00:00:00Z", "git_sha": "abc1004", "ci_run_id": "run_004", "build_hash_equal": true}
+{"coverage": 0.85, "ece": 0.14, "brier": 0.12, "entropy_delta_mean": 0.07, "timestamp": "2025-10-05T00:00:00Z", "git_sha": "abc1005", "ci_run_id": "run_005", "build_hash_equal": true}
+{"coverage": 0.89, "ece": 0.10, "brier": 0.08, "entropy_delta_mean": 0.03, "timestamp": "2025-10-06T00:00:00Z", "git_sha": "abc1006", "ci_run_id": "run_006", "build_hash_equal": true}
+{"coverage": 0.87, "ece": 0.12, "brier": 0.10, "entropy_delta_mean": 0.05, "timestamp": "2025-10-07T00:00:00Z", "git_sha": "abc1007", "ci_run_id": "run_007", "build_hash_equal": true}

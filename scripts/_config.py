@@ -68,6 +68,12 @@ def get_config() -> Dict[str, Any]:
         "ABS_THRESH_ACCURACY": float(os.getenv("ABS_THRESH_ACCURACY", "0.01")),
         "ABS_THRESH_LOSS": float(os.getenv("ABS_THRESH_LOSS", "0.01")),
         "ABS_THRESH_ENTROPY": float(os.getenv("ABS_THRESH_ENTROPY", "0.02")),
+        
+        # Phase 4: Diagnostics and narratives
+        "DASHBOARD_MAX_RUNS": int(os.getenv("DASHBOARD_MAX_RUNS", "50")),
+        "NARRATIVE_CONFIDENCE_THRESHOLD": float(os.getenv("NARRATIVE_CONFIDENCE_THRESHOLD", "0.9")),
+        "AUDIT_EXPIRE_DAYS": int(os.getenv("AUDIT_EXPIRE_DAYS", "30")),
+        "EPISTEMIC_EFFICIENCY_WINDOW": int(os.getenv("EPISTEMIC_EFFICIENCY_WINDOW", "10")),
     }
 
 

@@ -258,3 +258,19 @@ qa: baseline detect flaky-scan
 	@echo "  - evidence/regressions/regression_report.{json,md}"
 	@echo "  - evidence/regressions/flaky_tests.json"
 	@echo ""
+
+# === PHASE 4: DIAGNOSTICS & NARRATIVES ===
+
+dashboard: baseline
+	@echo "=== Generating Diagnostics Dashboard ==="
+	@python3 scripts/detect_regression.py || echo "⚠️  Regressions detected (continuing)"
+	@python3 scripts/generate_narrative.py
+	@python3 scripts/analyze_runs.py
+	@python3 scripts/audit_trail.py || echo "⚠️  Audit warnings (continuing)"
+	@echo "✅ Dashboard complete!"
+	@echo ""
+	@echo "Artifacts:"
+	@echo "  - evidence/regressions/regression_narrative.md"
+	@echo "  - evidence/summary/trends.{json,md}"
+	@echo "  - evidence/audit/audit_trail.md"
+	@echo ""
