@@ -1,0 +1,56 @@
+{
+  "kgi": 0.3105,
+  "components": {
+    "entropy_gain": 0.0,
+    "calibration_quality": 0.75,
+    "reliability": 0.8200000000000001
+  },
+  "weights": {
+    "entropy": 0.6,
+    "ece": 0.25,
+    "brier": 0.15
+  },
+  "interpretation": "Fair - Moderate knowledge gain",
+  "timestamp": "2025-10-08T02:18:42.446153+00:00",
+  "trend": {
+    "trend": [
+      {
+        "timestamp": "2025-10-06T00:00:00Z",
+        "kgi": 0.6030000000000001,
+        "run_id": "run_006"
+      },
+      {
+        "timestamp": "2025-10-05T00:00:00Z",
+        "kgi": 0.347,
+        "run_id": "run_005"
+      },
+      {
+        "timestamp": "2025-10-04T00:00:00Z",
+        "kgi": 0.3550000000000001,
+        "run_id": "run_004"
+      },
+      {
+        "timestamp": "2025-10-03T00:00:00Z",
+        "kgi": 0.47900000000000004,
+        "run_id": "run_003"
+      },
+      {
+        "timestamp": "2025-10-02T00:00:00Z",
+        "kgi": 0.351,
+        "run_id": "run_002"
+      },
+      {
+        "timestamp": "2025-10-01T00:00:00Z",
+        "kgi": 0.355,
+        "run_id": "run_001"
+      },
+      {
+        "timestamp": "2025-10-08T00:00:00Z",
+        "kgi": 0.3105,
+        "run_id": "run_008"
+      }
+    ],
+    "ewma": 0.4227730240000001,
+    "improvement": -0.05690000000000006
+  }
+}

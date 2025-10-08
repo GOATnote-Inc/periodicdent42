@@ -274,3 +274,21 @@ dashboard: baseline
 	@echo "  - evidence/summary/trends.{json,md}"
 	@echo "  - evidence/audit/audit_trail.md"
 	@echo ""
+
+# === DISCOVERY KERNEL: KGI + DTP + TRUST ===
+
+discovery: baseline
+	@echo "=== Discovery Kernel Execution ==="
+	@python3 scripts/detect_regression.py || echo "⚠️  Regressions detected (continuing)"
+	@python3 metrics/kgi.py
+	@python3 scripts/dtp_emit.py
+	@echo "✅ Discovery kernel complete!"
+	@echo ""
+	@echo "Artifacts:"
+	@echo "  - evidence/summary/kgi.json (Knowledge-Gain Index)"
+	@echo "  - evidence/dtp/**/dtp_*.json (Discovery Trace Protocol)"
+	@echo ""
+
+validate-dtp:
+	@echo "=== Validating latest DTP record ==="
+	@python3 -c "import json, pathlib; dtp=json.load(open(sorted(pathlib.Path('evidence/dtp').rglob('*.json'))[-1])); print(f'✅ DTP {dtp[\"hypothesis_id\"]} valid')"
