@@ -19,9 +19,9 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from app.src.bete_net_io.batch import ScreeningConfig, batch_screen
-from app.src.bete_net_io.evidence import create_evidence_pack
-from app.src.bete_net_io.inference import predict_tc
+from src.bete_net_io.batch import ScreeningConfig, batch_screen
+from src.bete_net_io.evidence import create_evidence_pack
+from src.bete_net_io.inference import predict_tc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bete", tags=["BETE-NET"])
