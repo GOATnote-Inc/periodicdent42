@@ -1,0 +1,12 @@
+{
+  "totals": {
+    "percent_covered": 70.0,
+    "num_statements": 1000,
+    "covered_lines": 700,
+    "missing_lines": 300
+  },
+  "meta": {
+    "timestamp": "2025-10-08T05:00:00Z",
+    "version": "7.3.2"
+  }
+}
