@@ -217,23 +217,46 @@ def predict_tc(
         f"Predicting Tc for {formula} (hash: {input_hash[:8]}..., μ*={mu_star:.3f})"
     )
 
-    # TODO: Replace with actual BETE-NET inference once model is downloaded
-    # For now, return mock prediction to validate integration
-    logger.warning("Using MOCK prediction - model not yet integrated")
-
-    # Mock data (realistic values for Nb: Tc~9K, λ~1.0)
-    omega_grid = np.linspace(0, 0.1, 100)  # 0-100 meV
-    alpha2F_mean = np.exp(-((omega_grid - 0.03) ** 2) / 0.001) * 0.5  # Gaussian peak
-    alpha2F_std = alpha2F_mean * 0.1  # 10% uncertainty
-
-    lambda_ep = 1.0
-    lambda_std = 0.1
-    omega_log = 250.0  # K
-    omega_log_std = 25.0
-
-    tc = allen_dynes_tc(lambda_ep, omega_log, mu_star)
-    tc_std = tc * 0.15  # ~15% uncertainty
-
+    # Check if real models are available, otherwise use mock
+    model_dir = model_dir or Path(__file__).parent.parent.parent.parent / "third_party" / "bete_net" / "models"
+    
+    try:
+        # Try to load real models
+        models = _load_bete_models(model_dir, ensemble_size=10)
+        
+        # Convert structure to graph
+        graph = _structure_to_graph(structure)
+        
+        # Run ensemble prediction
+        predictions = _ensemble_predict(graph, models, seed=seed)
+        
+        # Compute statistics
+        alpha2F_mean = predictions.mean(axis=0)
+        alpha2F_std = predictions.std(axis=0)
+        
+        # Compute λ from α²F (integrate α²F/ω)
+        omega_grid = np.linspace(0, 0.1, 100)
+        lambda_ep = np.trapz(alpha2F_mean / (omega_grid + 0.001), omega_grid) * 2
+        lambda_std = predictions.std(axis=0).mean() * 0.1
+        
+        # Compute ⟨ω_log⟩
+        omega_log = np.exp(np.trapz(alpha2F_mean * np.log(omega_grid + 0.001), omega_grid) 
+                          / np.trapz(alpha2F_mean, omega_grid)) * 11604  # meV → K
+        omega_log_std = omega_log * 0.1
+        
+        # Compute Tc
+        tc = allen_dynes_tc(lambda_ep, omega_log, mu_star)
+        tc_std = tc * 0.15
+        
+        logger.info(f"✅ Real BETE-NET prediction complete")
+        
+    except (FileNotFoundError, ImportError) as e:
+        # Fall back to mock models
+        logger.warning(f"⚠️  Falling back to MOCK models: {e}")
+        from app.src.bete_net_io.mock_models import mock_predict_tc
+        return mock_predict_tc(structure, mu_star=mu_star, seed=seed)
+    
+    # If we get here, we used real models successfully
     result = BETEPrediction(
         formula=formula,
         input_hash=input_hash,
