@@ -19,6 +19,9 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/bete", tags=["BETE-NET"])
+
 # Try to import BETE-NET modules, fall back to disabled mode if dependencies missing
 try:
     from src.bete_net_io.batch import ScreeningConfig, batch_screen
@@ -28,11 +31,7 @@ try:
 except ImportError as e:
     BETE_ENABLED = False
     IMPORT_ERROR = str(e)
-    logger = logging.getLogger(__name__)
     logger.warning(f"BETE-NET dependencies not available: {e}. Endpoints will return 501.")
-
-logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/bete", tags=["BETE-NET"])
 
 # Evidence packs storage
 EVIDENCE_DIR = Path("/tmp/bete_evidence")
