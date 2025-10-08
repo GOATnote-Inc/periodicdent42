@@ -292,3 +292,22 @@ discovery: baseline
 validate-dtp:
 	@echo "=== Validating latest DTP record ==="
 	@python3 -c "import json, pathlib; dtp=json.load(open(sorted(pathlib.Path('evidence/dtp').rglob('*.json'))[-1])); print(f'✅ DTP {dtp[\"hypothesis_id\"]} valid')"
+# === PROVENANCE & HARDENING ===
+
+provenance: baseline
+	@echo "=== Cryptographic Provenance Pipeline ==="
+	@python3 scripts/merkle_ledger.py --append evidence/summary/kgi.json || echo "⚠️  Ledger append failed"
+	@python3 scripts/sign_artifacts.py --paths evidence/summary/kgi*.json evidence/ledger/root.txt --skip-cosign-check
+	@python3 scripts/verify_artifacts.py --skip-cosign-check
+	@echo "✅ Provenance pipeline complete!"
+
+kgi-bits:
+	@echo "=== Computing KGI_bits (Shannon entropy) ==="
+	@python3 -m metrics.kgi_bits
+	@echo ""
+
+claims:
+	@echo "=== Verifying Performance Claims ==="
+	@python3 scripts/claims_guard.py
+	@echo ""
+

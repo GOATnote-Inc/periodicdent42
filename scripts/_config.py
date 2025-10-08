@@ -75,14 +75,19 @@ def get_config() -> Dict[str, Any]:
         "AUDIT_EXPIRE_DAYS": int(os.getenv("AUDIT_EXPIRE_DAYS", "30")),
         "EPISTEMIC_EFFICIENCY_WINDOW": int(os.getenv("EPISTEMIC_EFFICIENCY_WINDOW", "10")),
         
-        # Discovery Kernel: KGI, DTP, Trust
-        "KGI_WEIGHT_ENTROPY": float(os.getenv("KGI_WEIGHT_ENTROPY", "0.6")),
-        "KGI_WEIGHT_ECE": float(os.getenv("KGI_WEIGHT_ECE", "0.25")),
-        "KGI_WEIGHT_BRIER": float(os.getenv("KGI_WEIGHT_BRIER", "0.15")),
-        "KGI_WINDOW": int(os.getenv("KGI_WINDOW", "20")),
-        "TRUST_MAX_RUNS": int(os.getenv("TRUST_MAX_RUNS", "50")),
-        "DTP_SCHEMA_VERSION": os.getenv("DTP_SCHEMA_VERSION", "1.0"),
-    }
+    # Discovery Kernel: KGI, DTP, Trust
+    "KGI_WEIGHT_ENTROPY": float(os.getenv("KGI_WEIGHT_ENTROPY", "0.6")),
+    "KGI_WEIGHT_ECE": float(os.getenv("KGI_WEIGHT_ECE", "0.25")),
+    "KGI_WEIGHT_BRIER": float(os.getenv("KGI_WEIGHT_BRIER", "0.15")),
+    "KGI_WINDOW": int(os.getenv("KGI_WINDOW", "20")),
+    "TRUST_MAX_RUNS": int(os.getenv("TRUST_MAX_RUNS", "50")),
+    "DTP_SCHEMA_VERSION": os.getenv("DTP_SCHEMA_VERSION", "1.0"),
+    
+    # KGI_bits (Shannon entropy)
+    "KGI_BITS_ENABLED": os.getenv("KGI_BITS_ENABLED", "false").lower() == "true",
+    "KGI_PROBE_PATH_BEFORE": os.getenv("KGI_PROBE_PATH_BEFORE", "evidence/probe/probs_before.jsonl"),
+    "KGI_PROBE_PATH_AFTER": os.getenv("KGI_PROBE_PATH_AFTER", "evidence/probe/probs_after.jsonl"),
+}
 
 
 def print_config() -> None:

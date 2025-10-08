@@ -1,5 +1,7 @@
 {
-  "kgi": 0.3105,
+  "kgi_u": 0.3105,
+  "units": "unitless",
+  "disclaimer": "Unitless composite score (0-1); not Shannon entropy in bits.",
   "components": {
     "entropy_gain": 0.0,
     "calibration_quality": 0.75,
@@ -11,7 +13,7 @@
     "brier": 0.15
   },
   "interpretation": "Fair - Moderate knowledge gain",
-  "timestamp": "2025-10-08T02:18:42.446153+00:00",
+  "timestamp": "2025-10-08T03:39:55.821376+00:00",
   "trend": {
     "trend": [
       {

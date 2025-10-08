@@ -91,7 +91,9 @@ def compute_kgi(
     kgi = max(0.0, min(1.0, kgi))
     
     return {
-        "kgi": kgi,
+        "kgi_u": kgi,
+        "units": "unitless",
+        "disclaimer": "Unitless composite score (0-1); not Shannon entropy in bits.",
         "components": {
             "entropy_gain": entropy_gain,
             "calibration_quality": calibration_quality,
@@ -154,7 +156,7 @@ def compute_kgi_trend(runs: List[Dict[str, Any]], config: Dict[str, Any]) -> Dic
         kgi_result = compute_kgi(current_run, baseline_window, config)
         kgi_values.append({
             "timestamp": current_run.get("timestamp", "unknown"),
-            "kgi": kgi_result["kgi"],
+            "kgi": kgi_result["kgi_u"],
             "run_id": current_run.get("ci_run_id", "unknown"),
         })
     
@@ -221,7 +223,7 @@ def main() -> int:
     kgi_result = compute_kgi(current_run, baseline_window, config)
     
     print(f"{'=' * 100}")
-    print(f"KGI SCORE: {kgi_result['kgi']:.4f} bits/run")
+    print(f"KGI_u SCORE (unitless): {kgi_result['kgi_u']:.4f}")
     print(f"{'=' * 100}")
     print()
     print("Components:")

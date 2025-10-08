@@ -39,11 +39,13 @@
       "properties": {
         "dataset_id": {
           "type": "string",
-          "description": "Dataset identifier (versioned, checksummed)"
+          "pattern": "^(?!unknown$).+",
+          "description": "Dataset identifier (versioned, checksummed). Cannot be 'unknown'."
         },
         "model_hash": {
           "type": "string",
-          "description": "Model/method version hash (SHA-256)"
+          "pattern": "^(?!unknown$).+",
+          "description": "Model/method version hash (SHA-256). Cannot be 'unknown'."
         },
         "instrument_config": {
           "type": "object",
@@ -98,6 +100,10 @@
             "type": "string",
             "description": "References to raw data files (paths, URIs, or hashes)"
           }
+        },
+        "no_raw": {
+          "type": "boolean",
+          "description": "Set to true if no raw data is preserved (summary metrics only)"
         },
         "summary_metrics": {
           "type": "object",
@@ -175,6 +181,22 @@
           "type": "string",
           "format": "date-time",
           "description": "Record creation timestamp"
+        }
+      }
+    },
+    "signatures": {
+      "type": "object",
+      "description": "Cryptographic signatures and attestations",
+      "properties": {
+        "dsse": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Paths to DSSE attestation files"
+        },
+        "merkle_root": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Merkle root hash of ledger at time of DTP creation"
         }
       }
     }
