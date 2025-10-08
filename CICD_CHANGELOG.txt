@@ -1,0 +1,165 @@
+================================================================================
+CI/CD IMPLEMENTATION CHANGELOG
+================================================================================
+Date: October 8, 2025
+Status: PRODUCTION-READY
+Commits: f8cfa82, acce9e5
+
+================================================================================
+SUMMARY
+================================================================================
+Implemented production-ready CI/CD pipeline with:
+- Quality gates (6 thresholds enforced)
+- Evidence pack generation (zip with all artifacts)
+- HTML report dashboard (interactive)
+- CI run aggregation (rollup stats)
+- 17 configurable environment variables
+- 7 new Make targets
+- 6 quality gate tests (100% pass rate)
+- Comprehensive documentation
+
+Total: +2,249 lines across 10 files
+
+================================================================================
+COMPONENTS
+================================================================================
+
+1. scripts/_config.py (80 lines)
+   - Central configuration module
+   - 17 environment variables with defaults
+   - Overridable via env vars
+
+2. scripts/ci_gates.py (317 lines)
+   - Enforces 6 quality gates
+   - Coverage ≥ 85%, ECE ≤ 0.25, Brier ≤ 0.20
+   - Exit code 1 on failure
+
+3. scripts/make_evidence_pack.py (267 lines)
+   - Bundles provenance artifacts
+   - Creates provenance_pack_{gitsha}_{ts}.zip
+   - Includes MANIFEST.json with checksums
+
+4. scripts/report_html.py (412 lines)
+   - Generates single-file HTML dashboard
+   - 5 sections: CI Summary, Datasets, Calibration, Epistemic, Build
+   - Self-contained CSS
+
+5. scripts/aggregate_runs.py (201 lines)
+   - Aggregates evidence/runs/*.jsonl
+   - Prints table of recent runs
+   - Computes rollup statistics
+
+6. tests/test_ci_gates.py (105 lines)
+   - 6 tests for quality gates
+   - Coverage, calibration, epistemic gates
+   - 100% pass rate
+
+7. Makefile (+82 lines)
+   - make validate: Dataset + gates
+   - make ci-local: Full 8-step pipeline
+   - make ci-gates: Check thresholds
+   - make test-provenance: Run tests
+   - make report-html: Generate report
+   - make aggregate-evidence: Aggregate runs
+
+8. .github/pull_request_template.md (40 lines)
+   - Provenance checklist
+   - Evidence artifact verification
+   - Quality gate requirements
+
+9. README.md (+197 lines)
+   - CI/CD Pipeline Architecture diagram
+   - Environment variables table
+   - Make targets documentation
+   - Usage examples
+
+10. CICD_IMPLEMENTATION_COMPLETE.md (548 lines)
+    - Complete implementation report
+    - Component descriptions
+    - Verification results
+    - Integration guide
+
+================================================================================
+ENVIRONMENT VARIABLES (17 KNOBS)
+================================================================================
+COVERAGE_MIN (default: 85.0)         - Minimum coverage %
+ECE_MAX (default: 0.25)              - Max Expected Calibration Error
+BRIER_MAX (default: 0.20)            - Max Brier Score
+MCE_MAX (default: 0.30)              - Max Calibration Error
+MAX_ENTROPY_DELTA (default: 0.15)    - Max entropy change
+MIN_EIG_BITS (default: 0.01)         - Min Expected Information Gain
+MIN_DETECTION_RATE (default: 0.80)   - Min failure detection rate
+REQUIRE_IDENTICAL_BUILDS (default: true) - Enforce bit-identical
+ENFORCE_CHECKSUMS (default: true)    - Require checksums
+BLOCK_ON_MISMATCH (default: true)    - Fail on drift
+EVIDENCE_DIR (default: evidence)     - Evidence directory
+PACK_FORMAT (default: zip)           - zip or tar.gz
+PYTEST_ARGS (default: -q --tb=short) - Pytest arguments
+PYTEST_TIMEOUT (default: 300)        - Pytest timeout (sec)
+CI_RUN_ID (auto)                     - CI run identifier
+GIT_SHA (auto)                       - Git commit SHA
+GIT_BRANCH (auto)                    - Git branch name
+
+================================================================================
+COMMANDS TO FETCH CI ARTIFACTS
+================================================================================
+# Download evidence pack from GitHub Actions
+gh run download --name provenance-pack
+
+# Extract pack
+unzip provenance_pack_*.zip
+
+# Open HTML report
+open evidence/report.html
+
+# Inspect manifest
+cat MANIFEST.json | jq '.files[] | {path, sha256}'
+
+# List packed files
+unzip -l provenance_pack_*.zip
+
+================================================================================
+VERIFICATION COMMANDS
+================================================================================
+# Run full CI pipeline locally
+make ci-local
+
+# Check quality gates
+make ci-gates
+
+# Generate evidence pack
+python scripts/make_evidence_pack.py
+
+# Generate HTML report
+make report-html
+
+# Simulate gate failure
+export COVERAGE_MIN=200 && make ci-gates
+
+# Run gate tests
+pytest tests/test_ci_gates.py -v
+
+================================================================================
+FILES TOUCHED
+================================================================================
+Created:
+- scripts/_config.py
+- scripts/ci_gates.py
+- scripts/make_evidence_pack.py
+- scripts/report_html.py
+- scripts/aggregate_runs.py
+- tests/test_ci_gates.py
+- .github/pull_request_template.md
+- CICD_IMPLEMENTATION_COMPLETE.md
+
+Modified:
+- Makefile (+82 lines)
+- README.md (+197 lines)
+
+Generated (examples):
+- evidence/report.html
+- evidence/packs/provenance_pack_dc37590b_20251008_011755.zip
+
+================================================================================
+STATUS: ✅ PRODUCTION-READY
+================================================================================
