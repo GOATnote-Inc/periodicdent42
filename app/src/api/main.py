@@ -26,16 +26,25 @@ from src.models.telemetry import DualRunRecord, ModelTrace, create_model_trace, 
 from src.utils.retry import retry_async
 from src.utils.metrics import time_operation, increment_cancellation
 from src.services.storage import get_storage
-from src.lab.campaign import get_campaign_runner, CampaignReport
 from src.services import db
 from src.api.bete_net import router as bete_router
 
-# Configure logging
+# Configure logging first
 logging.basicConfig(
     level=settings.LOG_LEVEL,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Optional imports for lab campaign features (requires configs/ directory)
+try:
+    from src.lab.campaign import get_campaign_runner, CampaignReport
+    LAB_CAMPAIGN_ENABLED = True
+except ImportError as e:
+    logger.warning(f"Lab campaign features disabled (missing configs/): {e}")
+    LAB_CAMPAIGN_ENABLED = False
+    get_campaign_runner = None
+    CampaignReport = None
 
 # Initialize FastAPI
 app = FastAPI(
@@ -584,6 +593,16 @@ async def analytics_page():
 @app.post("/api/lab/campaign/uvvis", response_model=CampaignResponse)
 async def run_uvvis_campaign(request: CampaignRequest):
     """Trigger the UV-Vis autonomous campaign in simulation mode."""
+    
+    if not LAB_CAMPAIGN_ENABLED:
+        return JSONResponse(
+            status_code=501,
+            content={
+                "error": "Lab campaign features not available",
+                "detail": "Missing configs/ directory required for campaign module",
+                "hint": "Deploy with configs/ directory or run locally with full repository"
+            }
+        )
 
     runner = get_campaign_runner()
     report: CampaignReport = runner.run_campaign(
