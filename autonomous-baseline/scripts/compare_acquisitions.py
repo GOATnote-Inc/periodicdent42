@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from phase10_gp_active_learning.data.uci_loader import load_uci_data
+from phase10_gp_active_learning.data.uci_loader import load_uci_superconductor
 from phase10_gp_active_learning.models.dkl_model import create_dkl_model
 from phase10_gp_active_learning.models.botorch_dkl import BoTorchDKL
 from botorch.acquisition import ExpectedImprovement, ProbabilityOfImprovement, UpperConfidenceBound
@@ -156,7 +156,7 @@ def main():
     
     # Load data
     logger.info("\n📂 Loading UCI dataset...")
-    train_df, val_df, test_df = load_uci_data()
+    train_df, val_df, test_df = load_uci_superconductor()
     
     feature_cols = [col for col in train_df.columns if col != 'Tc']
     X_train = train_df[feature_cols]

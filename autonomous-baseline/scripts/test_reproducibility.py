@@ -17,7 +17,7 @@ import hashlib
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from phase10_gp_active_learning.data.uci_loader import load_uci_data
+from phase10_gp_active_learning.data.uci_loader import load_uci_superconductor
 from phase10_gp_active_learning.models.dkl_model import create_dkl_model
 
 def set_all_seeds(seed: int):
@@ -35,7 +35,7 @@ def train_and_extract_weights(seed: int, n_samples: int = 500) -> dict:
     set_all_seeds(seed)
     
     # Load data (use small subset for speed)
-    train_df, _, _ = load_uci_data()
+    train_df, _, _ = load_uci_superconductor()
     
     # Sample for faster testing
     train_df = train_df.sample(n=min(n_samples, len(train_df)), random_state=seed)

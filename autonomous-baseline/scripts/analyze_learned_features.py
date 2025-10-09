@@ -26,7 +26,7 @@ import sys
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from phase10_gp_active_learning.data.uci_loader import load_uci_data
+from phase10_gp_active_learning.data.uci_loader import load_uci_superconductor
 from phase10_gp_active_learning.models.dkl_model import create_dkl_model
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -355,7 +355,7 @@ def main():
     
     # Load data
     logger.info("\n📂 Loading UCI dataset...")
-    train_df, val_df, test_df = load_uci_data()
+    train_df, val_df, test_df = load_uci_superconductor()
     
     # Combine all for analysis
     all_df = pd.concat([train_df, val_df, test_df])

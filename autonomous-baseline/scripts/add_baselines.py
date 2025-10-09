@@ -22,7 +22,7 @@ import sys
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from phase10_gp_active_learning.data.uci_loader import load_uci_data
+from phase10_gp_active_learning.data.uci_loader import load_uci_superconductor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -342,7 +342,7 @@ def main():
     
     # Load data
     logger.info("📂 Loading UCI dataset...")
-    train_df, val_df, test_df = load_uci_data()
+    train_df, val_df, test_df = load_uci_superconductor()
     
     feature_cols = [col for col in train_df.columns if col != 'Tc']
     X_train = train_df[feature_cols]
