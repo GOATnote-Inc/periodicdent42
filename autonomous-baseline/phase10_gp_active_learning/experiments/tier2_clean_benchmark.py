@@ -185,7 +185,14 @@ def run_active_learning_clean(
 
 
 def main():
-    output_dir = Path("evidence/phase10/tier2_clean")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--seeds', type=int, default=5, help='Number of seeds')
+    parser.add_argument('--seed-start', type=int, default=42, help='Starting seed')
+    parser.add_argument('--output-dir', type=str, default='evidence/phase10/tier2_clean')
+    args = parser.parse_args()
+    
+    output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     logger.info("=" * 70)
@@ -208,7 +215,7 @@ def main():
     
     # Benchmark parameters
     strategies = ["dkl", "gp", "random"]
-    seeds = [42, 43, 44, 45, 46]  # 5 seeds
+    seeds = list(range(args.seed_start, args.seed_start + args.seeds))
     initial_samples = 100
     num_rounds = 20
     batch_size = 20
