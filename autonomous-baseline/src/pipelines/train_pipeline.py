@@ -184,7 +184,7 @@ class TrainingPipeline:
             },
             "model": {
                 "name": self.model.__class__.__name__,
-                "metadata": self.model.get_metadata(),
+                "metadata": self.model.get_metadata() if hasattr(self.model, 'get_metadata') else {},
             },
             "calibration": calibration_results,
             "artifacts_dir": str(self.artifacts_dir),
@@ -343,7 +343,17 @@ class TrainingPipeline:
         val_df.to_csv(self.artifacts_dir / "val.csv", index=False)
         test_df.to_csv(self.artifacts_dir / "test.csv", index=False)
         
-        contracts = create_split_contracts(train_df, val_df, test_df)
+        # Create contracts
+        splits_dict = {
+            "train": train_df,
+            "val": val_df,
+            "test": test_df,
+        }
+        contracts = create_split_contracts(
+            splits=splits_dict,
+            output_dir=self.artifacts_dir,
+            seed=self.random_state,
+        )
         
         with open(self.artifacts_dir / "contracts.json", "w") as f:
             json.dump(
@@ -359,7 +369,18 @@ class TrainingPipeline:
         # Save model and scaler
         self.model.save(self.artifacts_dir / "model.pkl")
         self.scaler.save(self.artifacts_dir / "scaler.pkl")
-        self.conformal_predictor.save(self.artifacts_dir / "conformal.pkl")
+        
+        # Save conformal predictor if it has a save method
+        if hasattr(self.conformal_predictor, 'save'):
+            self.conformal_predictor.save(self.artifacts_dir / "conformal.pkl")
+        else:
+            # Save calibration scores as fallback
+            import pickle
+            with open(self.artifacts_dir / "conformal_scores.pkl", "wb") as f:
+                pickle.dump({
+                    "calibration_scores": self.conformal_predictor.calibration_scores_,
+                    "score_function": self.conformal_predictor.score_function,
+                }, f)
         
         # Save feature names
         with open(self.artifacts_dir / "feature_names.json", "w") as f:

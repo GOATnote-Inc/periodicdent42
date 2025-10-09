@@ -136,10 +136,14 @@ class TestTrainingPipeline:
             "contracts.json",
             "model.pkl",
             "scaler.pkl",
-            "conformal.pkl",
             "feature_names.json",
             "MANIFEST.json",
         ]
+        
+        # Conformal predictor saves either conformal.pkl or conformal_scores.pkl
+        has_conformal = (temp_artifacts_dir / "conformal.pkl").exists() or \
+                       (temp_artifacts_dir / "conformal_scores.pkl").exists()
+        assert has_conformal, "Neither conformal.pkl nor conformal_scores.pkl found"
         
         for filename in expected_files:
             assert (temp_artifacts_dir / filename).exists(), f"{filename} not found"
@@ -418,7 +422,7 @@ class TestPipelineIntegration:
         train_feat = featurizer.featurize_dataframe(train_df, "formula")
         test_feat = featurizer.featurize_dataframe(test_df, "formula")
         
-        feature_names = featurizer.get_feature_names()
+        feature_names = featurizer.feature_names_
         
         # Scale
         X_train = scaler.fit_transform(train_feat[feature_names].values)
