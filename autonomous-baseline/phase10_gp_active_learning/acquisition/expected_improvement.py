@@ -5,7 +5,10 @@ EI balances exploitation (high mean) and exploration (high uncertainty).
 """
 
 import numpy as np
+import torch
 from scipy import stats
+from botorch.acquisition import ExpectedImprovement
+from botorch.sampling import SobolQMCNormalSampler
 
 
 def expected_improvement(
@@ -73,6 +76,37 @@ def select_batch_ei(
     selected_indices = np.argsort(ei_values)[-batch_size:][::-1]
     
     return selected_indices
+
+
+def expected_improvement_acquisition(
+    model,
+    X_candidate: torch.Tensor,
+    best_f: float,
+    num_samples: int = 256
+) -> torch.Tensor:
+    """
+    BoTorch-based Expected Improvement for GP/DKL models.
+    
+    This function works with both GP and DKL models that follow
+    the GPyTorch/BoTorch interface.
+    
+    Args:
+        model: Fitted GP or DKL model
+        X_candidate: Candidate points (N, D) tensor
+        best_f: Best observed function value
+        num_samples: Monte Carlo samples for EI estimation
+    
+    Returns:
+        EI values for each candidate (N,) tensor
+    """
+    sampler = SobolQMCNormalSampler(num_samples=num_samples)
+    ei = ExpectedImprovement(model=model, best_f=best_f, sampler=sampler)
+    
+    # Ensure X_candidate has batch dimension
+    if X_candidate.dim() == 2:
+        X_candidate = X_candidate.unsqueeze(1)  # (N, 1, D)
+    
+    return ei(X_candidate).squeeze()
 
 
 if __name__ == '__main__':
