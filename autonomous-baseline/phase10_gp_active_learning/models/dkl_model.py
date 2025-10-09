@@ -176,6 +176,44 @@ class DKLModel(ExactGP):
         
         return MultivariateNormal(mean_z, covar_z)
     
+    def posterior(self, X: torch.Tensor):
+        """
+        BoTorch-compatible posterior method.
+        
+        Wraps forward() to match BoTorch API expectations.
+        
+        Args:
+            X: Input tensor (batch_size, input_dim) or (batch_size, 1, input_dim)
+        
+        Returns:
+            Posterior with .mean attribute
+        """
+        # Remove extra dimension if present (BoTorch often adds batch dim)
+        if X.dim() == 3:
+            X = X.squeeze(1)
+        
+        # Get GP posterior
+        self.eval()
+        with torch.no_grad(), gpytorch.settings.fast_computations(covar_root_decomposition=True):
+            # Extract features
+            z = self.feature_extractor(X)
+            
+            # GP posterior on features
+            mean_z = self.mean_module(z)
+            covar_z = self.covar_module(z)
+            mvn = MultivariateNormal(mean_z, covar_z)
+            
+            # Include likelihood noise
+            predictive = self.likelihood(mvn)
+        
+        # Return object with .mean attribute (what BoTorch expects)
+        class Posterior:
+            def __init__(self, mvn):
+                self.mvn = mvn
+                self.mean = mvn.mean.unsqueeze(-1)  # BoTorch expects (N, 1)
+        
+        return Posterior(predictive)
+    
     def fit(
         self,
         n_epochs: int = 100,
