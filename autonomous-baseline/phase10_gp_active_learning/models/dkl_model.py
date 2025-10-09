@@ -176,44 +176,30 @@ class DKLModel(ExactGP):
         
         return MultivariateNormal(mean_z, covar_z)
     
-    def posterior(self, X: torch.Tensor, **kwargs):
+    def latent_mvn(self, X: torch.Tensor, observation_noise: bool = False) -> MultivariateNormal:
         """
-        BoTorch-compatible posterior method.
-        
-        Wraps forward() to match BoTorch API expectations.
+        Produce latent-space MultivariateNormal for BoTorch wrapper.
         
         Args:
-            X: Input tensor (batch_size, input_dim) or (batch_size, 1, input_dim)
-            **kwargs: Additional BoTorch arguments (posterior_transform, etc.)
+            X: Input tensor (batch_size, input_dim)
+            observation_noise: Include likelihood noise if True
         
         Returns:
-            Posterior with .mean attribute
+            MultivariateNormal distribution in latent space
         """
-        # Remove extra dimension if present (BoTorch often adds batch dim)
-        if X.dim() == 3:
-            X = X.squeeze(1)
-        
-        # Get GP posterior
         self.eval()
-        with torch.no_grad(), gpytorch.settings.fast_computations(covar_root_decomposition=True):
-            # Extract features
-            z = self.feature_extractor(X)
-            
-            # GP posterior on features
-            mean_z = self.mean_module(z)
-            covar_z = self.covar_module(z)
-            mvn = MultivariateNormal(mean_z, covar_z)
-            
-            # Include likelihood noise
-            predictive = self.likelihood(mvn)
+        self.likelihood.eval()
         
-        # Return object with .mean attribute (what BoTorch expects)
-        class Posterior:
-            def __init__(self, mvn):
-                self.mvn = mvn
-                self.mean = mvn.mean.unsqueeze(-1)  # BoTorch expects (N, 1)
+        # Extract features
+        z = self.feature_extractor(X)
         
-        return Posterior(predictive)
+        # GP on learned features
+        mean = self.mean_module(z)
+        cov = self.covar_module(z)
+        mvn = MultivariateNormal(mean, cov)
+        
+        # Include likelihood noise if requested
+        return self.likelihood(mvn) if observation_noise else mvn
     
     def fit(
         self,
