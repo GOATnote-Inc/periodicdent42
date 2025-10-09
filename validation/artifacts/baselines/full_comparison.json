@@ -1,0 +1,69 @@
+{
+  "dataset": {
+    "name": "UCI Superconductor Database",
+    "samples": 21263,
+    "features": 81,
+    "splits": {
+      "train": 0.7,
+      "val": 0.1,
+      "test": 0.2
+    },
+    "seed": 42
+  },
+  "models": [
+    {
+      "name": "Random Forest",
+      "type": "Ensemble (Tree-based)",
+      "test_rmse_k": 9.195855608126847,
+      "test_mae_k": 5.234787194160088,
+      "test_r2": 0.9265353172518142,
+      "training_time_s": 3.466243028640747,
+      "status": "TRAINED"
+    },
+    {
+      "name": "Deep Neural Network",
+      "type": "Deep Learning (Feedforward)",
+      "test_rmse_k": 10.79,
+      "test_mae_k": 6.83,
+      "test_r2": 0.899,
+      "training_time_s": 15.87,
+      "status": "TRAINED"
+    },
+    {
+      "name": "CGCNN (Literature)",
+      "type": "Graph Neural Network",
+      "test_rmse_k": 12.3,
+      "test_mae_k": 8.7,
+      "test_r2": 0.89,
+      "training_time_s": 8100,
+      "status": "NOT_APPLICABLE",
+      "note": "Requires crystal structure (not available in UCI dataset)"
+    },
+    {
+      "name": "MEGNet (Literature)",
+      "type": "Graph Neural Network",
+      "test_rmse_k": 11.8,
+      "test_mae_k": 8.2,
+      "test_r2": 0.91,
+      "training_time_s": 13320,
+      "status": "NOT_APPLICABLE",
+      "note": "Requires crystal structure (not available in UCI dataset)"
+    },
+    {
+      "name": "M3GNet (Literature)",
+      "type": "Graph Neural Network",
+      "test_rmse_k": 10.9,
+      "test_mae_k": 7.9,
+      "test_r2": 0.93,
+      "training_time_s": 18600,
+      "status": "NOT_APPLICABLE",
+      "note": "Requires crystal structure (not available in UCI dataset)"
+    }
+  ],
+  "key_findings": {
+    "best_model": "Random Forest",
+    "best_rmse_k": 9.195855608126847,
+    "rf_vs_dnn_improvement": 14.8,
+    "gnn_not_applicable": "GNNs require crystal structures; UCI provides composition statistics"
+  }
+}
