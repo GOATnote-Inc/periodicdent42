@@ -152,6 +152,9 @@ class DKLModel(ExactGP):
         self.train_x_original = train_x
         self.train_y_original = train_y
         
+        # BoTorch compatibility: Add num_outputs attribute
+        self.num_outputs = 1  # Single-task GP (one target)
+        
         logger.info(f"✅ DKLModel initialized: {train_x.shape[1]} features → {train_z.shape[1]} learned dims")
     
     def forward(self, x: torch.Tensor) -> MultivariateNormal:

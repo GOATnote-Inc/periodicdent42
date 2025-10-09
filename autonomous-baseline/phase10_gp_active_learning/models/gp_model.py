@@ -68,6 +68,9 @@ class GPModel:
         
         self.fitted_ = False
         
+        # BoTorch compatibility
+        self.num_outputs = 1  # Single-task GP
+        
         logger.info(f"✅ GPModel initialized (device={device}, dtype={dtype})")
     
     def fit(self, X: np.ndarray, y: np.ndarray):

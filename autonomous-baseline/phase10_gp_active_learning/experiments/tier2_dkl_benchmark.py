@@ -143,7 +143,10 @@ def run_active_learning(
                 # Expected Improvement acquisition
                 best_f = y_labeled.max()  # Maximize Tc
                 X_unlabeled_tensor = torch.tensor(X_unlabeled_scaled, dtype=torch.float64)
-                ei_values = expected_improvement_acquisition(model, X_unlabeled_tensor, best_f)
+                
+                # For GP wrapper, use underlying model; for DKL, use directly
+                model_for_acq = model.model if strategy == "gp_ei" else model
+                ei_values = expected_improvement_acquisition(model_for_acq, X_unlabeled_tensor, best_f)
                 acquisition_indices = ei_values.squeeze().argsort(descending=True)[:num_to_select].cpu().numpy()
                 selected_indices = X_unlabeled.iloc[acquisition_indices].index
                 
