@@ -176,7 +176,7 @@ class DKLModel(ExactGP):
         
         return MultivariateNormal(mean_z, covar_z)
     
-    def posterior(self, X: torch.Tensor):
+    def posterior(self, X: torch.Tensor, **kwargs):
         """
         BoTorch-compatible posterior method.
         
@@ -184,6 +184,7 @@ class DKLModel(ExactGP):
         
         Args:
             X: Input tensor (batch_size, input_dim) or (batch_size, 1, input_dim)
+            **kwargs: Additional BoTorch arguments (posterior_transform, etc.)
         
         Returns:
             Posterior with .mean attribute
