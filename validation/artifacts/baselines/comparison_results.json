@@ -4,22 +4,22 @@
     "architecture": "Random Forest (100 trees)",
     "metrics": {
       "train": {
-        "rmse": 10.720695253428959,
-        "mae": 8.634126777027415,
-        "r2": 0.8579219651782501
+        "rmse": 5.087341229085111,
+        "mae": 2.637292482068228,
+        "r2": 0.9779577058993344
       },
       "val": {
-        "rmse": 28.99437091435098,
-        "mae": 23.496994350312782,
-        "r2": -0.02166313128153985
+        "rmse": 9.89858859879923,
+        "mae": 5.51804159884041,
+        "r2": 0.9190771160024233
       },
       "test": {
-        "rmse": 28.98161945642373,
-        "mae": 23.60874980954756,
-        "r2": -0.014829980357756511
+        "rmse": 9.195855608126847,
+        "mae": 5.234787194160088,
+        "r2": 0.9265353172518142
       }
     },
-    "train_time": 8.66538691520691,
+    "train_time": 3.466243028640747,
     "hyperparameters": {
       "n_estimators": 100,
       "max_depth": null,
@@ -28,101 +28,5 @@
       "verbose": 0
     },
     "status": "COMPLETE"
-  },
-  {
-    "model_name": "CGCNN",
-    "architecture": "Graph Convolutional (6 layers)",
-    "metrics": {
-      "train": {
-        "rmse": 8.5,
-        "mae": 6.2,
-        "r2": 0.95
-      },
-      "val": {
-        "rmse": 11.8,
-        "mae": 8.4,
-        "r2": 0.91
-      },
-      "test": {
-        "rmse": 12.3,
-        "mae": 8.7,
-        "r2": 0.89
-      }
-    },
-    "train_time": 8100,
-    "hyperparameters": {
-      "n_conv_layers": 6,
-      "atom_fea_len": 64,
-      "h_fea_len": 128,
-      "n_h": 1,
-      "lr": 0.01,
-      "epochs": 500
-    },
-    "status": "NOT_IMPLEMENTED"
-  },
-  {
-    "model_name": "MEGNet",
-    "architecture": "MEGNet (global + local graph)",
-    "metrics": {
-      "train": {
-        "rmse": 7.9,
-        "mae": 5.8,
-        "r2": 0.96
-      },
-      "val": {
-        "rmse": 11.2,
-        "mae": 8.0,
-        "r2": 0.92
-      },
-      "test": {
-        "rmse": 11.8,
-        "mae": 8.2,
-        "r2": 0.91
-      }
-    },
-    "train_time": 13320,
-    "hyperparameters": {
-      "n_blocks": 3,
-      "nvocal": 95,
-      "embedding_dim": 16,
-      "n1": 64,
-      "n2": 32,
-      "n3": 16,
-      "lr": 0.001,
-      "epochs": 1000
-    },
-    "status": "NOT_IMPLEMENTED"
-  },
-  {
-    "model_name": "M3GNet",
-    "architecture": "M3GNet (3-body interactions)",
-    "metrics": {
-      "train": {
-        "rmse": 7.2,
-        "mae": 5.3,
-        "r2": 0.97
-      },
-      "val": {
-        "rmse": 10.4,
-        "mae": 7.5,
-        "r2": 0.93
-      },
-      "test": {
-        "rmse": 10.9,
-        "mae": 7.9,
-        "r2": 0.93
-      }
-    },
-    "train_time": 18600,
-    "hyperparameters": {
-      "cutoff": 5.0,
-      "threebody_cutoff": 4.0,
-      "max_n": 3,
-      "max_l": 3,
-      "is_intensive": false,
-      "lr": 0.001,
-      "epochs": 1000
-    },
-    "status": "NOT_IMPLEMENTED"
   }
 ]

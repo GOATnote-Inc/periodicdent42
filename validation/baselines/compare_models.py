@@ -45,7 +45,7 @@ SEED = 42
 np.random.seed(SEED)
 
 
-def load_uci_superconductor_data(data_path: str = "data/superconductors.csv") -> Tuple[np.ndarray, np.ndarray]:
+def load_uci_superconductor_data(data_path: str = "data/raw/train.csv") -> Tuple[np.ndarray, np.ndarray]:
     """
     Load UCI Superconductor Database.
     
@@ -55,33 +55,24 @@ def load_uci_superconductor_data(data_path: str = "data/superconductors.csv") ->
     Returns:
         X (features), y (critical temperature)
     """
-    print(f"Loading dataset from {data_path}...")
+    # Use the dedicated data_loader module for consistency
+    import sys
+    from pathlib import Path
     
-    # TODO: Replace with actual data path
-    # For now, create synthetic data matching UCI dimensions
-    # Real implementation should load from:
-    # https://archive.ics.uci.edu/ml/datasets/Superconductivty+Data
+    # Add parent directory to path for imports
+    repo_root = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(repo_root))
     
-    n_samples = 21263
-    n_features = 81
+    from validation.baselines.data_loader import load_uci_superconductor_data as load_data
     
-    print(f"⚠️  Using synthetic data (n={n_samples}, features={n_features})")
-    print(f"   Real implementation: download UCI dataset and update data_path")
-    
-    # Synthetic data with realistic distributions
-    X = np.random.randn(n_samples, n_features)
-    # Tc distribution: mean ~55K, std ~30K (realistic for superconductors)
-    y = np.clip(np.abs(np.random.randn(n_samples) * 30 + 55), 0, 185)
-    
-    print(f"✅ Dataset loaded: {n_samples} samples, {n_features} features")
-    print(f"   Target distribution: mean={y.mean():.2f}K, std={y.std():.2f}K, range=[{y.min():.2f}, {y.max():.2f}]K")
+    X, y, df = load_data(data_path, compute_checksum=True)
     
     return X, y
 
 
 def split_data(X: np.ndarray, y: np.ndarray, seed: int = SEED) -> Dict:
     """
-    Split data into train/val/test (80/10/10) with fixed seed.
+    Split data into train/val/test (70/10/20) with fixed seed and feature scaling.
     
     Args:
         X: Features
@@ -91,31 +82,17 @@ def split_data(X: np.ndarray, y: np.ndarray, seed: int = SEED) -> Dict:
     Returns:
         Dictionary with train/val/test splits
     """
-    # First split: 80% train+val, 20% test
-    X_trainval, X_test, y_trainval, y_test = train_test_split(
-        X, y, test_size=0.20, random_state=seed
-    )
+    # Use the dedicated data_loader module for consistency
+    import sys
+    from pathlib import Path
     
-    # Second split: 80% train, 20% val (of train+val)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_trainval, y_trainval, test_size=0.125, random_state=seed  # 0.125 * 0.8 = 0.1
-    )
+    # Add parent directory to path for imports
+    repo_root = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(repo_root))
     
-    splits = {
-        "X_train": X_train,
-        "y_train": y_train,
-        "X_val": X_val,
-        "y_val": y_val,
-        "X_test": X_test,
-        "y_test": y_test,
-    }
+    from validation.baselines.data_loader import split_data as split_data_fn
     
-    print(f"\n✅ Data split (seed={seed}):")
-    print(f"   Train: {len(y_train)} samples ({len(y_train)/len(y)*100:.1f}%)")
-    print(f"   Val:   {len(y_val)} samples ({len(y_val)/len(y)*100:.1f}%)")
-    print(f"   Test:  {len(y_test)} samples ({len(y_test)/len(y)*100:.1f}%)")
-    
-    return splits
+    return split_data_fn(X, y, test_size=0.20, val_size=0.10, seed=seed, scale_features=True)
 
 
 def train_random_forest(splits: Dict, **kwargs) -> Dict:
