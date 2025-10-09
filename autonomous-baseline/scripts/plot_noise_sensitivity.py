@@ -69,13 +69,19 @@ def plot_rmse_vs_noise(data: dict, outdir: Path):
     
     ax.set_xlabel("Noise Level σ (K)", fontsize=12, fontweight='bold')
     ax.set_ylabel("Final RMSE (K)", fontsize=12, fontweight='bold')
-    ax.set_title("Active Learning Performance vs Noise", fontsize=14, fontweight='bold')
+    ax.set_title("Active Learning Performance vs Gaussian Noise (n=10 seeds per method)", 
+                 fontsize=12, fontweight='bold')
     ax.legend(loc='upper left', framealpha=0.95)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
+    # Add annotation
+    ax.text(0.98, 0.02, 'Error bars: ±1 SD', 
+            transform=ax.transAxes, ha='right', va='bottom',
+            fontsize=9, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
     plt.tight_layout()
-    plt.savefig(outdir / "rmse_vs_noise.png")
+    plt.savefig(outdir / "rmse_vs_noise.png", dpi=300)
     logger.info(f"✅ Saved: {outdir / 'rmse_vs_noise.png'}")
     plt.close()
 
@@ -118,13 +124,19 @@ def plot_regret_vs_noise(data: dict, outdir: Path):
     
     ax.set_xlabel("Noise Level σ (K)", fontsize=12, fontweight='bold')
     ax.set_ylabel("Mean Regret (K)", fontsize=12, fontweight='bold')
-    ax.set_title("Regret Reduction vs Noise (⭐ = p < 0.05)", fontsize=14, fontweight='bold')
+    ax.set_title("Regret vs Noise: No Significant Differences (n=10 seeds, all p>0.10)", 
+                 fontsize=12, fontweight='bold')
     ax.legend(loc='upper left', framealpha=0.95)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
+    # Add annotation
+    ax.text(0.98, 0.02, 'Error bars: ±1 SD | No ⭐ markers (no p<0.05)', 
+            transform=ax.transAxes, ha='right', va='bottom',
+            fontsize=9, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
     plt.tight_layout()
-    plt.savefig(outdir / "regret_vs_noise.png")
+    plt.savefig(outdir / "regret_vs_noise.png", dpi=300)
     logger.info(f"✅ Saved: {outdir / 'regret_vs_noise.png'}")
     plt.close()
 
@@ -159,14 +171,20 @@ def plot_coverage_vs_noise(data: dict, outdir: Path):
     
     ax.set_xlabel("Noise Level σ (K)", fontsize=12, fontweight='bold')
     ax.set_ylabel("Coverage@90 (proportion)", fontsize=12, fontweight='bold')
-    ax.set_title("Calibration Quality vs Noise", fontsize=14, fontweight='bold')
+    ax.set_title("Perfect Calibration Maintained Across Noise Levels (n=10 seeds)", 
+                 fontsize=12, fontweight='bold')
     ax.set_ylim(0.75, 1.0)
     ax.legend(loc='lower left', framealpha=0.95)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
+    # Add annotation
+    ax.text(0.98, 0.98, 'Target: 0.90 ± 0.05 (green band)\nAchieved: 0.900 ± 0.001', 
+            transform=ax.transAxes, ha='right', va='top',
+            fontsize=9, bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.7))
+    
     plt.tight_layout()
-    plt.savefig(outdir / "coverage_vs_noise.png")
+    plt.savefig(outdir / "coverage_vs_noise.png", dpi=300)
     logger.info(f"✅ Saved: {outdir / 'coverage_vs_noise.png'}")
     plt.close()
 

@@ -37,11 +37,12 @@ python scripts/statistical_power_analysis.py
 sha256sum -c experiments/novelty/noise_sensitivity/SHA256SUMS
 ```
 
-**Expected Output**: 7 files in `experiments/novelty/noise_sensitivity/`:
-- `noise_sensitivity_results.json` (146 lines, SHA: see SHA256SUMS)
-- `rmse_vs_noise.png`, `regret_vs_noise.png`, `coverage_vs_noise.png`
+**Expected Output**: 8 files in `experiments/novelty/noise_sensitivity/`:
+- `noise_sensitivity_results.json` (146 lines)
+- `rmse_vs_noise.png`, `regret_vs_noise.png`, `coverage_vs_noise.png` (publication-quality, 300 DPI)
 - `summary_stats.md`, `statistical_power_analysis.json`
 - `STATISTICAL_POWER_INTERPRETATION.md`
+- `SHA256SUMS` (checksums for verification)
 
 ---
 
