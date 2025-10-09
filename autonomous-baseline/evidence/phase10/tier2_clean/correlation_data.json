@@ -1,0 +1,151 @@
+{
+  "n_features": 16,
+  "n_physics_descriptors": 7,
+  "n_total_correlations": 112,
+  "n_significant_correlations": 49,
+  "fdr_alpha": 0.05,
+  "silhouette_score": 0.1741754114627838,
+  "tc_threshold_75pct": 60.5625,
+  "top_correlations": [
+    {
+      "feature_idx": 0,
+      "physics": "Valence Electrons",
+      "r_pearson": 0.7397372739931356,
+      "r_spearman": 0.6840926294904954,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 8,
+      "physics": "Density",
+      "r_pearson": 0.7166931579511917,
+      "r_spearman": 0.5616322401908743,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 10,
+      "physics": "Density",
+      "r_pearson": -0.6949734928437197,
+      "r_spearman": -0.5865369155415214,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 0,
+      "physics": "Density",
+      "r_pearson": 0.6702702679324899,
+      "r_spearman": 0.5722647578288439,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 2,
+      "physics": "Density",
+      "r_pearson": -0.6624719652935256,
+      "r_spearman": -0.691831356597527,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 8,
+      "physics": "Atomic Mass",
+      "r_pearson": 0.6583995983701503,
+      "r_spearman": 0.55191827209937,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 11,
+      "physics": "Density",
+      "r_pearson": 0.6524674691590413,
+      "r_spearman": 0.6356055171905118,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 14,
+      "physics": "Valence Electrons",
+      "r_pearson": -0.5913484830876484,
+      "r_spearman": -0.5836112782447483,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 12,
+      "physics": "Density",
+      "r_pearson": 0.588635265997634,
+      "r_spearman": 0.5018542569086992,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 10,
+      "physics": "Atomic Mass",
+      "r_pearson": -0.5883909620001713,
+      "r_spearman": -0.4477404009361181,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 10,
+      "physics": "Valence Electrons",
+      "r_pearson": -0.5604434950352053,
+      "r_spearman": -0.4532634037262609,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 9,
+      "physics": "Density",
+      "r_pearson": -0.5556177808846952,
+      "r_spearman": -0.4366395192358416,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 2,
+      "physics": "Atomic Mass",
+      "r_pearson": -0.5552642787978784,
+      "r_spearman": -0.4873206119416761,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 2,
+      "physics": "Valence Electrons",
+      "r_pearson": -0.5415159298707622,
+      "r_spearman": -0.5052276081307627,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 14,
+      "physics": "Density",
+      "r_pearson": -0.5388635131622972,
+      "r_spearman": -0.4561518984756412,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 11,
+      "physics": "Valence Electrons",
+      "r_pearson": 0.5284595107537187,
+      "r_spearman": 0.4712639553281494,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 8,
+      "physics": "Atomic Radius",
+      "r_pearson": 0.5169906399602,
+      "r_spearman": 0.4749522949919794,
+      "p_adj": 0.0
+    },
+    {
+      "feature_idx": 11,
+      "physics": "Atomic Mass",
+      "r_pearson": 0.5038509942701341,
+      "r_spearman": 0.4038395888081125,
+      "p_adj": 2.0579e-319
+    },
+    {
+      "feature_idx": 4,
+      "physics": "Valence Electrons",
+      "r_pearson": -0.4857118523816194,
+      "r_spearman": -0.5155567454934801,
+      "p_adj": 1.2762711250501695e-293
+    },
+    {
+      "feature_idx": 3,
+      "physics": "Valence Electrons",
+      "r_pearson": 0.48280783942241795,
+      "r_spearman": 0.5542024098598091,
+      "p_adj": 1.1855744076386082e-289
+    }
+  ]
+}
