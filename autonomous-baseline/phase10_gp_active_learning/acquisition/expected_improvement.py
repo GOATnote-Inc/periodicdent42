@@ -99,7 +99,8 @@ def expected_improvement_acquisition(
     Returns:
         EI values for each candidate (N,) tensor
     """
-    sampler = SobolQMCNormalSampler(num_samples=num_samples)
+    # Create sampler (sample_shape parameter instead of num_samples)
+    sampler = SobolQMCNormalSampler(sample_shape=torch.Size([num_samples]))
     ei = ExpectedImprovement(model=model, best_f=best_f, sampler=sampler)
     
     # Ensure X_candidate has batch dimension
