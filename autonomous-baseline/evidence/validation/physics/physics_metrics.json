@@ -1,0 +1,172 @@
+{
+  "n_features_tested": 20,
+  "n_features_unbiased": 20,
+  "bias_pass_rate": 1.0,
+  "bias_pass_threshold": 0.8,
+  "bias_pass": true,
+  "top_features": [
+    {
+      "name": "wtd_std_ThermalConductivity",
+      "importance": 0.08181565198634824
+    },
+    {
+      "name": "range_ThermalConductivity",
+      "importance": 0.08163960457156537
+    },
+    {
+      "name": "wtd_mean_Valence",
+      "importance": 0.0650798962346829
+    },
+    {
+      "name": "range_atomic_radius",
+      "importance": 0.052961232659544874
+    },
+    {
+      "name": "wtd_entropy_atomic_mass",
+      "importance": 0.052168100643344296
+    },
+    {
+      "name": "wtd_gmean_Valence",
+      "importance": 0.04591066216001526
+    },
+    {
+      "name": "wtd_entropy_Valence",
+      "importance": 0.04455967799218505
+    },
+    {
+      "name": "std_ThermalConductivity",
+      "importance": 0.03802944616078923
+    },
+    {
+      "name": "range_fie",
+      "importance": 0.02647852655906478
+    },
+    {
+      "name": "wtd_gmean_Density",
+      "importance": 0.018568248840420184
+    },
+    {
+      "name": "wtd_gmean_ThermalConductivity",
+      "importance": 0.0181583648491933
+    },
+    {
+      "name": "mean_Valence",
+      "importance": 0.018134992108878704
+    },
+    {
+      "name": "wtd_std_ElectronAffinity",
+      "importance": 0.017910609542858648
+    },
+    {
+      "name": "wtd_mean_ThermalConductivity",
+      "importance": 0.017515724394403732
+    },
+    {
+      "name": "gmean_Density",
+      "importance": 0.01719695521751685
+    }
+  ],
+  "residual_bias_by_feature": {
+    "number_of_elements": {
+      "correlation": 0.023322717255334767,
+      "p_value": 0.1878614500282185,
+      "bias_acceptable": true
+    },
+    "mean_atomic_mass": {
+      "correlation": 0.007135427414214322,
+      "p_value": 0.6870536266970142,
+      "bias_acceptable": true
+    },
+    "wtd_mean_atomic_mass": {
+      "correlation": 0.004947947075366075,
+      "p_value": 0.7799742011205695,
+      "bias_acceptable": true
+    },
+    "gmean_atomic_mass": {
+      "correlation": 0.008242107050428863,
+      "p_value": 0.6416877326212697,
+      "bias_acceptable": true
+    },
+    "wtd_gmean_atomic_mass": {
+      "correlation": 0.009575954260730666,
+      "p_value": 0.5887480651981515,
+      "bias_acceptable": true
+    },
+    "entropy_atomic_mass": {
+      "correlation": 0.021339214443046636,
+      "p_value": 0.2282397943962913,
+      "bias_acceptable": true
+    },
+    "wtd_entropy_atomic_mass": {
+      "correlation": 0.011761743351802967,
+      "p_value": 0.5066475081428989,
+      "bias_acceptable": true
+    },
+    "range_atomic_mass": {
+      "correlation": 0.012861182455368048,
+      "p_value": 0.4677492612953539,
+      "bias_acceptable": true
+    },
+    "wtd_range_atomic_mass": {
+      "correlation": 0.0026473487347736715,
+      "p_value": 0.881187401619759,
+      "bias_acceptable": true
+    },
+    "std_atomic_mass": {
+      "correlation": 0.007031197159265079,
+      "p_value": 0.6913881975371182,
+      "bias_acceptable": true
+    },
+    "wtd_std_atomic_mass": {
+      "correlation": -0.004184316949912606,
+      "p_value": 0.8132472272748864,
+      "bias_acceptable": true
+    },
+    "mean_fie": {
+      "correlation": -0.028391634440811185,
+      "p_value": 0.10887800683637484,
+      "bias_acceptable": true
+    },
+    "wtd_mean_fie": {
+      "correlation": -0.01630262754176774,
+      "p_value": 0.3573250691846216,
+      "bias_acceptable": true
+    },
+    "gmean_fie": {
+      "correlation": -0.0325628807856076,
+      "p_value": 0.06592679080250995,
+      "bias_acceptable": true
+    },
+    "wtd_gmean_fie": {
+      "correlation": -0.018337279621080765,
+      "p_value": 0.3004950994024048,
+      "bias_acceptable": true
+    },
+    "entropy_fie": {
+      "correlation": 0.02013460366804757,
+      "p_value": 0.25559109952269543,
+      "bias_acceptable": true
+    },
+    "wtd_entropy_fie": {
+      "correlation": 0.009422604612497493,
+      "p_value": 0.5947310221151214,
+      "bias_acceptable": true
+    },
+    "range_fie": {
+      "correlation": 0.008650686223808534,
+      "p_value": 0.6252600676307848,
+      "bias_acceptable": true
+    },
+    "wtd_range_fie": {
+      "correlation": -0.0002494456940500818,
+      "p_value": 0.9887636095159288,
+      "bias_acceptable": true
+    },
+    "std_fie": {
+      "correlation": 0.0023771283741882785,
+      "p_value": 0.8932381136371904,
+      "bias_acceptable": true
+    }
+  },
+  "timestamp": "2025-10-09T02:57:02.749936"
+}
