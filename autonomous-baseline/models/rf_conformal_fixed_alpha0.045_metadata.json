@@ -1,0 +1,62 @@
+{
+  "best_alpha": 0.045,
+  "test_rmse": 9.591669092286839,
+  "actual_coverage": 0.9442006269592477,
+  "expected_coverage": 0.044813538075838294,
+  "mean_width": 41.32627195502403,
+  "target_coverage": [
+    0.94,
+    0.96
+  ],
+  "all_alpha_results": [
+    {
+      "alpha": 0.03,
+      "expected_coverage": 0.029771231588843622,
+      "actual_coverage": 0.9595611285266458,
+      "mean_width": 47.71553233977837,
+      "in_target_range": true
+    },
+    {
+      "alpha": 0.04,
+      "expected_coverage": 0.03979943591350674,
+      "actual_coverage": 0.9507836990595612,
+      "mean_width": 43.18139006908646,
+      "in_target_range": true
+    },
+    {
+      "alpha": 0.045,
+      "expected_coverage": 0.044813538075838294,
+      "actual_coverage": 0.9442006269592477,
+      "mean_width": 41.326271955024005,
+      "in_target_range": true
+    },
+    {
+      "alpha": 0.05,
+      "expected_coverage": 0.04982764023816985,
+      "actual_coverage": 0.9388714733542319,
+      "mean_width": 39.16931957053339,
+      "in_target_range": false
+    },
+    {
+      "alpha": 0.055,
+      "expected_coverage": 0.05484174240050141,
+      "actual_coverage": 0.9335423197492163,
+      "mean_width": 37.83152920065572,
+      "in_target_range": false
+    },
+    {
+      "alpha": 0.06,
+      "expected_coverage": 0.059855844562832966,
+      "actual_coverage": 0.9294670846394985,
+      "mean_width": 36.87056330830552,
+      "in_target_range": false
+    },
+    {
+      "alpha": 0.07,
+      "expected_coverage": 0.06988404888749608,
+      "actual_coverage": 0.9247648902821317,
+      "mean_width": 35.13422495158244,
+      "in_target_range": false
+    }
+  ]
+}
