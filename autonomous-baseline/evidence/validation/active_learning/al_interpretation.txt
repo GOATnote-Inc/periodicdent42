@@ -1,0 +1,35 @@
+
+ACTIVE LEARNING VALIDATION RESULTS
+===================================
+
+Dataset: UCI Superconductivity
+Strategy: Maximum Variance (MaxVar) vs Random Baseline
+Seeds: 5
+Rounds: 10
+Batch size: 20
+
+SUMMARY
+-------
+Random Baseline:  16.15 ± 0.72 K
+MaxVar Strategy:  17.31 ± 0.40 K
+Improvement:      -7.2%
+Statistical Test: t=-3.75, p=0.0200
+
+SUCCESS CRITERIA
+----------------
+Improvement ≥ 20%: -7.2% | Target: ≥ 20% | ❌ FAIL
+Significance p<0.01: 0.0200 | Target: < 0.01 | ❌ FAIL
+
+OVERALL: ❌ SOME CRITERIA NOT MET
+
+INTERPRETATION
+--------------
+
+❌ ACTIVE LEARNING: NEEDS IMPROVEMENT
+
+MaxVar did not achieve the target improvement. Possible causes:
+1. Batch size too large relative to data dimensionality
+2. RF uncertainty estimates not informative enough for AL
+3. Need diversity-aware selection (k-Medoids or DPP)
+
+Recommendation: Try smaller batch sizes or add diversity constraints.

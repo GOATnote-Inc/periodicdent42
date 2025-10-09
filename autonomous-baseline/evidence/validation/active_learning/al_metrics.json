@@ -1,0 +1,18 @@
+{
+  "random_final_rmse_mean": 16.153422542096685,
+  "random_final_rmse_std": 0.72027470119133,
+  "maxvar_final_rmse_mean": 17.30929752068044,
+  "maxvar_final_rmse_std": 0.39849723177825175,
+  "improvement_percent": -7.155604179680691,
+  "p_value": 0.020002344123470017,
+  "t_statistic": -3.7468123963174538,
+  "n_seeds": 5,
+  "n_rounds": 10,
+  "batch_size": 20,
+  "improvement_target": 20.0,
+  "significance_target": 0.01,
+  "improvement_pass": false,
+  "significance_pass": false,
+  "overall_success": false,
+  "timestamp": "2025-10-09T02:39:26.014615"
+}
