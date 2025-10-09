@@ -87,23 +87,21 @@ def expected_improvement_acquisition(
     """
     BoTorch-based Expected Improvement for GP/DKL models.
     
-    This function works with both GP and DKL models that follow
-    the GPyTorch/BoTorch interface.
+    Uses analytic EI (no MC sampling needed for GP).
     
     Args:
         model: Fitted GP or DKL model
         X_candidate: Candidate points (N, D) tensor
         best_f: Best observed function value
-        num_samples: Monte Carlo samples for EI estimation
+        num_samples: Unused (for API compatibility)
     
     Returns:
         EI values for each candidate (N,) tensor
     """
-    # Create sampler (sample_shape parameter instead of num_samples)
-    sampler = SobolQMCNormalSampler(sample_shape=torch.Size([num_samples]))
-    ei = ExpectedImprovement(model=model, best_f=best_f, sampler=sampler)
+    # Use analytic EI (no sampler needed for GP)
+    ei = ExpectedImprovement(model=model, best_f=best_f)
     
-    # Ensure X_candidate has batch dimension
+    # Ensure X_candidate has batch dimension for BoTorch
     if X_candidate.dim() == 2:
         X_candidate = X_candidate.unsqueeze(1)  # (N, 1, D)
     
