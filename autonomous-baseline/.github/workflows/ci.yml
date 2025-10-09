@@ -100,7 +100,7 @@ jobs:
           path: artifacts/ci_test/
 
   coverage-gate:
-    name: Coverage Gate (≥81%)
+    name: Coverage Gate (≥86%)
     runs-on: ubuntu-latest
     needs: test
     
@@ -122,7 +122,7 @@ jobs:
       
       - name: Run coverage check
         run: |
-          pytest tests/ --cov=src --cov-report=term --cov-fail-under=81
+          pytest tests/ --cov=src --cov-report=term --cov-fail-under=86
       
       - name: Generate coverage badge
         if: github.ref == 'refs/heads/main'
@@ -224,7 +224,74 @@ jobs:
           cat checksums_run2.txt
           echo ""
           echo "=== Comparing checksums ==="
-          diff checksums_run1.txt checksums_run2.txt && echo "✅ Reproducibility verified!" || echo "❌ Checksums differ!"
+          diff checksums_run1.txt checksums_run2.txt && echo "✅ Data splitting reproducibility verified!" || exit 1
+      
+      - name: Model training reproducibility (Run 1)
+        run: |
+          python -c "
+          import numpy as np
+          import pickle
+          import hashlib
+          from src.models import RandomForestQRF
+          
+          # Generate synthetic training data
+          np.random.seed(42)
+          X_train = np.random.randn(100, 10)
+          y_train = X_train[:, 0] * 2 + X_train[:, 1] * 3 + np.random.randn(100) * 0.5
+          
+          # Train model with fixed seed
+          model = RandomForestQRF(n_estimators=10, random_state=42)
+          model.fit(X_train, y_train)
+          
+          # Get predictions (should be deterministic)
+          X_test = np.random.randn(10, 10)
+          y_pred1, y_lower1, y_upper1 = model.predict_with_uncertainty(X_test)
+          
+          # Save prediction checksum
+          checksum = hashlib.sha256(y_pred1.tobytes()).hexdigest()
+          with open('model_predictions_run1.txt', 'w') as f:
+              f.write(f'predictions: {checksum}\n')
+          
+          print(f'Run 1 model checksum: {checksum}')
+          "
+      
+      - name: Model training reproducibility (Run 2)
+        run: |
+          python -c "
+          import numpy as np
+          import pickle
+          import hashlib
+          from src.models import RandomForestQRF
+          
+          # Generate same synthetic training data
+          np.random.seed(42)
+          X_train = np.random.randn(100, 10)
+          y_train = X_train[:, 0] * 2 + X_train[:, 1] * 3 + np.random.randn(100) * 0.5
+          
+          # Train model with same seed
+          model = RandomForestQRF(n_estimators=10, random_state=42)
+          model.fit(X_train, y_train)
+          
+          # Get predictions (should be identical)
+          X_test = np.random.randn(10, 10)
+          y_pred2, y_lower2, y_upper2 = model.predict_with_uncertainty(X_test)
+          
+          # Save prediction checksum
+          checksum = hashlib.sha256(y_pred2.tobytes()).hexdigest()
+          with open('model_predictions_run2.txt', 'w') as f:
+              f.write(f'predictions: {checksum}\n')
+          
+          print(f'Run 2 model checksum: {checksum}')
+          "
+      
+      - name: Compare model predictions
+        run: |
+          echo "=== Model Prediction Checksums ==="
+          cat model_predictions_run1.txt
+          cat model_predictions_run2.txt
+          echo ""
+          echo "=== Verifying model reproducibility ==="
+          diff model_predictions_run1.txt model_predictions_run2.txt && echo "✅ Model training reproducibility verified!" || exit 1
 
   leakage-check:
     name: Leakage Detection

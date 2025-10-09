@@ -2,10 +2,11 @@
 
 **Autonomous-lab-grade baseline study for superconductor Tc prediction with calibrated uncertainty, active learning, and physics grounding.**
 
+[![CI/CD Pipeline](https://github.com/GOATnote-Inc/periodicdent42/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/GOATnote-Inc/periodicdent42/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Tests](https://img.shields.io/badge/tests-231%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-247%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)](tests/)
 [![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](docs/OVERVIEW.md)
 [![Last Updated](https://img.shields.io/badge/updated-Jan%202025-blue.svg)](CLAIMS_VERIFICATION_REPORT.md)
@@ -330,8 +331,9 @@ Email: b@thegoatnote.com
 
 **Current Status**: Phase 8 Complete ✅ - Production Ready
 
-**Test Suite**: 231/231 tests passing (100% pass rate)  
+**Test Suite**: 247/247 tests passing (100% pass rate)  
 **Coverage**: 86% (exceeds >85% target)  
 **Documentation**: Complete (OVERVIEW, RUNBOOK, GO/NO-GO, PHYSICS)  
-**Verification**: Claims verified - see [CLAIMS_VERIFICATION_REPORT.md](CLAIMS_VERIFICATION_REPORT.md)
+**Verification**: Claims verified - see [CLAIMS_VERIFICATION_REPORT.md](CLAIMS_VERIFICATION_REPORT.md)  
+**Reproducibility**: CI verified (data + model training)
 
