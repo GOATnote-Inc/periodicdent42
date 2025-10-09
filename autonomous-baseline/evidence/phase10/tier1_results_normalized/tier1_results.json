@@ -1,0 +1,27 @@
+{
+  "experiment": "Phase 10 Tier 1: GP-based Active Learning",
+  "dataset": "UCI Superconductivity",
+  "n_seeds": 5,
+  "n_rounds": 20,
+  "batch_size": 20,
+  "n_initial": 100,
+  "timestamp": "2025-10-09T03:53:50.874734",
+  "summary": {
+    "gp_ei": {
+      "mean_rmse": 19.43346577848426,
+      "std_rmse": 1.6616100826852909,
+      "min_rmse": 17.18731463564934,
+      "max_rmse": 21.42877017869136
+    },
+    "random": {
+      "mean_rmse": 16.02588100635021,
+      "std_rmse": 0.3689110567613255,
+      "min_rmse": 15.65373430299549,
+      "max_rmse": 16.726082161933032
+    }
+  },
+  "improvement_percent": -21.263010568865457,
+  "p_value": 0.020948275171419596,
+  "significant": false,
+  "success": false
+}
