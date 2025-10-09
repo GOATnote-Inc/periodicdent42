@@ -2,7 +2,7 @@
   "experiment": "Phase 10 Tier 2: Clean BoTorch Benchmark",
   "dataset": "UCI Superconductivity",
   "n_seeds": 5,
-  "timestamp": "2025-10-09T13:03:12.568582",
+  "timestamp": "2025-10-09T15:39:03.914241",
   "results": {
     "dkl": {
       "mean_rmse": 17.1084589748537,

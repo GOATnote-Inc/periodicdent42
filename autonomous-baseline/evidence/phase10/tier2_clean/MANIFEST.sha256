@@ -1,0 +1,291 @@
+{
+  "generated": "2025-10-09T16:16:55.649706",
+  "repository": "/Users/kiteboard/periodicdent42/autonomous-baseline",
+  "files": {
+    "data": [
+      {
+        "path": "data/processed/uci_splits/val.csv",
+        "sha256": "288f780f287fa5a7e3006dda64ee3c2fb17a9e9277c687a8830c413918801221",
+        "size_bytes": 3608980,
+        "modified": "2025-10-09T02:04:11.290182"
+      },
+      {
+        "path": "data/processed/uci_splits/test.csv",
+        "sha256": "c56f76a46e4c966fa886db209d04e4194b645391e6adb72e156840712322b80a",
+        "size_bytes": 3613256,
+        "modified": "2025-10-09T02:04:11.386259"
+      },
+      {
+        "path": "data/processed/uci_splits/train.csv",
+        "sha256": "843bd3b8917ed1c7150e8e6b5200ea35ebb4c10d83056199a688817c41823965",
+        "size_bytes": 16799496,
+        "modified": "2025-10-09T02:04:11.194983"
+      },
+      {
+        "path": "data/raw/htsc2025/xiao-qi___htsc-2025/default/0.0.0/ab534725a51686087c2cf403de5603c47af11f18/dataset_info.json",
+        "sha256": "807fd0a139b5cab351bd7e2be3f74cd4ccd24a1d3583eb7b2b373f2328bbd541",
+        "size_bytes": 15999,
+        "modified": "2025-10-09T03:25:16.462440"
+      },
+      {
+        "path": "data/processed/uci_splits/metadata.json",
+        "sha256": "b8c9b400121f449f25e5eb950816e45d7c69426cea470f2db431347a13267ec8",
+        "size_bytes": 451,
+        "modified": "2025-10-09T02:04:11.387937"
+      }
+    ],
+    "configs": [
+      {
+        "path": "configs/train_rf.yaml",
+        "sha256": "9a1b2c35a27e426189cdbfd6fb166de99239cd0dd2ff8443e8d9c05b0d265089",
+        "size_bytes": 958,
+        "modified": "2025-10-08T23:52:00.086560"
+      },
+      {
+        "path": "configs/al_ucb.yaml",
+        "sha256": "4c3c22c1ff853e22b1b16fea62f60bc4e3bec2c292232da970f4e8f5fd9cbe5d",
+        "size_bytes": 1739,
+        "modified": "2025-10-08T23:52:00.086570"
+      },
+      {
+        "path": "pyproject.toml",
+        "sha256": "ee9c9d4c3952cb6a393854f3c3a2b867cf0ef4481477acd68995d84d3d47b174",
+        "size_bytes": 2417,
+        "modified": "2025-10-09T00:15:30.478949"
+      }
+    ],
+    "checkpoints": [],
+    "results": [
+      {
+        "path": "evidence/MANIFEST.json",
+        "sha256": "a9340e8adfc6ee025002dace1223e69493ec1f8ebbbad445d501be696b1d523c",
+        "size_bytes": 4343,
+        "modified": "2025-10-09T02:59:11.613870"
+      },
+      {
+        "path": "evidence/validation/active_learning/al_metrics.json",
+        "sha256": "67f5c446c842e86df2f760c1013431937d9677d34e09457d8575a7bc476a81a4",
+        "size_bytes": 555,
+        "modified": "2025-10-09T02:39:26.014747"
+      },
+      {
+        "path": "evidence/validation/calibration/calibration_metrics.json",
+        "sha256": "4baf91b1df3130160831ecb00485fb12b82fe12091031aa518ae1ec812f8b374",
+        "size_bytes": 393,
+        "modified": "2025-10-09T02:05:51.597361"
+      },
+      {
+        "path": "evidence/validation/ood/ood_metrics.json",
+        "sha256": "87ebc9fc24ee347ab3508286fc6f842f0cac651813f7aa02c16200b6e03ba1f1",
+        "size_bytes": 319,
+        "modified": "2025-10-09T02:58:19.137684"
+      },
+      {
+        "path": "evidence/validation/calibration_conformal/conformal_calibration_metrics.json",
+        "sha256": "ca501e6e871cf8fb85d6aa4c00283208c8288b6fab2ba7238eb89633cf346857",
+        "size_bytes": 367,
+        "modified": "2025-10-09T02:10:57.881378"
+      },
+      {
+        "path": "evidence/validation/physics/physics_metrics.json",
+        "sha256": "fce87ed2a7683e51a5bf3ad8d8a12c76c4446aa9927bbb1cb40b84dde8861b1e",
+        "size_bytes": 4459,
+        "modified": "2025-10-09T02:57:02.750180"
+      },
+      {
+        "path": "evidence/phase10/tier1_results_normalized/tier1_results.json",
+        "sha256": "979e780a9d0032d6ef46c3aed4b6ac1f8e3f4ce4b61fc0188643eb61c8646b80",
+        "size_bytes": 708,
+        "modified": "2025-10-09T03:53:50.874928"
+      },
+      {
+        "path": "evidence/phase10/tier2_clean/results.json",
+        "sha256": "820406eb45667d9d59034a3608e21b8b2664a58576c6b11b121b5009e07fbea9",
+        "size_bytes": 10253,
+        "modified": "2025-10-09T15:39:03.914661"
+      },
+      {
+        "path": "evidence/phase10/tier2_clean/audit_results.json",
+        "sha256": "194c87a244dbc9e0066586deb8650657a4beccbcb7500c61e04c03a2821fa20f",
+        "size_bytes": 385,
+        "modified": "2025-10-09T15:18:53.602670"
+      },
+      {
+        "path": "evidence/phase10/tier1_results/tier1_results.json",
+        "sha256": "5141d8076e0f531252261729fb3a07cd35614ce5c0d5e065e8c12c4bc40f557e",
+        "size_bytes": 710,
+        "modified": "2025-10-09T03:39:39.356149"
+      },
+      {
+        "path": "evidence/phase10/tier1_results_normalized/tier1_results.json",
+        "sha256": "979e780a9d0032d6ef46c3aed4b6ac1f8e3f4ce4b61fc0188643eb61c8646b80",
+        "size_bytes": 708,
+        "modified": "2025-10-09T03:53:50.874928"
+      },
+      {
+        "path": "evidence/phase10/tier2_clean/results.json",
+        "sha256": "820406eb45667d9d59034a3608e21b8b2664a58576c6b11b121b5009e07fbea9",
+        "size_bytes": 10253,
+        "modified": "2025-10-09T15:39:03.914661"
+      },
+      {
+        "path": "evidence/phase10/tier2_clean/audit_results.json",
+        "sha256": "194c87a244dbc9e0066586deb8650657a4beccbcb7500c61e04c03a2821fa20f",
+        "size_bytes": 385,
+        "modified": "2025-10-09T15:18:53.602670"
+      },
+      {
+        "path": "evidence/phase10/tier1_results/tier1_results.json",
+        "sha256": "5141d8076e0f531252261729fb3a07cd35614ce5c0d5e065e8c12c4bc40f557e",
+        "size_bytes": 710,
+        "modified": "2025-10-09T03:39:39.356149"
+      }
+    ],
+    "scripts": [
+      {
+        "path": "scripts/validate_active_learning_simplified.py",
+        "sha256": "598e0c7d9f0fe3cc316201fd05eb9090bd3c647aa6f6098284a664e62cd72618",
+        "size_bytes": 12299,
+        "modified": "2025-10-09T02:39:05.627436"
+      },
+      {
+        "path": "scripts/fix_conformal_finite_sample.py",
+        "sha256": "a6ecfc49975db93b711387d48f5da899a6cdce4015da826f92bb031cc0e2e7ed",
+        "size_bytes": 6575,
+        "modified": "2025-10-09T02:24:19.004576"
+      },
+      {
+        "path": "scripts/audit_validation.py",
+        "sha256": "54c2b255bd77ceadb5b9e91ba8fabddc68beb07cc7011a396567114c1ebc56d7",
+        "size_bytes": 17841,
+        "modified": "2025-10-09T15:16:53.992681"
+      },
+      {
+        "path": "scripts/compute_information_gain.py",
+        "sha256": "875ce68a3023358fa8bc20e7103e60c89fda70b1cc4eb3d41ed7b4010db95f42",
+        "size_bytes": 9876,
+        "modified": "2025-10-09T15:36:22.917962"
+      },
+      {
+        "path": "scripts/validate_calibration_fixed.py",
+        "sha256": "e71cf67791656a2282da9fb0a241e3724f692a9bc4cc85ab1e071785d9051f2e",
+        "size_bytes": 3746,
+        "modified": "2025-10-09T02:24:19.004584"
+      },
+      {
+        "path": "scripts/train_baseline_model.py",
+        "sha256": "b05d18498d5b5598eee2e546f4986871772a2436564315c4256abdd99b9c691c",
+        "size_bytes": 7595,
+        "modified": "2025-10-09T02:04:45.318361"
+      },
+      {
+        "path": "scripts/generate_provenance.py",
+        "sha256": "1b882e6aadb3d1ca92dc13c1d73d27e9eb169d838b0385a431acfb78b19646c0",
+        "size_bytes": 6343,
+        "modified": "2025-10-09T15:36:51.409173"
+      },
+      {
+        "path": "scripts/predict_cli.py",
+        "sha256": "79bb955faa5ffed8bf4aa0bbccecab8b441a451efd63ea109fd47c5c05af66f1",
+        "size_bytes": 8641,
+        "modified": "2025-10-09T03:09:48.954172"
+      },
+      {
+        "path": "scripts/generate_evidence_pack.py",
+        "sha256": "fac685082e7a4cb9e4cbf879a415098f3318b9e6af249e1af121ceb319ed71c0",
+        "size_bytes": 7342,
+        "modified": "2025-10-09T02:59:04.690656"
+      },
+      {
+        "path": "scripts/compare_acquisitions.py",
+        "sha256": "6aaddcfd8dc74f3276762edf3cfda4d388c5924efc01b808be7d6cc114b0918a",
+        "size_bytes": 9721,
+        "modified": "2025-10-09T15:35:41.528729"
+      },
+      {
+        "path": "scripts/validate_physics_simplified.py",
+        "sha256": "24653eb90e14b370d405b2ebfb5ca8f09108424ebf50e3a4312ee132b1bf8eee",
+        "size_bytes": 9338,
+        "modified": "2025-10-09T02:56:52.723690"
+      },
+      {
+        "path": "scripts/analyze_learned_features.py",
+        "sha256": "7b3dd465dcef2894107e30d53638686c6d64c9bcaf1d3a671313566ebb9dfb02",
+        "size_bytes": 16579,
+        "modified": "2025-10-09T15:32:59.699087"
+      },
+      {
+        "path": "scripts/merge_benchmark_results.py",
+        "sha256": "472f2c5062e0538625d0a9bd31529dbe3204ee2574ab57cb8e52db88d90c0079",
+        "size_bytes": 4425,
+        "modified": "2025-10-09T15:30:37.460075"
+      },
+      {
+        "path": "scripts/validate_calibration.py",
+        "sha256": "3f3116485bfc54f078685ece119a014a67a093f33f249e3647b7213953d3b04a",
+        "size_bytes": 16529,
+        "modified": "2025-10-09T02:05:43.475350"
+      },
+      {
+        "path": "scripts/validate_ood_simplified.py",
+        "sha256": "b56526b91ba3fa5b3bda346829d771aeb77a6886301a0ed07886b9cfd1a90840",
+        "size_bytes": 10466,
+        "modified": "2025-10-09T02:58:09.534546"
+      },
+      {
+        "path": "scripts/FINAL_calibration_comprehensive.py",
+        "sha256": "7445698bcd5cd1d8f7682f784e6b61008e176612a51185e3cfa6dd5c2e7b3df8",
+        "size_bytes": 4476,
+        "modified": "2025-10-09T02:24:19.010456"
+      },
+      {
+        "path": "scripts/download_uci_data.py",
+        "sha256": "70319e37c637081ee41942998bd6de0fdfce8b8dd71bb396e8be0bb3586ac4b0",
+        "size_bytes": 7056,
+        "modified": "2025-10-09T02:01:51.954252"
+      },
+      {
+        "path": "scripts/add_baselines.py",
+        "sha256": "1ded60e79bfb3ac501803a606bc29c87bc648d508deb4635697524d29b44d450",
+        "size_bytes": 9196,
+        "modified": "2025-10-09T15:54:05.865676"
+      },
+      {
+        "path": "scripts/validate_calibration_conformal.py",
+        "sha256": "145dcf70ea78c157b2ea1516c2d882182f30d9c8360c0a62303b3d722a10cfdc",
+        "size_bytes": 11914,
+        "modified": "2025-10-09T02:10:48.651580"
+      },
+      {
+        "path": "scripts/diagnose_dkl.py",
+        "sha256": "f3967834f0a9843871cae43452c2bdcc60652ba244647658d4835924a0b06b1d",
+        "size_bytes": 3329,
+        "modified": "2025-10-09T12:39:05.700048"
+      },
+      {
+        "path": "scripts/train_baseline_model_conformal_conservative.py",
+        "sha256": "9458b65aeafa32cf830bfe9b3bd935a632f3c4aa9fcf205381ceef7f0097bd63",
+        "size_bytes": 6534,
+        "modified": "2025-10-09T02:24:18.999090"
+      },
+      {
+        "path": "scripts/train_baseline_model_conformal.py",
+        "sha256": "60c67c009f9bf4928263065327556f960c1b3325b3598113e7c4e67dec93937a",
+        "size_bytes": 9357,
+        "modified": "2025-10-09T02:09:34.817084"
+      },
+      {
+        "path": "scripts/test_reproducibility.py",
+        "sha256": "49f91faf2e2e9bad74a78293c95a7f8f8382e569f5cc3d7466259b7688c2fdbd",
+        "size_bytes": 6811,
+        "modified": "2025-10-09T15:37:25.629890"
+      },
+      {
+        "path": "scripts/prepare_production_model.py",
+        "sha256": "4061095ab17e14c94fe5ae04473a00dec325fc816836b64bb5567c2c79713267",
+        "size_bytes": 4792,
+        "modified": "2025-10-09T03:08:37.375758"
+      }
+    ]
+  }
+}
