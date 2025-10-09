@@ -21,7 +21,7 @@ This document positions GOATnote's Locally Adaptive Conformal-EI within the rece
 | **GOATnote CEI** | Locally adaptive split conformal | None (p=0.125, clean data) | 49 FDR-corrected physics correlations | 100% (full pool eval) | Heteroscedastic intervals, perfect calibration |
 | **CoPAL (Kharazian et al., 2024)** | Global split conformal | +5-10% AL gain (noisy) | N/A | 80-90% | Corrective planning with conformal sets |
 | **Filter-CEI (Our variant)** | Locally adaptive + filtering | TBD (Phase 6) | Same as CEI | 20-60% (filtered) | CoPAL-inspired efficiency |
-| **Candidate-Set Query (Gwon et al., 2025)** | Coverage-constrained optimization | 20% cost reduction | N/A | 60-70% | Multi-objective (coverage + cost) |
+| **Candidate-Set Query (Hypothetical)** | Coverage-constrained optimization | TBD (concept only) | N/A | 60-70% (estimated) | Multi-objective (coverage + cost) - *Note: Inspired by cost-aware conformal designs, not a confirmed published method* |
 | **MatterVial (2025)** | N/A | N/A | Symbolic latent formulas | N/A | Hybrid DL + symbolic regression |
 | **Standard EI** | None (GP posterior) | Baseline | None | 100% | Simple, effective baseline |
 
@@ -85,27 +85,27 @@ This document positions GOATnote's Locally Adaptive Conformal-EI within the rece
 
 ---
 
-### 3. Candidate-Set Conformal Query Selection (Gwon et al., 2025)
+### 3. Cost-Aware Conformal Acquisition (Hypothetical Concept)
 
-**Paper**: "Efficient Active Learning with Candidate-Set Conformal Prediction"  
-**Venue**: AISTATS 2025 (expected)
+**Status**: ⚠️ **SPECULATIVE** - Inspired by cost-aware conformal prediction literature, not a specific published paper
 
-**Method**:
+**Concept**:
 - Multi-objective optimization: maximize information + minimize cost + maintain coverage
 - Pre-filters candidate set by conformal credibility
 - Pareto-optimal query selection
 
-**Results**:
-- 20% cost reduction vs standard AL
-- Coverage: 88-92% (target: 90%)
-- RMSE: Within 5% of full-pool EI
+**Expected Properties** (if implemented):
+- Cost reduction vs standard AL (estimated 20-60%)
+- Maintain coverage guarantees (target: 90%)
+- Performance within 5-10% of full-pool evaluation
 
 **Key Innovation**: Cost-aware acquisition with coverage constraints
 
 **Relation to GOATnote**:
-- Our Filter-CEI (Phase 6) is inspired by this
+- Our Filter-CEI (Phase 6) explores this concept space
 - We test keep_frac ∈ [0.1, 0.2, 0.3, 0.5]
 - Goal: Match performance at 20-60% cost
+- **Note**: We independently developed this inspired by CoPAL's filtering approach
 
 ---
 
@@ -234,8 +234,8 @@ This document positions GOATnote's Locally Adaptive Conformal-EI within the rece
 **CoPAL (2024)**:
 - Kharazian, Z., et al. "CoPAL: Corrective Planning of Robot Actions with Conformal Prediction Sets." *CoRL 2024, PMLR v230*.
 
-**Candidate-Set Query (2025)**:
-- Gwon, Y., et al. "Efficient Active Learning with Candidate-Set Conformal Prediction." *AISTATS 2025 (expected)*.
+**Cost-Aware Conformal Acquisition (Concept)**:
+- No specific publication found. Concept inspired by general cost-aware active learning literature and CoPAL's filtering approach.
 
 **MatterVial (2025)**:
 - (Preprint) "MatterVial: Interpretable Materials Discovery via Symbolic Regression." *Nature Communications (expected)*.
