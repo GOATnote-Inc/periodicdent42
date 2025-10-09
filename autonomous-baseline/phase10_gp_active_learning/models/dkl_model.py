@@ -128,34 +128,48 @@ class DKLModel(ExactGP):
         feature_extractor: Optional[FeatureExtractor] = None,
         likelihood: Optional[gpytorch.likelihoods.Likelihood] = None
     ):
-        # Initialize likelihood if not provided
-        if likelihood is None:
-            likelihood = gpytorch.likelihoods.GaussianLikelihood()
-        
         # Initialize feature extractor if not provided
         if feature_extractor is None:
             input_dim = train_x.shape[1]
             feature_extractor = FeatureExtractor(input_dim=input_dim)
         
-        # Extract features for GP
-        with torch.no_grad():
-            train_z = feature_extractor(train_x)
+        # Initialize likelihood with priors for stability
+        if likelihood is None:
+            likelihood = gpytorch.likelihoods.GaussianLikelihood(
+                noise_prior=gpytorch.priors.GammaPrior(1.1, 0.05)
+            )
+            # Prevent noise from collapsing to zero
+            likelihood.noise_covar.register_constraint(
+                "raw_noise", 
+                gpytorch.constraints.GreaterThan(1e-6)
+            )
         
-        # Initialize GP on learned features
-        super().__init__(train_z, train_y, likelihood)
+        # Initialize ExactGP with RAW training data (NOT features!)
+        # Features will be computed inside forward()
+        super().__init__(train_x, train_y, likelihood)
         
         self.feature_extractor = feature_extractor
         self.mean_module = ConstantMean()
-        self.covar_module = ScaleKernel(RBFKernel())
         
-        # Store original training data (needed for retraining)
+        # Add priors to kernel for stability
+        self.covar_module = ScaleKernel(
+            RBFKernel(lengthscale_prior=gpytorch.priors.GammaPrior(3.0, 6.0))
+        )
+        
+        # Store original training data
         self.train_x_original = train_x
         self.train_y_original = train_y
         
-        # BoTorch compatibility: Add num_outputs attribute
-        self.num_outputs = 1  # Single-task GP (one target)
+        # BoTorch compatibility
+        self.num_outputs = 1
         
-        logger.info(f"✅ DKLModel initialized: {train_x.shape[1]} features → {train_z.shape[1]} learned dims")
+        # Get output dim for logging (use eval mode to avoid BatchNorm issues)
+        feature_extractor.eval()
+        with torch.no_grad():
+            sample_z = feature_extractor(train_x[:min(2, len(train_x))])
+        feature_extractor.train()
+        
+        logger.info(f"✅ DKLModel initialized: {train_x.shape[1]} features → {sample_z.shape[1]} learned dims")
     
     def forward(self, x: torch.Tensor) -> MultivariateNormal:
         """
@@ -190,13 +204,10 @@ class DKLModel(ExactGP):
         self.eval()
         self.likelihood.eval()
         
-        # Extract features
-        z = self.feature_extractor(X)
-        
-        # GP on learned features
-        mean = self.mean_module(z)
-        cov = self.covar_module(z)
-        mvn = MultivariateNormal(mean, cov)
+        # Use ExactGP's __call__ for proper conditioning (not forward()!)
+        # self(X) conditions on training data, self.forward(X) computes prior
+        with torch.no_grad(), gpytorch.settings.fast_computations(covar_root_decomposition=True):
+            mvn = self(X)  # __call__ uses GPyTorch conditioning machinery
         
         # Include likelihood noise if requested
         return self.likelihood(mvn) if observation_noise else mvn
@@ -228,7 +239,7 @@ class DKLModel(ExactGP):
         self.train()
         self.likelihood.train()
         
-        # Optimizer: Adam for NN, L-BFGS for GP handled by BoTorch
+        # Optimizer: Two groups (NN gets higher LR, GP hyperparams get lower)
         optimizer = torch.optim.Adam([
             {'params': self.feature_extractor.parameters(), 'lr': lr},
             {'params': self.mean_module.parameters(), 'lr': lr * 0.1},
@@ -241,7 +252,7 @@ class DKLModel(ExactGP):
             optimizer, mode='min', factor=0.5, patience=5
         )
         
-        # Loss function
+        # Loss function (marginal log likelihood)
         mll = ExactMarginalLogLikelihood(self.likelihood, self)
         
         # Training history
@@ -257,27 +268,24 @@ class DKLModel(ExactGP):
         if verbose:
             logger.info(f"🔧 Training DKL: {n_epochs} epochs, lr={lr:.4f}")
         
+        # Standard DKL training loop (official GPyTorch pattern)
         for epoch in range(n_epochs):
+            self.train()
+            self.likelihood.train()
             optimizer.zero_grad()
             
-            # Extract features (with gradients for NN training)
-            train_z = self.feature_extractor(self.train_x_original)
-            
-            # Update GP training data with new features
-            self.set_train_data(train_z, self.train_y_original, strict=False)
-            
-            # Forward pass through GP (not full model, just GP on features)
-            mean_z = self.mean_module(train_z)
-            covar_z = self.covar_module(train_z)
-            output = MultivariateNormal(mean_z, covar_z)
-            
-            # Compute loss (negative log marginal likelihood)
-            loss = -mll(output, self.train_y_original)
+            # Forward pass: Extracts features inside forward()
+            # GPyTorch will condition on stored training data automatically
+            with gpytorch.settings.cholesky_jitter(1e-5):
+                output = self(self.train_x_original)  # Raw X → features → GP
+                
+                # Compute loss
+                loss = -mll(output, self.train_y_original)
             
             # Backward pass
             loss.backward()
             
-            # Gradient clipping (prevent instability)
+            # Gradient clipping for stability
             torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
             
             optimizer.step()
@@ -297,9 +305,16 @@ class DKLModel(ExactGP):
             # Learning rate scheduling
             scheduler.step(loss_value)
             
-            # Verbose logging
+            # Diagnostics (check if NN is learning)
             if verbose and (epoch % 10 == 0 or epoch == n_epochs - 1):
-                logger.info(f"   Epoch {epoch:3d}/{n_epochs}: Loss = {loss_value:.4f} (best: {history['best_loss']:.4f} @ epoch {history['best_epoch']})")
+                with torch.no_grad():
+                    z = self.feature_extractor(self.train_x_original)
+                    ls = self.covar_module.base_kernel.lengthscale.detach().cpu().flatten().mean()
+                    noise = self.likelihood.noise.detach().cpu().item()
+                logger.info(
+                    f"   Epoch {epoch:3d}/{n_epochs}: loss={loss_value:.4f} "
+                    f"| z.std={z.std().item():.4f} | ls~{ls:.4f} | noise~{noise:.6f}"
+                )
             
             # Early stopping
             if patience_counter >= patience:
@@ -340,13 +355,9 @@ class DKLModel(ExactGP):
         self.likelihood.eval()
         
         with torch.no_grad(), gpytorch.settings.fast_computations(covar_root_decomposition=True):
-            # Extract features (NN forward pass)
-            test_z = self.feature_extractor(X_test)
-            
-            # GP forward pass on features
-            mean_z = self.mean_module(test_z)
-            covar_z = self.covar_module(test_z)
-            posterior = MultivariateNormal(mean_z, covar_z)
+            # Proper GP posterior: likelihood(model(X*))
+            # This conditions on training data and computes full predictive distribution
+            posterior = self(X_test)  # Forward extracts features → GP conditions on train
             
             # Predictive distribution (includes likelihood noise)
             predictive = self.likelihood(posterior)
