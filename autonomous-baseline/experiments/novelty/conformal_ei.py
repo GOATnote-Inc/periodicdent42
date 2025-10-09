@@ -249,10 +249,11 @@ def conformal_ei_acquisition(
         std_scaled = posterior.variance.clamp_min(1e-12).sqrt().cpu().numpy().ravel()
     
     # Unscale to target space (K) for conformal intervals
-    mu = y_scaler.inverse_transform(mu_scaled.reshape(-1, 1)).ravel()
+    mu_K = y_scaler.inverse_transform(mu_scaled.reshape(-1, 1)).ravel()
+    std_K = std_scaled * y_scaler.scale_[0]  # Convert std to Kelvin units!
     
-    # Generate locally adaptive intervals
-    lower, upper, half_width = conformal_predictor.intervals(X_candidates_np, mu, std_scaled)
+    # Generate locally adaptive intervals (in Kelvin)
+    lower, upper, half_width = conformal_predictor.intervals(X_candidates_np, mu_K, std_K)
     
     # Credibility (varies with x!)
     cred = conformal_predictor.credibility(half_width)
@@ -345,6 +346,7 @@ def run_active_learning(
             std_test_scaled = posterior_test.variance.clamp_min(1e-12).sqrt().cpu().numpy().ravel()
         
         mu_test = y_scaler.inverse_transform(mu_test_scaled.reshape(-1, 1)).ravel()
+        std_test_K = std_test_scaled * y_scaler.scale_[0]  # Convert std to Kelvin!
         rmse = np.sqrt(mean_squared_error(y_test, mu_test))
         rmse_history.append(rmse)
         
@@ -361,19 +363,20 @@ def run_active_learning(
                 std_calib_scaled = posterior_calib.variance.clamp_min(1e-12).sqrt().cpu().numpy().ravel()
             
             mu_calib = y_scaler.inverse_transform(mu_calib_scaled.reshape(-1, 1)).ravel()
+            std_calib_K = std_calib_scaled * y_scaler.scale_[0]  # Convert std to Kelvin!
             
             # Locally adaptive conformal (alpha=0.1 → 90% coverage)
             conformal = LocallyAdaptiveConformal(alpha=alpha, k=25, use_model_std=True)
-            conformal.calibrate(X_calib_scaled, y_calib, mu_calib, std_calib_scaled)
+            conformal.calibrate(X_calib_scaled, y_calib, mu_calib, std_calib_K)
             
             # Measure coverage@80 and coverage@90 on test set
             conformal_80 = LocallyAdaptiveConformal(alpha=0.2, k=25, use_model_std=True)
-            conformal_80.calibrate(X_calib_scaled, y_calib, mu_calib, std_calib_scaled)
+            conformal_80.calibrate(X_calib_scaled, y_calib, mu_calib, std_calib_K)
             
-            coverage_80 = conformal_80.coverage(X_test_scaled, mu_test, y_test, std_test_scaled, nominal=0.80)
-            coverage_90 = conformal.coverage(X_test_scaled, mu_test, y_test, std_test_scaled, nominal=0.90)
+            coverage_80 = conformal_80.coverage(X_test_scaled, mu_test, y_test, std_test_K, nominal=0.80)
+            coverage_90 = conformal.coverage(X_test_scaled, mu_test, y_test, std_test_K, nominal=0.90)
             
-            _, _, half_width_test = conformal.intervals(X_test_scaled, mu_test, std_test_scaled)
+            _, _, half_width_test = conformal.intervals(X_test_scaled, mu_test, std_test_K)
             pi_width = half_width_test.mean() * 2  # Full width
             
             coverage_80_history.append(coverage_80)
@@ -384,10 +387,13 @@ def run_active_learning(
             coverage_90_history.append(np.nan)
             pi_width_history.append(np.nan)
         
+        # Fix invalid f-string format specs
+        cov80 = coverage_80_history[-1]
+        cov90 = coverage_90_history[-1]
+        cov80_s = f"{cov80:.3f}" if not np.isnan(cov80) else "N/A"
+        cov90_s = f"{cov90:.3f}" if not np.isnan(cov90) else "N/A"
         logger.info(f"   Round {round_idx:2d}: n_labeled={len(X_labeled):4d}, RMSE={rmse:.2f} K, "
-                   f"Cov@80={coverage_80_history[-1]:.3f if not np.isnan(coverage_80_history[-1]) else 'N/A'}, "
-                   f"Cov@90={coverage_90_history[-1]:.3f if not np.isnan(coverage_90_history[-1]) else 'N/A'}, "
-                   f"ECE={ece:.3f}")
+                   f"Cov@80={cov80_s}, Cov@90={cov90_s}, ECE={ece:.3f}")
         
         # Acquisition
         if round_idx < num_rounds - 1 and len(X_unlabeled) > 0:
@@ -438,6 +444,13 @@ def run_active_learning(
 
 def main():
     import argparse
+    import subprocess
+    import hashlib
+    
+    # Set determinism
+    torch.set_default_dtype(torch.float64)
+    torch.use_deterministic_algorithms(True, warn_only=True)
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--seeds', type=int, default=20, help='Number of seeds (≥20 for proper stats)')
     parser.add_argument('--rounds', type=int, default=10, help='AL rounds per seed')
@@ -448,6 +461,7 @@ def main():
     logger.info("CONFORMAL-EI NOVELTY EXPERIMENT (LOCALLY ADAPTIVE)")
     logger.info("="*70)
     logger.info(f"Seeds: {args.seeds}, Rounds: {args.rounds}")
+    logger.info(f"Determinism: torch.float64, use_deterministic_algorithms=True")
     
     # Load data
     logger.info("\n📂 Loading UCI dataset...")
@@ -577,6 +591,45 @@ def main():
         }, f, indent=2)
     
     logger.info(f"\n✅ Results saved to: {args.output / 'conformal_ei_results.json'}")
+    
+    # Generate manifest for reproducibility
+    try:
+        git_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], 
+                                         cwd=Path(__file__).parent.parent.parent,
+                                         text=True).strip()
+    except:
+        git_sha = "unknown"
+    
+    # Dataset hash (simple hash of pool data)
+    data_bytes = X_pool.tobytes() + y_pool.tobytes()
+    dataset_hash = hashlib.sha256(data_bytes).hexdigest()[:16]
+    
+    manifest = {
+        'experiment': 'Conformal-EI Novelty',
+        'timestamp': pd.Timestamp.now().isoformat(),
+        'git_sha': git_sha,
+        'dataset_hash': dataset_hash,
+        'params': {
+            'n_seeds': args.seeds,
+            'seed_start': 42,
+            'n_rounds': args.rounds,
+            'initial_samples': 100,
+            'alpha': 0.1,
+            'k_neighbors': 25,
+            'use_model_std': True,
+            'credibility_weight': 1.0
+        },
+        'split': {
+            'pool_size': len(X_pool),
+            'test_size': len(X_test),
+            'calib_fraction': 0.2
+        }
+    }
+    
+    with open(args.output / "manifest.json", 'w') as f:
+        json.dump(manifest, f, indent=2)
+    
+    logger.info(f"✅ Manifest saved to: {args.output / 'manifest.json'}")
     logger.info("="*70)
     logger.info("✅ CONFORMAL-EI EXPERIMENT COMPLETE")
     logger.info("="*70)
