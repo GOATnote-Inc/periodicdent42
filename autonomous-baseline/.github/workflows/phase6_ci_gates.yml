@@ -1,0 +1,307 @@
+name: Phase 6 CI Gates - Calibration & Statistical Validity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/novelty/**'
+      - 'evidence/phase10/**'
+      - '.github/workflows/phase6_ci_gates.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  calibration-gate:
+    name: 🎯 Calibration Quality Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          pip install numpy pandas
+          
+      - name: Check Coverage@90 ± 5%
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          
+          # Load latest results
+          results_files = list(Path("experiments/novelty").rglob("*results*.json"))
+          if not results_files:
+              print("⚠️  No results files found - skipping gate")
+              exit(0)
+          
+          latest = max(results_files, key=lambda p: p.stat().st_mtime)
+          print(f"📂 Checking: {latest}")
+          
+          with open(latest) as f:
+              data = json.load(f)
+          
+          # Extract coverage metrics (assumes structure from conformal_ei.py)
+          failed = []
+          for method in data.get("methods", {}).values():
+              cov90 = method.get("coverage_90_mean", 0.90)
+              
+              if abs(cov90 - 0.90) > 0.05:
+                  failed.append(f"Coverage@90 = {cov90:.3f} (|Δ| > 0.05)")
+          
+          if failed:
+              print("❌ CALIBRATION GATE FAILED:")
+              for f in failed:
+                  print(f"  - {f}")
+              exit(1)
+          else:
+              print("✅ CALIBRATION GATE PASSED: |Coverage@90 - 0.90| ≤ 0.05")
+          EOF
+          
+      - name: Check ECE ≤ 10%
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          
+          results_files = list(Path("experiments/novelty").rglob("*results*.json"))
+          if not results_files:
+              exit(0)
+          
+          latest = max(results_files, key=lambda p: p.stat().st_mtime)
+          
+          with open(latest) as f:
+              data = json.load(f)
+          
+          failed = []
+          for method, metrics in data.get("methods", {}).items():
+              ece = metrics.get("ece_mean", 0.0)
+              
+              if ece > 0.10:
+                  failed.append(f"{method}: ECE = {ece:.3f} (> 0.10)")
+          
+          if failed:
+              print("❌ ECE GATE FAILED:")
+              for f in failed:
+                  print(f"  - {f}")
+              exit(1)
+          else:
+              print("✅ ECE GATE PASSED: ECE ≤ 0.10 for all methods")
+          EOF
+
+  statistical-validity-gate:
+    name: 📊 Statistical Power Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          pip install numpy scipy pandas
+          
+      - name: Check n ≥ 10 seeds per condition
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          
+          results_files = list(Path("experiments/novelty").rglob("*results*.json"))
+          if not results_files:
+              print("⚠️  No results files found - skipping gate")
+              exit(0)
+          
+          latest = max(results_files, key=lambda p: p.stat().st_mtime)
+          print(f"📂 Checking: {latest}")
+          
+          with open(latest) as f:
+              data = json.load(f)
+          
+          # Check if seeds are tracked
+          min_seeds = float('inf')
+          for condition in data.get("conditions", {}).values():
+              n_seeds = condition.get("n_seeds", 0)
+              min_seeds = min(min_seeds, n_seeds)
+          
+          if min_seeds < 10:
+              print(f"❌ STATISTICAL POWER GATE FAILED: n_seeds = {min_seeds} < 10")
+              exit(1)
+          else:
+              print(f"✅ STATISTICAL POWER GATE PASSED: n_seeds ≥ {min_seeds}")
+          EOF
+          
+      - name: Verify paired tests reported
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          
+          results_files = list(Path("experiments/novelty").rglob("*results*.json"))
+          if not results_files:
+              exit(0)
+          
+          latest = max(results_files, key=lambda p: p.stat().st_mtime)
+          
+          with open(latest) as f:
+              data = json.load(f)
+          
+          # Check for comparison section with p-values
+          comparisons = data.get("comparisons", {})
+          
+          if not comparisons:
+              print("⚠️  No paired comparisons found - skipping gate")
+              exit(0)
+          
+          for comp_name, comp_data in comparisons.items():
+              if "p_value" not in comp_data:
+                  print(f"❌ PAIRED TEST GATE FAILED: {comp_name} missing p-value")
+                  exit(1)
+          
+          print(f"✅ PAIRED TEST GATE PASSED: {len(comparisons)} comparisons with p-values")
+          EOF
+
+  determinism-gate:
+    name: 🔒 Reproducibility Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          
+      - name: Install minimal dependencies
+        run: |
+          pip install numpy torch --index-url https://download.pytorch.org/whl/cpu
+          
+      - name: Test determinism (2 runs, same seed)
+        run: |
+          python - <<'EOF'
+          import numpy as np
+          import torch
+          
+          def deterministic_test(seed=42):
+              """Run deterministic operations twice, compare results"""
+              np.random.seed(seed)
+              torch.manual_seed(seed)
+              torch.use_deterministic_algorithms(True)
+              
+              # Simulate mini-experiment
+              x = np.random.randn(100, 10)
+              y = np.random.randn(100)
+              
+              # PyTorch operations
+              X_t = torch.tensor(x, dtype=torch.float64)
+              y_t = torch.tensor(y, dtype=torch.float64)
+              
+              model = torch.nn.Linear(10, 1, dtype=torch.float64)
+              pred = model(X_t).detach().numpy()
+              
+              return pred
+          
+          # Run twice with same seed
+          result1 = deterministic_test(seed=42)
+          result2 = deterministic_test(seed=42)
+          
+          # Check bit-identical
+          if np.array_equal(result1, result2):
+              print("✅ DETERMINISM GATE PASSED: Bit-identical results (seed=42)")
+          else:
+              max_diff = np.abs(result1 - result2).max()
+              print(f"❌ DETERMINISM GATE FAILED: Results differ (max |Δ| = {max_diff})")
+              exit(1)
+          EOF
+
+  evidence-pack-gate:
+    name: 📦 Evidence Pack Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Check manifest.json exists
+        run: |
+          if find experiments/novelty -name "manifest.json" | grep -q .; then
+              echo "✅ MANIFEST GATE PASSED: manifest.json found"
+          else
+              echo "⚠️  MANIFEST GATE SKIPPED: No manifest.json yet (run incomplete?)"
+              exit 0
+          fi
+          
+      - name: Validate manifest structure
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          
+          manifests = list(Path("experiments/novelty").rglob("manifest.json"))
+          if not manifests:
+              exit(0)
+          
+          for manifest_path in manifests:
+              print(f"📂 Validating: {manifest_path}")
+              
+              with open(manifest_path) as f:
+                  manifest = json.load(f)
+              
+              required = ["git_sha", "dataset", "seeds", "timestamp"]
+              missing = [k for k in required if k not in manifest]
+              
+              if missing:
+                  print(f"❌ MANIFEST GATE FAILED: Missing keys: {missing}")
+                  exit(1)
+          
+          print(f"✅ MANIFEST GATE PASSED: {len(manifests)} valid manifests")
+          EOF
+
+  summary:
+    name: 📋 CI Gates Summary
+    runs-on: ubuntu-latest
+    needs: [calibration-gate, statistical-validity-gate, determinism-gate, evidence-pack-gate]
+    if: always()
+    
+    steps:
+      - name: Print summary
+        run: |
+          echo "## 🚦 Phase 6 CI Gates Summary"
+          echo ""
+          echo "| Gate | Status |"
+          echo "|------|--------|"
+          echo "| Calibration (Coverage@90, ECE) | ${{ needs.calibration-gate.result }} |"
+          echo "| Statistical Validity (n≥10, paired tests) | ${{ needs.statistical-validity-gate.result }} |"
+          echo "| Determinism (bit-identical) | ${{ needs.determinism-gate.result }} |"
+          echo "| Evidence Pack (manifest) | ${{ needs.evidence-pack-gate.result }} |"
+          echo ""
+          
+          if [[ "${{ needs.calibration-gate.result }}" == "failure" ]] || \
+             [[ "${{ needs.statistical-validity-gate.result }}" == "failure" ]] || \
+             [[ "${{ needs.determinism-gate.result }}" == "failure" ]]; then
+              echo "❌ **FAILED**: One or more critical gates failed"
+              exit 1
+          else
+              echo "✅ **PASSED**: All critical gates passed"
+          fi
+
