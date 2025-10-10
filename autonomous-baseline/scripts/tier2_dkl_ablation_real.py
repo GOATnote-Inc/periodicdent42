@@ -33,7 +33,7 @@ from sklearn.decomposition import PCA
 from sklearn.random_projection import GaussianRandomProjection
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
-from scipy import stats
+from scipy import stats as scipy_stats
 from datetime import datetime
 
 # Add paths
@@ -338,7 +338,7 @@ def main():
         method_rmses = [r['final_rmse'] for r in all_results[method]['seed_results']]
         
         # Paired t-test
-        t_stat, p_value = stats.ttest_rel(dkl_rmses, method_rmses)
+        t_stat, p_value = scipy_stats.ttest_rel(dkl_rmses, method_rmses)
         delta_rmse = np.mean(dkl_rmses) - np.mean(method_rmses)
         cohens_d = delta_rmse / np.std(np.array(dkl_rmses) - np.array(method_rmses))
         
