@@ -174,7 +174,10 @@ def train_baseline_model(
     df = pd.DataFrame(rows)
     
     # Create binary target: did any tests fail?
-    df["has_failures"] = (df.get("tests_failed", 0) > 0).astype(int)
+    if "tests_failed" in df.columns:
+        df["has_failures"] = (df["tests_failed"] > 0).astype(int)
+    else:
+        df["has_failures"] = 0
     
     # Select features
     feature_cols = [
