@@ -117,6 +117,53 @@ class AIQuery(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class HTCPrediction(Base):
+    """
+    HTC superconductor prediction record.
+    
+    Stores predictions from the HTC optimization framework including
+    critical temperature, pressure requirements, and stability indicators.
+    """
+    __tablename__ = "htc_predictions"
+    
+    id = Column(String, primary_key=True)  # UUID
+    composition = Column(String, nullable=False, index=True)
+    reduced_formula = Column(String, nullable=False)
+    structure_info = Column(JSON, nullable=True)
+    
+    # Critical temperature
+    tc_predicted = Column(Float, nullable=False)
+    tc_lower_95ci = Column(Float, nullable=False)
+    tc_upper_95ci = Column(Float, nullable=False)
+    tc_uncertainty = Column(Float, nullable=False)
+    
+    # Pressure
+    pressure_required_gpa = Column(Float, nullable=False)
+    pressure_uncertainty_gpa = Column(Float, default=0.0)
+    
+    # Electron-phonon coupling
+    lambda_ep = Column(Float, nullable=False)
+    omega_log = Column(Float, nullable=False)
+    mu_star = Column(Float, default=0.13)
+    xi_parameter = Column(Float, nullable=False, index=True)
+    
+    # Stability
+    phonon_stable = Column(String, default="true")  # Store as string for JSON compatibility
+    thermo_stable = Column(String, default="true")
+    hull_distance_eV = Column(Float, default=0.0)
+    imaginary_modes_count = Column(Integer, default=0)
+    
+    # Metadata
+    prediction_method = Column(String, default="McMillan-Allen-Dynes")
+    confidence_level = Column(String, default="medium")
+    extrapolation_warning = Column(String, default="false")
+    
+    # Tracking
+    experiment_id = Column(String, nullable=True, index=True)  # Link to experiment if part of run
+    created_by = Column(String, default="anonymous")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def get_database_url() -> str:
     """
     Construct database URL based on environment.
@@ -194,6 +241,37 @@ def ai_query_to_dict(query: AIQuery) -> dict:
         "cost_usd": query.cost_usd,
         "created_by": query.created_by,
         "created_at": _isoformat(query.created_at),
+    }
+
+
+def htc_prediction_to_dict(prediction: HTCPrediction) -> dict:
+    """Serialize an HTCPrediction ORM object into a JSON-friendly dictionary."""
+
+    return {
+        "id": prediction.id,
+        "composition": prediction.composition,
+        "reduced_formula": prediction.reduced_formula,
+        "structure_info": prediction.structure_info,
+        "tc_predicted": prediction.tc_predicted,
+        "tc_lower_95ci": prediction.tc_lower_95ci,
+        "tc_upper_95ci": prediction.tc_upper_95ci,
+        "tc_uncertainty": prediction.tc_uncertainty,
+        "pressure_required_gpa": prediction.pressure_required_gpa,
+        "pressure_uncertainty_gpa": prediction.pressure_uncertainty_gpa,
+        "lambda_ep": prediction.lambda_ep,
+        "omega_log": prediction.omega_log,
+        "mu_star": prediction.mu_star,
+        "xi_parameter": prediction.xi_parameter,
+        "phonon_stable": prediction.phonon_stable == "true",
+        "thermo_stable": prediction.thermo_stable == "true",
+        "hull_distance_eV": prediction.hull_distance_eV,
+        "imaginary_modes_count": prediction.imaginary_modes_count,
+        "prediction_method": prediction.prediction_method,
+        "confidence_level": prediction.confidence_level,
+        "extrapolation_warning": prediction.extrapolation_warning == "true",
+        "experiment_id": prediction.experiment_id,
+        "created_by": prediction.created_by,
+        "created_at": _isoformat(prediction.created_at),
     }
 
 
