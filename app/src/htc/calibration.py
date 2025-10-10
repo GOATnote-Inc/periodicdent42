@@ -205,8 +205,8 @@ def predict_tc_for_material(composition: str, predictor: SuperconductorPredictor
         # Use Tier 1 calibrated property estimation
         lambda_ep, omega_log, avg_mass = estimate_material_properties(structure, composition)
         
-        # Predict Tc using Allen-Dynes formula
-        tc_predicted = allen_dynes_tc(lambda_ep, omega_log, mu_star=0.13)
+        # Predict Tc using Allen-Dynes formula (NOTE: omega_log comes FIRST!)
+        tc_predicted = allen_dynes_tc(omega_log, lambda_ep, mu_star=0.13)
         
         runtime_ms = (time.perf_counter() - start_time) * 1000
         
@@ -262,12 +262,12 @@ def monte_carlo_uncertainty(
             theta_d_sample = max(theta_d_sample, 50.0)  # Physical minimum
             
             # Re-predict Tc with sampled Debye temp
-            # For simplicity, we'll just scale lambda proportionally
+            # For simplicity, we'll use sampled theta_d as omega_log
             # (In reality, we'd need to recompute from DFT)
             structure = composition_to_structure(row['composition'])
             if structure:
                 lambda_ep, _, avg_mass = estimate_material_properties(structure, row['composition'])
-                tc_sample = allen_dynes_tc(lambda_ep, theta_d_sample, mu_star=0.13)
+                tc_sample = allen_dynes_tc(theta_d_sample, lambda_ep, mu_star=0.13)  # Fixed order!
                 mc_results[row['material']].append(tc_sample)
     
     # Compute percentiles for each material
