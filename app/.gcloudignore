@@ -79,12 +79,15 @@ temp/
 .AppleDouble
 .LSOverride
 
-# Model files (too large)
-models/
+# Model weight files (too large) - but NOT src/models Python package!
 checkpoints/
 *.pth
 *.pt
 *.onnx
+*.h5
+*.hdf5
+*.ckpt
+*.safetensors
 
 # Large validation outputs
 validation_*.json
