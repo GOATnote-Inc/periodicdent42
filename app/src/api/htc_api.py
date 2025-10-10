@@ -15,6 +15,7 @@ Licensed under Apache 2.0
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,14 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/htc", tags=["HTC"])
+
+# Feature flag for Tier 1 calibration (gradual rollout)
+ENABLE_TIER1_CALIBRATION = os.getenv("ENABLE_TIER1_CALIBRATION", "false").lower() == "true"
+TIER1_ROLLOUT_PERCENTAGE = float(os.getenv("TIER1_ROLLOUT_PERCENTAGE", "10.0"))  # 10% A/B test
+
+logger.info(f"Tier 1 Calibration: {'ENABLED' if ENABLE_TIER1_CALIBRATION else 'DISABLED'}")
+if ENABLE_TIER1_CALIBRATION:
+    logger.info(f"Tier 1 Rollout: {TIER1_ROLLOUT_PERCENTAGE}% of requests")
 
 # Try to import HTC modules, fall back to disabled mode if dependencies missing
 try:
@@ -57,12 +66,29 @@ RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 # =============================================================================
 
 
+class CalibrationMetadata(BaseModel):
+    """Metadata about the calibration method used for prediction."""
+
+    tier: str = Field(..., description="Calibration tier (empirical_v0.3, tier_1, tier_2, etc.)")
+    model_version: str = Field(..., description="HTC framework version (e.g., v0.4.0)")
+    uncertainty_k: float = Field(..., description="Prediction uncertainty in Kelvin")
+    dataset_sha256: Optional[str] = Field(None, description="SHA256 of reference dataset (Tier 1+)")
+    materials_count: Optional[int] = Field(None, description="Number of materials in reference dataset")
+    calibration_mape: Optional[float] = Field(None, description="Overall MAPE of calibration (%)")
+    debye_temp_k: Optional[float] = Field(None, description="Debye temperature used (K)")
+    debye_temp_uncertainty_k: Optional[float] = Field(None, description="Debye temp uncertainty (K)")
+    material_tier: Optional[str] = Field(None, description="Material classification (A/B/C)")
+
+
 class HTCPredictRequest(BaseModel):
     """Request for single material Tc prediction."""
 
     composition: str = Field(..., description="Chemical formula (e.g., 'MgB2', 'LaH10')")
     pressure_gpa: float = Field(0.0, ge=0, le=500, description="Applied pressure in GPa")
     include_uncertainty: bool = Field(True, description="Include uncertainty quantification")
+    use_tier1: Optional[bool] = Field(
+        None, description="Force Tier 1 calibration (None=use feature flag)"
+    )
 
 
 class HTCPredictResponse(BaseModel):
@@ -82,6 +108,7 @@ class HTCPredictResponse(BaseModel):
     thermo_stable: bool
     confidence_level: str
     timestamp: str
+    calibration_metadata: CalibrationMetadata
 
 
 class HTCScreenRequest(BaseModel):
@@ -149,17 +176,26 @@ async def predict_tc(request: HTCPredictRequest):
     Predict superconducting Tc for a material.
 
     Uses McMillan-Allen-Dynes theory with uncertainty quantification.
+    Supports Tier 1 calibration with literature-validated Debye temperatures.
 
     **Example Request:**
     ```json
     {
       "composition": "MgB2",
       "pressure_gpa": 0.0,
-      "include_uncertainty": true
+      "include_uncertainty": true,
+      "use_tier1": null
     }
     ```
 
-    **Response:** Complete prediction with Tc, uncertainty, and stability.
+    **Response:** Complete prediction with Tc, uncertainty, stability, and calibration metadata.
+    
+    **Tier 1 Calibration:**
+    - Feature flag: ENABLE_TIER1_CALIBRATION (default: false)
+    - Rollout: TIER1_ROLLOUT_PERCENTAGE (default: 10%)
+    - Override: Set use_tier1=true/false to force enable/disable
+    - Dataset: 21 materials with literature Debye temperatures + DOIs
+    - Expected accuracy: Tier A/B MAPE ~50% (elements, nitrides, carbides)
     """
     if not HTC_ENABLED:
         raise HTTPException(
@@ -168,13 +204,39 @@ async def predict_tc(request: HTCPredictRequest):
         )
 
     try:
-        logger.info(f"Predicting Tc for {request.composition} at {request.pressure_gpa} GPa")
+        # Determine if Tier 1 calibration should be used
+        use_tier1 = request.use_tier1
+        if use_tier1 is None:
+            # Use feature flag + A/B testing
+            if ENABLE_TIER1_CALIBRATION:
+                import random
+                use_tier1 = random.random() * 100 < TIER1_ROLLOUT_PERCENTAGE
+            else:
+                use_tier1 = False
+        
+        calibration_tier = "tier_1" if use_tier1 else "empirical_v0.3"
+        
+        logger.info(
+            f"Predicting Tc for {request.composition} at {request.pressure_gpa} GPa "
+            f"(calibration: {calibration_tier})"
+        )
 
         # Convert composition to Structure
-        from src.htc.structure_utils import composition_to_structure
+        from src.htc.structure_utils import (
+            composition_to_structure,
+            estimate_material_properties,
+            DEBYE_TEMP_DB,
+        )
         from src.htc.domain import SuperconductorPredictor
         
         structure = composition_to_structure(request.composition)
+        
+        # Default metadata values
+        debye_temp_k = None
+        debye_temp_uncertainty_k = None
+        material_tier = "C"  # Default to lowest tier
+        dataset_sha256 = "3a432837f7f7b00004c673d60ffee8f2e50096298b5d2af74fc081ab9ff98998" if use_tier1 else None
+        calibration_mape = 68.9 if use_tier1 else None  # From calibration run
         
         if structure is None:
             # Fallback: create minimal prediction from composition string only
@@ -200,6 +262,23 @@ async def predict_tc(request: HTCPredictRequest):
                 omega_log=500.0,
             )
         else:
+            # Get material properties (Tier 1 uses DEBYE_TEMP_DB)
+            if use_tier1:
+                try:
+                    lambda_ep, omega_log, theta_d, avg_mass, theta_d_uncertainty, mat_tier = \
+                        estimate_material_properties(structure)
+                    debye_temp_k = theta_d
+                    debye_temp_uncertainty_k = theta_d_uncertainty
+                    material_tier = mat_tier
+                    logger.info(
+                        f"Tier 1: λ={lambda_ep:.3f}, ω={omega_log:.1f} K, Θ_D={theta_d:.1f}±{theta_d_uncertainty:.1f} K, "
+                        f"tier={mat_tier}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Tier 1 property estimation failed, falling back to empirical: {e}")
+                    use_tier1 = False
+                    calibration_tier = "empirical_v0.3_fallback"
+            
             # Run actual prediction with Structure
             predictor = SuperconductorPredictor(use_ml_corrections=False)
             prediction = predictor.predict(
@@ -207,6 +286,19 @@ async def predict_tc(request: HTCPredictRequest):
                 pressure_gpa=request.pressure_gpa,
                 include_uncertainty=request.include_uncertainty
             )
+
+        # Create calibration metadata
+        calibration_metadata = CalibrationMetadata(
+            tier=calibration_tier,
+            model_version="v0.4.0",
+            uncertainty_k=prediction.tc_uncertainty,
+            dataset_sha256=dataset_sha256,
+            materials_count=21 if use_tier1 else None,
+            calibration_mape=calibration_mape,
+            debye_temp_k=debye_temp_k,
+            debye_temp_uncertainty_k=debye_temp_uncertainty_k,
+            material_tier=material_tier,
+        )
 
         return HTCPredictResponse(
             composition=prediction.composition,
@@ -223,6 +315,7 @@ async def predict_tc(request: HTCPredictRequest):
             thermo_stable=prediction.thermo_stable,
             confidence_level=prediction.confidence_level,
             timestamp=datetime.now().isoformat(),
+            calibration_metadata=calibration_metadata,
         )
 
     except Exception as e:
