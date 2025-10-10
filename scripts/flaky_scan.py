@@ -13,7 +13,7 @@ import pathlib
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from _config import get_config
