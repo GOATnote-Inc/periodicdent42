@@ -28,6 +28,7 @@ from src.utils.metrics import time_operation, increment_cancellation
 from src.services.storage import get_storage
 from src.services import db
 from src.api.bete_net import router as bete_router
+from src.api.htc_api import router as htc_router
 
 # Configure logging first
 logging.basicConfig(
@@ -55,6 +56,9 @@ app = FastAPI(
 
 # Include BETE-NET router
 app.include_router(bete_router)
+
+# Include HTC router
+app.include_router(htc_router)
 
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
 print(f"🔍 STATIC_DIR resolved to: {STATIC_DIR}", flush=True)

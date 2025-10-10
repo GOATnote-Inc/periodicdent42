@@ -116,7 +116,49 @@ Controlled active learning benchmark on UCI superconductor dataset:
 
 **Expected**: 4-6x reduction (honest assessment, not hype)
 
-### 4. **Explainable AI** (Physics-Based Reasoning)
+### 4. **HTC Superconductor Optimization** (NEW - Oct 2025)
+
+End-to-end superconductor discovery pipeline with multi-objective optimization:
+
+```python
+from app.src.htc.domain import predict_tc_with_uncertainty
+from app.src.htc.runner import IntegratedExperimentRunner
+
+# Predict Tc with uncertainty quantification
+prediction = predict_tc_with_uncertainty(structure, pressure_gpa=0.0)
+print(f"Tc = {prediction.tc_predicted:.1f} K ± {prediction.tc_uncertainty:.1f} K")
+
+# Multi-objective optimization: maximize Tc, minimize pressure
+runner = IntegratedExperimentRunner()
+results = runner.run_experiment("HTC_optimization", 
+                                 max_pressure_gpa=1.0, 
+                                 min_tc_kelvin=77.0)
+print(f"Pareto-optimal materials: {len(results['pareto_front'])}")
+```
+
+**REST API Endpoints**:
+```bash
+# Predict Tc
+curl -X POST http://localhost:8080/api/htc/predict \
+  -H "Content-Type: application/json" \
+  -d '{"composition": "MgB2", "pressure_gpa": 0.0}'
+
+# Screen materials
+curl -X POST http://localhost:8080/api/htc/screen \
+  -d '{"max_pressure_gpa": 1.0, "min_tc_kelvin": 77.0}'
+```
+
+**Capabilities**:
+- ✅ McMillan-Allen-Dynes Tc prediction with uncertainty
+- ✅ Multi-objective optimization (Pareto fronts)
+- ✅ Constraint validation (ξ ≤ 4.0 stability bounds)
+- ✅ Materials screening against targets
+- ✅ Validation against known superconductors (MgB2, LaH10, H3S)
+- ✅ Git provenance tracking and checksums
+
+**Documentation**: See [docs/HTC_INTEGRATION.md](docs/HTC_INTEGRATION.md)
+
+### 5. **Explainable AI** (Physics-Based Reasoning)
 
 Don't just predict - explain WHY:
 
