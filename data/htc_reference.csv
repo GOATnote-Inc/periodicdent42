@@ -1,0 +1,23 @@
+material,composition,tc_exp_k,tc_uncertainty_k,debye_temp_k,debye_uncertainty_k,tier,lambda_lit,omega_lit_k,material_class,doi_tc,doi_debye,notes
+Nb,Nb,9.25,0.02,275,10,A,0.82,276,element,10.1103/PhysRevB.12.905,10.1103/PhysRev.111.707,Allen-Dynes benchmark
+Pb,Pb,7.20,0.02,105,5,A,0.41,108,element,10.1103/PhysRevB.12.905,10.1103/PhysRev.111.707,Classic BCS superconductor
+V,V,5.40,0.05,390,15,A,0.60,398,element,10.1103/PhysRevB.12.905,10.1103/PhysRev.111.707,Transition metal
+Nb3Sn,Nb3Sn,18.05,0.10,277,12,A,1.55,275,A15,10.1103/PhysRevLett.25.1270,10.1016/0378-4363(81)90584-9,High-performance A15
+Nb3Ge,Nb3Ge,23.20,0.15,280,12,A,1.70,278,A15,10.1103/PhysRevLett.33.168,10.1016/0378-4363(81)90584-9,Highest Tc A15 (1973)
+V3Si,V3Si,17.10,0.10,410,20,A,1.48,405,A15,10.1103/PhysRevB.12.905,10.1016/0378-4363(81)90584-9,V-based A15
+MgB2,MgB2,39.00,0.20,900,50,A,0.87,650,diboride,10.1038/35065039,10.1103/PhysRevB.64.020501,Two-band sigma+pi
+NbN,NbN,16.00,0.15,470,25,B,1.05,465,nitride,10.1103/PhysRevB.12.905,10.1016/S0921-4526(99)00483-0,Rocksalt structure
+NbC,NbC,11.10,0.10,545,30,B,0.92,540,carbide,10.1103/PhysRevB.12.905,10.1016/S0921-4526(99)00483-0,Group IV carbide
+VN,VN,8.20,0.15,590,35,B,0.72,585,nitride,10.1103/PhysRevB.12.905,10.1016/S0921-4526(99)00483-0,Hard material
+TaC,TaC,10.35,0.10,450,25,B,0.88,445,carbide,10.1103/PhysRevB.12.905,10.1016/S0921-4526(99)00483-0,Refractory carbide
+MoN,MoN,12.00,0.20,450,30,B,0.96,445,nitride,10.1103/PhysRevB.82.024502,10.1016/S0921-4526(99)00483-0,Cubic delta phase
+NbTi,NbTi0.5,9.50,0.10,320,15,B,0.78,318,alloy,10.1103/PhysRevB.12.905,10.1103/PhysRevB.12.905,Commercial wire alloy
+YBa2Cu3O7,YBa2Cu3O7,92.00,1.00,450,30,C,2.50,400,cuprate,10.1103/PhysRevLett.58.908,10.1103/PhysRevB.36.226,High-Tc cuprate (d-wave)
+La1.85Sr0.15CuO4,La1.85Sr0.15CuO4,38.00,1.00,380,25,C,1.80,350,cuprate,10.1103/PhysRevLett.58.908,10.1103/PhysRevB.37.3745,First cuprate superconductor
+Bi2Sr2CaCu2O8,Bi2Sr2CaCu2O8,85.00,2.00,420,35,C,2.30,390,cuprate,10.1103/PhysRevLett.61.1662,10.1103/PhysRevB.38.11952,BSCCO family
+LaH10,LaH10,250.00,10.00,1100,80,C,2.90,1050,hydride,10.1038/s41586-019-1201-8,10.1103/PhysRevB.99.220502,High-pressure hydride 170 GPa
+H3S,H3S,203.00,5.00,1400,100,C,2.60,1350,hydride,10.1038/nature14964,10.1103/PhysRevLett.114.157004,High-pressure hydride 155 GPa
+CaH6,CaH6,215.00,8.00,1250,90,C,2.75,1200,hydride,10.1103/PhysRevLett.122.027001,10.1103/PhysRevLett.122.027001,High-pressure hydride 172 GPa
+YH9,YH9,243.00,12.00,1180,85,C,2.85,1130,hydride,10.1103/PhysRevLett.122.063001,10.1103/PhysRevLett.122.063001,High-pressure hydride 201 GPa
+Hg1223,HgBa2Ca2Cu3O8,133.00,2.00,480,40,C,2.60,450,cuprate,10.1038/363056a0,10.1103/PhysRevB.50.3312,Record Tc cuprate (ambient pressure)
+

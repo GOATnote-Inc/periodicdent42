@@ -35,6 +35,7 @@ htc = [
     "statsmodels==0.14.0",    # Statistical modeling
     "pandas==2.1.4",          # Data manipulation (shared with dev)
     "gitpython==3.1.40",      # Git provenance tracking
+    "typer==0.9.0",           # Calibration CLI tool (Tier 1)
 ]
 # Development and testing
 dev = [
