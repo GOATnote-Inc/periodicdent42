@@ -534,7 +534,14 @@ def validate_results(metrics: Dict, baseline_rmse: float = 50.0) -> Tuple[bool, 
     if metrics['outliers']['fraction'] > THRESHOLDS['outlier_fraction_max']:
         failures.append(f"Outlier fraction {metrics['outliers']['fraction']:.1%} > {THRESHOLDS['outlier_fraction_max']:.0%}")
     
-    # 7-11 checked separately (Tc < 200 K for BCS, LOOCV, coverage, determinism, runtime)
+    # 7. Physics constraints (v0.4.4): Tc ≤ 200 K for BCS materials
+    if 'per_material' in metrics:
+        high_tc_materials = [m['material'] for m in metrics['per_material'] if m['tc_pred'] > 200.0]
+        if high_tc_materials:
+            failures.append(f"Tc > 200 K (BCS limit) for: {', '.join(high_tc_materials)}")
+    
+    # 8-11 checked separately (LOOCV, coverage, determinism, runtime)
+    # Note: λ ≤ 3.5 enforced via clipping in structure_utils.py
     
     all_passed = len(failures) == 0
     
