@@ -1,0 +1,15 @@
+{
+  "version": "v0.4.2",
+  "A15_factor": 2.1,
+  "timestamp": "2025-10-10T19:36:37.125780Z",
+  "git_sha": "161bf7e",
+  "dataset_sha256": "3a432837",
+  "metrics": {
+    "TierA_MAPE": 71.28894789048131,
+    "TierB_MAPE": 38.27217881179955,
+    "TierC_MAPE": 87.42410031655947,
+    "overall_all_MAPE": 68.0023100303163,
+    "overall_ab_MAPE": null
+  },
+  "runtime_s": 9.941931542009115
+}

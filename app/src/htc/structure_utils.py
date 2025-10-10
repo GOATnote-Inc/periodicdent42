@@ -109,10 +109,10 @@ DEBYE_TEMP_DB = {
 
 # Lambda Correction Factors by Material Class
 # Empirical multipliers calibrated against experimental Tc data
-# v0.4.2: Corrected A15 direction (underpredicting → need MORE λ, not less)
+# v0.4.3: Optimal A15 from systematic sweep (2.1→2.8, step=0.1, minimum at 2.4)
 LAMBDA_CORRECTIONS = {
     "element": 1.2,        # Pure transition metals (Nb, Pb, V) - VALIDATED (Nb: +10.9% error)
-    "A15": 2.1,            # A15 structure (Nb3Sn, Nb3Ge, V3Si) - INCREASED (was 1.8, underpredicting)
+    "A15": 2.4,            # A15 structure (Nb3Sn, Nb3Ge, V3Si) - OPTIMIZED via grid search
     "MgB2": 1.3,           # MgB2-like diborides (σ+π multi-band) - KEEP (needs multi-band model)
     "diboride": 1.3,       # Alias for MgB2
     "nitride": 1.4,        # Transition metal nitrides (NbN, VN) - VALIDATED (Tier B: 38.3% MAPE)
