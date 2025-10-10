@@ -29,12 +29,12 @@ router = APIRouter(prefix="/api/htc", tags=["HTC"])
 
 # Try to import HTC modules, fall back to disabled mode if dependencies missing
 try:
-    from app.src.htc.domain import (
+    from src.htc.domain import (
         SuperconductorPrediction,
         SuperconductorPredictor,
         load_benchmark_materials,
     )
-    from app.src.htc.runner import IntegratedExperimentRunner
+    from src.htc.runner import IntegratedExperimentRunner
 
     HTC_ENABLED = True
     IMPORT_ERROR = None

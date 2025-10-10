@@ -1,0 +1,111 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Cloud SQL Proxy
+cloud-sql-proxy
+cloud-sql-proxy.log
+
+# Git
+.git/
+.gitignore
+
+# Documentation (build from source, don't upload)
+docs/_build/
+
+# Large data files
+*.pkl
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.parquet
+
+# Alembic (don't need in Docker)
+alembic.ini
+
+# Test data
+test_data/
+test_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Model files (too large)
+models/
+checkpoints/
+*.pth
+*.pt
+*.onnx
+
+# Large validation outputs
+validation_*.json
+validation_*.png
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Coverage reports
+.coverage.*
+coverage.xml
+*.cover
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# pytype
+.pytype/
+
