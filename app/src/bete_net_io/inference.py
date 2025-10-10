@@ -253,7 +253,7 @@ def predict_tc(
     except (FileNotFoundError, ImportError) as e:
         # Fall back to mock models
         logger.warning(f"⚠️  Falling back to MOCK models: {e}")
-        from app.src.bete_net_io.mock_models import mock_predict_tc
+        from src.bete_net_io.mock_models import mock_predict_tc
         return mock_predict_tc(structure, mu_star=mu_star, seed=seed)
     
     # If we get here, we used real models successfully

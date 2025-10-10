@@ -22,7 +22,7 @@ from typing import List, Optional
 import pandas as pd
 from tqdm import tqdm
 
-from app.src.bete_net_io.inference import predict_tc
+from src.bete_net_io.inference import predict_tc
 
 logger = logging.getLogger(__name__)
 

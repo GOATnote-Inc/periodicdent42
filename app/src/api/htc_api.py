@@ -173,7 +173,7 @@ async def predict_tc(request: HTCPredictRequest):
         # For now, create a simple prediction
         # In production, this would parse the composition and create a proper Structure
         # For demonstration, return a mock prediction
-        from app.src.htc.domain import SuperconductorPrediction
+        from src.htc.domain import SuperconductorPrediction
 
         # This is a placeholder - in production you'd need to:
         # 1. Parse composition string

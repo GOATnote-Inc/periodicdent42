@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from app.src.htc.domain import (
+from src.htc.domain import (
     SuperconductorPrediction,
     XiConstraintValidator,
     allen_dynes_tc,
@@ -125,7 +125,7 @@ class HTCValidationSuite:
             logger.warning("No benchmark materials available")
             return
 
-        from app.src.htc.domain import predict_tc_with_uncertainty
+        from src.htc.domain import predict_tc_with_uncertainty
 
         # Make predictions
         predictions = []

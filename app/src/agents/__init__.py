@@ -14,14 +14,14 @@ Copyright 2025 GOATnote Autonomous Research Lab Initiative
 Licensed under Proprietary License
 """
 
-from app.src.agents.governor import GovernorAgent
-from app.src.agents.proposer import ProposerAgent
-from app.src.agents.filter import FilterAgent
-from app.src.agents.refiner import RefinerAgent
-from app.src.agents.verifier import VerifierAgent
-from app.src.agents.ranker import RankerAgent
-from app.src.agents.curator import CuratorAgent
-from app.src.agents.orchestrator import DiscoveryOrchestrator
+from src.agents.governor import GovernorAgent
+from src.agents.proposer import ProposerAgent
+from src.agents.filter import FilterAgent
+from src.agents.refiner import RefinerAgent
+from src.agents.verifier import VerifierAgent
+from src.agents.ranker import RankerAgent
+from src.agents.curator import CuratorAgent
+from src.agents.orchestrator import DiscoveryOrchestrator
 
 __all__ = [
     "GovernorAgent",

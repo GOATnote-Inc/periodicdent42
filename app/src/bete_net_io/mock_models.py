@@ -146,7 +146,7 @@ def mock_predict_tc(structure, mu_star: float = 0.10, seed: int = 42):
     }
     input_hash = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
     
-    from app.src.bete_net_io.inference import BETEPrediction
+    from src.bete_net_io.inference import BETEPrediction
     
     return BETEPrediction(
         formula=formula,

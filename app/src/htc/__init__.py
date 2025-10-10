@@ -17,7 +17,7 @@ __version__ = "1.0.0"
 
 # Core imports will be added as modules are created
 try:
-    from app.src.htc.domain import (
+    from src.htc.domain import (
         SuperconductorPredictor,
         SuperconductorPrediction,
         predict_tc_with_uncertainty,

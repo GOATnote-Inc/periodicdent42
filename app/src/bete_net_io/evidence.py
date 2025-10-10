@@ -22,7 +22,7 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
-from app.src.bete_net_io.inference import BETEPrediction
+from src.bete_net_io.inference import BETEPrediction
 
 logger = logging.getLogger(__name__)
 

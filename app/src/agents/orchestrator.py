@@ -53,13 +53,13 @@ class DiscoveryOrchestrator:
     
     def __init__(self):
         """Initialize orchestrator with all agents."""
-        from app.src.agents.governor import GovernorAgent
-        from app.src.agents.proposer import ProposerAgent
-        from app.src.agents.filter import FilterAgent
-        from app.src.agents.refiner import RefinerAgent
-        from app.src.agents.verifier import VerifierAgent
-        from app.src.agents.ranker import RankerAgent
-        from app.src.agents.curator import CuratorAgent
+        from src.agents.governor import GovernorAgent
+        from src.agents.proposer import ProposerAgent
+        from src.agents.filter import FilterAgent
+        from src.agents.refiner import RefinerAgent
+        from src.agents.verifier import VerifierAgent
+        from src.agents.ranker import RankerAgent
+        from src.agents.curator import CuratorAgent
         
         self.agents = {
             "governor": GovernorAgent(),
