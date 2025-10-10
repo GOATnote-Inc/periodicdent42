@@ -387,33 +387,32 @@ class SuperconductorPredictor:
             # Default values for unknown structure
             return 0.5, 500.0
 
-        composition = structure.composition
-
-        # Count hydrogen content (hydrides typically have high λ)
+        # Use structure utils for better estimates
         try:
+            from src.htc.structure_utils import estimate_material_properties
+            lambda_ep, omega_log, avg_mass = estimate_material_properties(structure)
+        except Exception as e:
+            logger.warning(f"Failed to use structure_utils: {e}, using fallback")
+            # Fallback to simple estimation
+            composition = structure.composition
+            avg_mass = composition.weight / composition.num_atoms
+            
+            # Estimate based on mass
+            omega_log = 800.0 / np.sqrt(avg_mass / 10.0)
+            lambda_ep = 0.3 + 0.2 * np.exp(-avg_mass / 50.0)
+        
+        # Pressure adjustments
+        if pressure_gpa > 0:
+            # Higher pressure → stiffer lattice → higher frequencies
+            omega_log *= (1.0 + 0.01 * pressure_gpa)
+            # Higher pressure → increased λ (especially for hydrides)
+            composition = structure.composition
             h_fraction = (
                 composition.get_atomic_fraction(Element("H"))
-                if Element("H") in composition
-                else 0.0
+                if Element("H") in composition else 0.0
             )
-        except Exception:
-            h_fraction = 0.0
-
-        # Estimate λ (higher for hydrides, pressure-dependent)
-        lambda_base = 0.3 + 1.5 * h_fraction
-        lambda_pressure_boost = 0.02 * pressure_gpa * h_fraction
-        lambda_ep = lambda_base + lambda_pressure_boost
-
-        # Estimate ω_log (higher for light elements, pressure-dependent)
-        try:
-            avg_mass = composition.average_electroneg  # Proxy for mass
-        except Exception:
-            avg_mass = 10.0
-
-        omega_base = 800.0 / np.sqrt(avg_mass + 1.0)
-        omega_pressure_boost = 5.0 * pressure_gpa
-        omega_log = omega_base + omega_pressure_boost
-
+            lambda_ep += 0.02 * pressure_gpa * h_fraction
+        
         return float(lambda_ep), float(omega_log)
 
     def _apply_ml_correction(self, structure: Any, pressure_gpa: float) -> float:

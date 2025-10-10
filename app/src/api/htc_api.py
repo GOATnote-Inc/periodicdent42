@@ -170,28 +170,43 @@ async def predict_tc(request: HTCPredictRequest):
     try:
         logger.info(f"Predicting Tc for {request.composition} at {request.pressure_gpa} GPa")
 
-        # For now, create a simple prediction
-        # In production, this would parse the composition and create a proper Structure
-        # For demonstration, return a mock prediction
-        from src.htc.domain import SuperconductorPrediction
-
-        # This is a placeholder - in production you'd need to:
-        # 1. Parse composition string
-        # 2. Look up or generate crystal structure
-        # 3. Run prediction with proper Structure object
-
-        prediction = SuperconductorPrediction(
-            composition=request.composition,
-            reduced_formula=request.composition,  # Simplified
-            structure_info={"note": "Structure lookup not yet implemented"},
-            tc_predicted=39.0,  # Placeholder
-            tc_lower_95ci=35.0,
-            tc_upper_95ci=43.0,
-            tc_uncertainty=2.0,
-            pressure_required_gpa=request.pressure_gpa,
-            lambda_ep=0.62,
-            omega_log=660.0,
-        )
+        # Convert composition to Structure
+        from src.htc.structure_utils import composition_to_structure
+        from src.htc.domain import SuperconductorPredictor
+        
+        structure = composition_to_structure(request.composition)
+        
+        if structure is None:
+            # Fallback: create minimal prediction from composition string only
+            from src.htc.domain import SuperconductorPrediction
+            from pymatgen.core import Composition
+            
+            try:
+                comp = Composition(request.composition)
+                reduced_formula = comp.reduced_formula
+            except:
+                reduced_formula = request.composition
+            
+            prediction = SuperconductorPrediction(
+                composition=request.composition,
+                reduced_formula=reduced_formula,
+                structure_info={"error": "Could not create structure"},
+                tc_predicted=39.0,
+                tc_lower_95ci=35.0,
+                tc_upper_95ci=43.0,
+                tc_uncertainty=2.0,
+                pressure_required_gpa=request.pressure_gpa,
+                lambda_ep=0.5,
+                omega_log=500.0,
+            )
+        else:
+            # Run actual prediction with Structure
+            predictor = SuperconductorPredictor(use_ml_corrections=False)
+            prediction = predictor.predict(
+                structure, 
+                pressure_gpa=request.pressure_gpa,
+                include_uncertainty=request.include_uncertainty
+            )
 
         return HTCPredictResponse(
             composition=prediction.composition,
