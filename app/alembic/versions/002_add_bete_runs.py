@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 # revision identifiers, used by Alembic.
 revision = '002_bete_runs'
-down_revision = '001_add_test_telemetry'
+down_revision = '001_test_telemetry'
 branch_labels = None
 depends_on = None
 
@@ -41,9 +41,9 @@ def upgrade() -> None:
     )
 
     # Create indexes for common queries
-    op.create_index('idx_bete_tc_desc', 'bete_runs', ['tc_kelvin'], postgresql_using='btree', postgresql_order_by='desc')
-    op.create_index('idx_bete_created', 'bete_runs', ['created_at'], postgresql_using='btree', postgresql_order_by='desc')
-    op.create_index('idx_bete_formula', 'bete_runs', ['structure_formula'], postgresql_using='btree')
+    op.execute('CREATE INDEX idx_bete_tc_desc ON bete_runs (tc_kelvin DESC)')
+    op.execute('CREATE INDEX idx_bete_created ON bete_runs (created_at DESC)')
+    op.create_index('idx_bete_formula', 'bete_runs', ['structure_formula'])
 
     # Create materialized view for top superconductors
     op.execute("""
