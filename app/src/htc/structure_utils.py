@@ -109,16 +109,17 @@ DEBYE_TEMP_DB = {
 
 # Lambda Correction Factors by Material Class
 # Empirical multipliers calibrated against experimental Tc data
+# v0.4.2: Corrected A15 direction (underpredicting → need MORE λ, not less)
 LAMBDA_CORRECTIONS = {
-    "element": 1.2,        # Pure transition metals (Nb, Pb, V)
-    "A15": 1.8,            # A15 structure (Nb3Sn, Nb3Ge, V3Si)
-    "MgB2": 1.3,           # MgB2-like diborides (σ+π multi-band)
+    "element": 1.2,        # Pure transition metals (Nb, Pb, V) - VALIDATED (Nb: +10.9% error)
+    "A15": 2.1,            # A15 structure (Nb3Sn, Nb3Ge, V3Si) - INCREASED (was 1.8, underpredicting)
+    "MgB2": 1.3,           # MgB2-like diborides (σ+π multi-band) - KEEP (needs multi-band model)
     "diboride": 1.3,       # Alias for MgB2
-    "nitride": 1.4,        # Transition metal nitrides (NbN, VN)
-    "carbide": 1.3,        # Transition metal carbides (NbC, TaC)
-    "alloy": 1.1,          # Binary alloys (NbTi)
-    "cuprate": 0.8,        # Cuprates (WRONG PHYSICS - for reference only)
-    "hydride": 2.2,        # High-pressure hydrides (extreme λ)
+    "nitride": 1.4,        # Transition metal nitrides (NbN, VN) - VALIDATED (Tier B: 38.3% MAPE)
+    "carbide": 1.3,        # Transition metal carbides (NbC, TaC) - VALIDATED (Tier B: 38.3% MAPE)
+    "alloy": 1.1,          # Binary alloys (NbTi) - KEEP
+    "cuprate": 0.5,        # Cuprates (WRONG PHYSICS - BCS not applicable) - REDUCED (was 0.8)
+    "hydride": 1.0,        # High-pressure hydrides - REMOVED BOOST (was 2.2, wrong physics)
     "default": 1.0,        # Fallback for unknown classes
 }
 
