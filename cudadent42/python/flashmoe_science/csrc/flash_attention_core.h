@@ -18,32 +18,81 @@ struct MathOps {
     __device__ __forceinline__ static T from_float(float x);
 };
 
-// Template kernel (no dtype assumptions)
+// FlashAttention kernel: Online softmax algorithm
+// Reference: FlashAttention paper (Dao et al., 2022)
 template<typename T>
 __global__ void flash_attention_kernel(
     const T* Q, const T* K, const T* V, T* O,
     int M, int N, int K_dim, int tile_size
 ) {
-    // Use MathOps<T>::add(), etc.
-    // Never use raw operators on T
-    const int tid = threadIdx.x;
-    const int batch_idx = blockIdx.x;
+    // Each thread processes one query vector (one row of Q)
+    const int qid = blockIdx.x * blockDim.x + threadIdx.x;
     
-    // Note: __global__ already ensures device-only compilation
-    // No need for __CUDA_ARCH__ check here
+    if (qid >= M) return;
     
-    // Simple kernel implementation (placeholder for full FlashAttention logic)
-    // TODO: Replace with actual warp-specialized FlashAttention kernel
-    if (tid < M && batch_idx < N) {
-        // Dummy operation to verify compilation
-        T val = MathOps<T>::from_float(0.0f);
-        if (K_dim > 0) {
-            val = MathOps<T>::add(Q[tid * K_dim], K[batch_idx * K_dim]);
-            val = MathOps<T>::mul(val, V[batch_idx * K_dim]);
+    // Scale factor for attention: 1/sqrt(d)
+    const float scale = 1.0f / sqrtf((float)K_dim);
+    
+    // Initialize output accumulator and online softmax state
+    float m_i = -INFINITY;  // Running max
+    float l_i = 0.0f;       // Running sum of exp
+    float acc_o[64];        // Output accumulator (assumes K_dim <= 64)
+    
+    // Initialize accumulator to zero
+    #pragma unroll
+    for (int d = 0; d < K_dim && d < 64; d++) {
+        acc_o[d] = 0.0f;
+    }
+    
+    // Load query vector (qid-th row of Q)
+    T q_vec[64];
+    #pragma unroll
+    for (int d = 0; d < K_dim && d < 64; d++) {
+        q_vec[d] = Q[qid * K_dim + d];
+    }
+    
+    // Iterate over all key-value pairs (online softmax)
+    for (int kid = 0; kid < N; kid++) {
+        // Compute dot product: q_i @ k_j
+        float qk = 0.0f;
+        #pragma unroll
+        for (int d = 0; d < K_dim && d < 64; d++) {
+            float q_f = MathOps<T>::to_float(q_vec[d]);
+            float k_f = MathOps<T>::to_float(K[kid * K_dim + d]);
+            qk += q_f * k_f;
         }
-        if (tid < M) {
-            O[tid * K_dim] = val;
+        qk *= scale;
+        
+        // Online softmax update
+        float m_i_new = fmaxf(m_i, qk);
+        float alpha = expf(m_i - m_i_new);
+        float beta = expf(qk - m_i_new);
+        
+        // Update running sum
+        l_i = alpha * l_i + beta;
+        
+        // Load value vector
+        T v_vec[64];
+        #pragma unroll
+        for (int d = 0; d < K_dim && d < 64; d++) {
+            v_vec[d] = V[kid * K_dim + d];
         }
+        
+        // Update output accumulator: O_i = alpha * O_i + beta * V_j
+        #pragma unroll
+        for (int d = 0; d < K_dim && d < 64; d++) {
+            float v_f = MathOps<T>::to_float(v_vec[d]);
+            acc_o[d] = alpha * acc_o[d] + beta * v_f;
+        }
+        
+        m_i = m_i_new;
+    }
+    
+    // Final normalization: O_i = O_i / l_i
+    #pragma unroll
+    for (int d = 0; d < K_dim && d < 64; d++) {
+        float o_normalized = acc_o[d] / l_i;
+        O[qid * K_dim + d] = MathOps<T>::from_float(o_normalized);
     }
 }
 
