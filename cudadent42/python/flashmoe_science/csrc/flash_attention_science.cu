@@ -47,6 +47,7 @@ namespace cg = cooperative_groups;
 
 #include <cmath>
 #include <algorithm>
+#include <cstdio>  // For printf
 
 namespace flashmoe {
 

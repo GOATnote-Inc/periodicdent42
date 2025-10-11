@@ -37,19 +37,15 @@
 #endif
 
 #include <cstdint>
+#include "build_config.h"
 
 namespace flashmoe {
 
-// Compile-time configuration
-constexpr int WARP_SIZE = 32;
-constexpr int NUM_WARPS_PER_WARPGROUP = 4;
+// NUM_WARPGROUPS is derived, not in build_config.h
 constexpr int NUM_WARPGROUPS = 3;  // MMA, Softmax, Correction
-constexpr int THREADS_PER_BLOCK = WARP_SIZE * NUM_WARPS_PER_WARPGROUP * NUM_WARPGROUPS;
 
-// Tile sizes (tuned for H100)
-constexpr int TILE_SIZE_M = 128;  // Query tile size
-constexpr int TILE_SIZE_N = 128;  // Key/Value tile size
-constexpr int TILE_SIZE_K = 64;   // Head dimension tile
+// Note: WARP_SIZE, NUM_WARPS_PER_WARPGROUP, THREADS_PER_BLOCK,
+// and TILE_SIZE_* are now defined in build_config.h as #defines
 
 /**
  * FlashAttention-Science forward pass.
