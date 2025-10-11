@@ -124,13 +124,6 @@ void flash_attention_backward(
     const bool causal
 );
 
-// Explicit template instantiations
-extern template void flash_attention_forward<__nv_bfloat16>(...);
-extern template void flash_attention_forward<half>(...);
-
-extern template void flash_attention_backward<__nv_bfloat16>(...);
-extern template void flash_attention_backward<half>(...);
-
 }  // namespace flashmoe
 
 #endif  // FLASH_ATTENTION_SCIENCE_H
