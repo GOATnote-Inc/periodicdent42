@@ -9,7 +9,7 @@ ZONE="us-central1-a"
 MACHINE_TYPE="g2-standard-4"  # L4 GPU
 GPU_TYPE="nvidia-l4"
 GPU_COUNT=1
-IMAGE_FAMILY="ubuntu-2004-lts"
+IMAGE_FAMILY="ubuntu-2204-lts"
 IMAGE_PROJECT="ubuntu-os-cloud"
 BUCKET_NAME="periodicdent42-benchmarks"
 
@@ -53,8 +53,7 @@ gcloud compute instances create "$INSTANCE_NAME" \
     --maintenance-policy=TERMINATE \
     --preemptible \
     --scopes=cloud-platform \
-    --metadata-from-file=startup-script="$STARTUP_SCRIPT" \
-    --metadata=install-nvidia-driver=True
+    --metadata-from-file=startup-script="$STARTUP_SCRIPT"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

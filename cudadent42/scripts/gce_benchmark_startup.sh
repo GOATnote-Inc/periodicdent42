@@ -19,16 +19,35 @@ echo "Host: $(hostname)"
 echo "User: $(whoami)"
 echo ""
 
+# Install NVIDIA drivers
+echo "Installing NVIDIA drivers..."
+apt-get update -qq
+apt-get install -y -qq linux-headers-$(uname -r)
+
+# Add NVIDIA package repository
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
+wget -q https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-keyring_1.0-1_all.deb
+dpkg -i cuda-keyring_1.0-1_all.deb || true
+apt-get update -qq
+
+# Install CUDA drivers (this includes nvidia-smi)
+apt-get install -y -qq cuda-drivers
+
 # Wait for CUDA to be ready
 echo "Waiting for CUDA to be ready..."
-for i in {1..30}; do
+for i in {1..10}; do
     if nvidia-smi &>/dev/null; then
         echo "✅ CUDA ready"
         break
     fi
-    echo "Waiting... ($i/30)"
+    echo "Waiting... ($i/10)"
     sleep 2
 done
+
+if ! nvidia-smi &>/dev/null; then
+    echo "❌ CUDA drivers failed to install"
+    exit 1
+fi
 
 # Display GPU info
 echo ""
