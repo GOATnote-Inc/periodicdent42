@@ -27,10 +27,8 @@ __global__ void flash_attention_kernel(
     const int tid = threadIdx.x;
     const int batch_idx = blockIdx.x;
     
-    // Defensive: ensure device compilation
-    #ifndef __CUDA_ARCH__
-    #error "flash_attention_kernel must be compiled for device"
-    #endif
+    // Note: __global__ already ensures device-only compilation
+    // No need for __CUDA_ARCH__ check here
     
     // Simple kernel implementation (placeholder for full FlashAttention logic)
     // TODO: Replace with actual warp-specialized FlashAttention kernel
