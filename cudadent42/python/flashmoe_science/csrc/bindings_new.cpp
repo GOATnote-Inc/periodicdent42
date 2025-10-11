@@ -3,6 +3,7 @@
 #define __CUDA_NO_BFLOAT16_OPERATORS__
 
 #include <torch/extension.h>
+#include <c10/cuda/CUDAGuard.h>
 #include <ATen/cuda/CUDAContext.h>
 #include "flash_attention_dispatch.h"
 
@@ -17,7 +18,7 @@ torch::Tensor flash_attention_fwd(
     TORCH_CHECK(V.is_cuda(), "V must be CUDA tensor");
     
     // Set CUDA device guard (multi-GPU safety)
-    at::cuda::CUDAGuard device_guard(Q.get_device());
+    c10::cuda::CUDAGuard device_guard(Q.get_device());
     
     // === Tensor Layout Checks (early, cheap) ===
     TORCH_CHECK(Q.is_contiguous() && K.is_contiguous() && V.is_contiguous(),
