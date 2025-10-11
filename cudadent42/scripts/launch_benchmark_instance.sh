@@ -9,8 +9,8 @@ ZONE="us-central1-a"
 MACHINE_TYPE="g2-standard-4"  # L4 GPU
 GPU_TYPE="nvidia-l4"
 GPU_COUNT=1
-IMAGE_FAMILY="ubuntu-2204-lts"
-IMAGE_PROJECT="ubuntu-os-cloud"
+IMAGE_FAMILY="common-cu118"  # Deep Learning VM with CUDA 11.8 + PyTorch
+IMAGE_PROJECT="deeplearning-platform-release"
 BUCKET_NAME="periodicdent42-benchmarks"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
