@@ -54,6 +54,7 @@ ext_modules = [
         name='flashmoe_science._C',
         sources=[
             'python/flashmoe_science/csrc/flash_attention_science.cu',
+            'python/flashmoe_science/csrc/flash_attention_warp_specialized.cu',  # Phase 1: Warp specialization
             'python/flashmoe_science/csrc/flash_attention_backward.cu',
             'python/flashmoe_science/csrc/fused_moe.cu',
             'python/flashmoe_science/csrc/bindings.cpp',
