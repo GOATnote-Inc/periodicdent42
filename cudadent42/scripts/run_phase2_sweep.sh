@@ -20,7 +20,7 @@ if [[ "$GPU_SM" != "75" ]]; then
 fi
 
 echo "▶ Clean + build (ARCHS=$ARCH_LIST, PRESET=$PRESET)"
-export PYTHONPATH=".:${PYTHONPATH}"
+export PYTHONPATH=".:${PYTHONPATH:-}"
 python3 setup.py clean --all
 
 # Deterministic build knobs also set inside setup.py; keep env clean.
