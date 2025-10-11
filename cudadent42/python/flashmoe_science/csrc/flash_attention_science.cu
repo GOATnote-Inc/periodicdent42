@@ -32,8 +32,12 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <cuda_bf16.h>
 #include <cuda_fp16.h>
+
+// Only include BF16 on SM80+ to avoid host/device compilation issues
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
+#include <cuda_bf16.h>
+#endif
 
 // Async memory pipeline (CUDA 11.7+, SM80+)
 #if HAS_CP_ASYNC
@@ -52,48 +56,29 @@ namespace cg = cooperative_groups;
 namespace flashmoe {
 
 // Helper functions for type conversions
-__host__ __device__ __forceinline__ float to_float(__nv_bfloat16 x) {
-#ifdef __CUDA_ARCH__
-    return __bfloat162float(x);
-#else
-    // Host fallback (shouldn't be called, but satisfies compiler)
-    return 0.0f;
-#endif
-}
-
-__host__ __device__ __forceinline__ float to_float(half x) {
-#ifdef __CUDA_ARCH__
+__device__ __forceinline__ float to_float(half x) {
     return __half2float(x);
-#else
-    // Host fallback (shouldn't be called, but satisfies compiler)
-    return 0.0f;
-#endif
 }
 
 template<typename T>
-__host__ __device__ __forceinline__ T from_float(float x);
+__device__ __forceinline__ T from_float(float x);
 
 template<>
-__host__ __device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float x) {
-#ifdef __CUDA_ARCH__
-    return __float2bfloat16(x);
-#else
-    // Host fallback (shouldn't be called, but satisfies compiler)
-    __nv_bfloat16 result;
-    return result;
-#endif
-}
-
-template<>
-__host__ __device__ __forceinline__ half from_float<half>(float x) {
-#ifdef __CUDA_ARCH__
+__device__ __forceinline__ half from_float<half>(float x) {
     return __float2half(x);
-#else
-    // Host fallback (shouldn't be called, but satisfies compiler)
-    half result;
-    return result;
-#endif
 }
+
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
+// BF16 conversions only when not in FP16-only mode
+__device__ __forceinline__ float to_float(__nv_bfloat16 x) {
+    return __bfloat162float(x);
+}
+
+template<>
+__device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float x) {
+    return __float2bfloat16(x);
+}
+#endif
 
 /**
  * Online softmax algorithm for numerical stability.

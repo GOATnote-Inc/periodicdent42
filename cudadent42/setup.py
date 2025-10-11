@@ -57,6 +57,11 @@ CUDA_FLAGS = [
     '-Xptxas=-v',  # Print register/SMEM usage
 ] + gencodes
 
+# FP16-only mode for SM75 (T4) to avoid BF16 host/device issues
+if archs and all(int(a) < 80 for a in archs.split(",")):
+    CUDA_FLAGS.append('-DFLASHMOE_DTYPE_FP16_ONLY')
+    print("Building FP16-only (SM75, no BF16)")
+
 # C++ compilation flags
 CXX_FLAGS = [
     '-O3',
