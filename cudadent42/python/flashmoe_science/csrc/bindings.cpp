@@ -23,6 +23,16 @@ void flash_attention_forward(
 );
 
 template<typename T>
+void flash_attention_warp_specialized_launch(
+    const T* Q, const T* K, const T* V,
+    T* O, float* softmax_lse,
+    const int batch_size, const int num_heads,
+    const int seq_len, const int head_dim,
+    const float softmax_scale, const bool causal,
+    cudaStream_t stream
+);
+
+template<typename T>
 void flash_attention_backward(
     const T* dO, const T* Q, const T* K, const T* V,
     const T* O, const float* softmax_lse,
@@ -177,6 +187,84 @@ std::vector<torch::Tensor> flash_attention_backward_cuda(
 }
 
 /**
+ * FlashAttention warp-specialized forward pass (Python interface).
+ * 
+ * This version uses FlashAttention-4 style warp specialization for better
+ * parallelism. Intended for benchmarking and production use.
+ */
+torch::Tensor flash_attention_warp_specialized_cuda(
+    torch::Tensor Q,
+    torch::Tensor K,
+    torch::Tensor V,
+    bool causal,
+    float softmax_scale
+) {
+    // Set CUDA device
+    c10::cuda::CUDAGuard device_guard(Q.device());
+    
+    // Validate inputs
+    TORCH_CHECK(Q.is_cuda(), "Q must be on CUDA device");
+    TORCH_CHECK(K.is_cuda(), "K must be on CUDA device");
+    TORCH_CHECK(V.is_cuda(), "V must be on CUDA device");
+    TORCH_CHECK(Q.dtype() == K.dtype() && K.dtype() == V.dtype(),
+                "Q, K, V must have same dtype");
+    TORCH_CHECK(Q.is_contiguous() && K.is_contiguous() && V.is_contiguous(),
+                "Q, K, V must be contiguous");
+    
+    // Get dimensions
+    const int batch_size = Q.size(0);
+    const int num_heads = Q.size(1);
+    const int seq_len = Q.size(2);
+    const int head_dim = Q.size(3);
+    
+    TORCH_CHECK(K.size(0) == batch_size && V.size(0) == batch_size,
+                "Batch size mismatch");
+    TORCH_CHECK(K.size(1) == num_heads && V.size(1) == num_heads,
+                "Number of heads mismatch");
+    TORCH_CHECK(K.size(2) == seq_len && V.size(2) == seq_len,
+                "Sequence length mismatch");
+    TORCH_CHECK(K.size(3) == head_dim && V.size(3) == head_dim,
+                "Head dimension mismatch");
+    
+    // Allocate output
+    auto O = torch::empty_like(Q);
+    
+    // Allocate softmax LSE for backward pass
+    auto softmax_lse = torch::empty({batch_size, num_heads, seq_len},
+                                     torch::dtype(torch::kFloat32).device(Q.device()));
+    
+    // Get current CUDA stream
+    cudaStream_t stream = c10::cuda::getCurrentCUDAStream(Q.device().index());
+    
+    // Dispatch based on dtype
+    if (Q.dtype() == torch::kBFloat16) {
+        flashmoe::flash_attention_warp_specialized_launch<at::BFloat16>(
+            reinterpret_cast<const at::BFloat16*>(Q.data_ptr()),
+            reinterpret_cast<const at::BFloat16*>(K.data_ptr()),
+            reinterpret_cast<const at::BFloat16*>(V.data_ptr()),
+            reinterpret_cast<at::BFloat16*>(O.data_ptr()),
+            softmax_lse.data_ptr<float>(),
+            batch_size, num_heads, seq_len, head_dim,
+            softmax_scale, causal, stream
+        );
+    } else if (Q.dtype() == torch::kFloat16) {
+        flashmoe::flash_attention_warp_specialized_launch<at::Half>(
+            reinterpret_cast<const at::Half*>(Q.data_ptr()),
+            reinterpret_cast<const at::Half*>(K.data_ptr()),
+            reinterpret_cast<const at::Half*>(V.data_ptr()),
+            reinterpret_cast<at::Half*>(O.data_ptr()),
+            softmax_lse.data_ptr<float>(),
+            batch_size, num_heads, seq_len, head_dim,
+            softmax_scale, causal, stream
+        );
+    } else {
+        TORCH_CHECK(false, "Unsupported dtype (only FP16 and BF16 supported)");
+    }
+    
+    return O;
+}
+
+/**
  * Fused MoE forward pass (Python interface) - stub.
  */
 torch::Tensor fused_moe_forward_cuda(
@@ -194,6 +282,8 @@ torch::Tensor fused_moe_forward_cuda(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("flash_attention_forward", &flash_attention_forward_cuda,
           "FlashAttention-Science forward pass");
+    m.def("flash_attention_warp_specialized", &flash_attention_warp_specialized_cuda,
+          "FlashAttention-Science warp-specialized forward pass (Phase 1)");
     m.def("flash_attention_backward", &flash_attention_backward_cuda,
           "FlashAttention-Science backward pass");
     m.def("fused_moe_forward", &fused_moe_forward_cuda,

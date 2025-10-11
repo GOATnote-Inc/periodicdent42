@@ -7,31 +7,43 @@
  * - Warpgroup 2 (warps 8-11): Output correction as softmax scale changes
  * 
  * Memory hierarchy:
- * - Shared memory (SRAM): 228KB per SM on H100
- * - L2 cache: 60MB on H100
- * - HBM3: 3.35 TB/s bandwidth
+ * - Shared memory (SRAM): 228KB per SM on H100, 48KB per SM on T4
+ * - L2 cache: 60MB on H100, 4MB on T4
+ * - HBM3: 3.35 TB/s bandwidth (H100), 320 GB/s (T4)
  * 
  * Optimization techniques:
  * 1. Tiling: Break sequence into tiles that fit in SRAM
- * 2. Async memory copy: Overlap next tile load with current compute
+ * 2. Async memory copy: Overlap next tile load with current compute (SM80+)
  * 3. Online softmax: Compute softmax incrementally without full matrix
- * 4. FP8 compute: Use Hopper's FP8 Tensor Cores (2x throughput vs BF16)
+ * 4. FP8 compute: Use Hopper's FP8 Tensor Cores (SM90+ only)
  * 5. Warp shuffle: Reduce shared memory usage for reductions
+ * 
+ * Architecture support:
+ * - SM75 (T4): FP16 only, no async copy, no native BF16
+ * - SM80 (A100): FP16 + BF16, cp.async, WMMA
+ * - SM90 (H100): FP16 + BF16 + FP8, WGMMA, TMA
  * 
  * @author GOATnote Autonomous Research Lab Initiative
  * @date 2025-10-11
  */
 
+#include "build_config.h"  // Architecture flags and tile presets
 #include "flash_attention_science.h"
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
-// Async memory pipeline (CUDA 11.7+)
+// Only include BF16 on SM80+ to avoid host/device compilation issues
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
+#include <cuda_bf16.h>
+#endif
+
+// Async memory pipeline (CUDA 11.7+, SM80+)
+#if HAS_CP_ASYNC
 #include <cuda/pipeline>
 #include <cuda/barrier>
+#endif
 
 // Cooperative groups for warp-level operations
 #include <cooperative_groups.h>
@@ -39,8 +51,34 @@ namespace cg = cooperative_groups;
 
 #include <cmath>
 #include <algorithm>
+#include <cstdio>  // For printf
 
 namespace flashmoe {
+
+// Helper functions for type conversions
+__device__ __forceinline__ float to_float(half x) {
+    return __half2float(x);
+}
+
+template<typename T>
+__device__ __forceinline__ T from_float(float x);
+
+template<>
+__device__ __forceinline__ half from_float<half>(float x) {
+    return __float2half(x);
+}
+
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
+// BF16 conversions only when not in FP16-only mode
+__device__ __forceinline__ float to_float(__nv_bfloat16 x) {
+    return __bfloat162float(x);
+}
+
+template<>
+__device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float x) {
+    return __float2bfloat16(x);
+}
+#endif
 
 /**
  * Online softmax algorithm for numerical stability.
@@ -155,6 +193,17 @@ __global__ void flash_attention_forward_kernel(
     
     if (query_idx >= seq_len) return;  // Guard for out-of-bounds threads
     
+    // === Initialize running statistics for online softmax ===
+    // These track max and sum of exponentials across all KV tiles
+    m_i = -INFINITY;  // Running maximum
+    l_i = 0.0f;       // Running sum of exp
+    
+    // Initialize output accumulator
+    #pragma unroll
+    for (int d = 0; d < head_dim; ++d) {
+        acc_o[d] = 0.0f;
+    }
+    
     // === STEP 1: Load Q tile (one row per thread) ===
     // Load query vector for this position
     for (int d = 0; d < head_dim; ++d) {
@@ -187,8 +236,8 @@ __global__ void flash_attention_forward_kernel(
                 float score = 0.0f;
                 #pragma unroll
                 for (int d = 0; d < TILE_SIZE_K && d < head_dim; ++d) {
-                    score += static_cast<float>(smem_Q[query_idx % TILE_SIZE_M][d]) * 
-                             static_cast<float>(smem_K[kv][d]);
+                    score += to_float(smem_Q[query_idx % TILE_SIZE_M][d]) * 
+                             to_float(smem_K[kv][d]);
                 }
                 
                 // Apply softmax scale
@@ -204,63 +253,63 @@ __global__ void flash_attention_forward_kernel(
         }
         __syncthreads();
         
-        // === STEP 4: Apply softmax (naive version for now) ===
+        // === STEP 4: Online softmax update ===
         if (query_idx < seq_len) {
-            // Find max for numerical stability
-            float max_score = -INFINITY;
+            // 4a. Find max in current tile for numerical stability
+            float m_tile = -INFINITY;
             for (int kv = 0; kv < tile_size; ++kv) {
-                max_score = fmaxf(max_score, smem_S[query_idx % TILE_SIZE_M][kv]);
+                m_tile = fmaxf(m_tile, smem_S[query_idx % TILE_SIZE_M][kv]);
             }
             
-            // Compute exp and sum
-            float sum_exp = 0.0f;
+            // 4b. Compute exp(S - m_tile) and sum
+            float l_tile = 0.0f;
             for (int kv = 0; kv < tile_size; ++kv) {
-                float score = smem_S[query_idx % TILE_SIZE_M][kv];
-                float exp_score = expf(score - max_score);
-                smem_S[query_idx % TILE_SIZE_M][kv] = exp_score;
-                sum_exp += exp_score;
+                float exp_val = expf(smem_S[query_idx % TILE_SIZE_M][kv] - m_tile);
+                smem_S[query_idx % TILE_SIZE_M][kv] = exp_val;
+                l_tile += exp_val;
             }
             
-            // Normalize
-            for (int kv = 0; kv < tile_size; ++kv) {
-                smem_S[query_idx % TILE_SIZE_M][kv] /= sum_exp;
+            // 4c. Update running statistics (online softmax algorithm)
+            const float m_new = fmaxf(m_i, m_tile);
+            const float exp_prev = expf(m_i - m_new);
+            const float exp_curr = expf(m_tile - m_new);
+            const float l_new = l_i * exp_prev + l_tile * exp_curr;
+            
+            // 4d. Apply correction factor to existing output
+            #pragma unroll
+            for (int d = 0; d < head_dim; ++d) {
+                acc_o[d] *= exp_prev;
             }
             
-            // Update running statistics for backward pass
-            if (kv_tile == 0) {
-                m_i = max_score;
-                l_i = sum_exp;
-            }
-        }
-        __syncthreads();
-        
-        // === STEP 5: Compute attention @ V ===
-        if (query_idx < seq_len) {
+            // === STEP 5: Compute attention @ V with correction ===
+            #pragma unroll
             for (int d = 0; d < head_dim; ++d) {
                 float weighted_value = 0.0f;
                 for (int kv = 0; kv < tile_size; ++kv) {
                     weighted_value += smem_S[query_idx % TILE_SIZE_M][kv] * 
-                                     static_cast<float>(smem_V[kv][d]);
+                                     to_float(smem_V[kv][d]);
                 }
-                
-                // Accumulate (for now, just first tile)
-                if (kv_tile == 0) {
-                    acc_o[d] = weighted_value;
-                } else {
-                    acc_o[d] += weighted_value;
-                }
+                // Add corrected contribution from this tile
+                acc_o[d] += weighted_value * exp_curr;
             }
+            
+            // Update running statistics for next tile
+            m_i = m_new;
+            l_i = l_new;
         }
         __syncthreads();
     }
     
-    // === STEP 6: Store final output to global memory ===
+    // === STEP 6: Final normalization and store output ===
     if (query_idx < seq_len) {
+        // Normalize output by sum of exponentials
+        #pragma unroll
         for (int d = 0; d < head_dim; ++d) {
-            O_base[query_idx * head_dim + d] = static_cast<T>(acc_o[d]);
+            acc_o[d] /= l_i;
+            O_base[query_idx * head_dim + d] = from_float<T>(acc_o[d]);
         }
         
-        // Store softmax LSE for backward pass
+        // Store softmax LSE (log-sum-exp) for backward pass
         softmax_lse[(batch_idx * num_heads + head_idx) * seq_len + query_idx] = 
             logf(l_i) + m_i;
     }
@@ -334,32 +383,9 @@ void flash_attention_backward(
     cudaMemset(dV, 0, total_size * sizeof(T));
 }
 
-// Explicit template instantiations
-template void flash_attention_forward<__nv_bfloat16>(
-    const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
-    __nv_bfloat16*, float*,
-    const int, const int, const int, const int, const float, const bool
-);
-
-template void flash_attention_forward<half>(
-    const half*, const half*, const half*,
-    half*, float*,
-    const int, const int, const int, const int, const float, const bool
-);
-
-template void flash_attention_backward<__nv_bfloat16>(
-    const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
-    const __nv_bfloat16*, const __nv_bfloat16*, const float*,
-    __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*,
-    const int, const int, const int, const int, const float, const bool
-);
-
-template void flash_attention_backward<half>(
-    const half*, const half*, const half*,
-    const half*, const half*, const float*,
-    half*, half*, half*,
-    const int, const int, const int, const int, const float, const bool
-);
+// Note: Template instantiations removed to avoid host/device compilation issues.
+// Templates will be instantiated implicitly when called from bindings.cpp.
+// This is Solution 2 from PHASE2_COMPILATION_BLOCKER_OCT11_2025.md
 
 }  // namespace flashmoe
 

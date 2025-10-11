@@ -27,8 +27,12 @@
 #define FLASH_ATTENTION_SCIENCE_H
 
 #include <cuda_runtime.h>
-#include <cuda_bf16.h>
 #include <cuda_fp16.h>
+
+// Only include BF16 on SM80+ to avoid host/device compilation issues
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
+#include <cuda_bf16.h>
+#endif
 
 #ifdef __CUDA_ARCH__
 #if __CUDA_ARCH__ >= 900  // Hopper (H100)
@@ -37,19 +41,15 @@
 #endif
 
 #include <cstdint>
+#include "build_config.h"
 
 namespace flashmoe {
 
-// Compile-time configuration
-constexpr int WARP_SIZE = 32;
-constexpr int NUM_WARPS_PER_WARPGROUP = 4;
+// NUM_WARPGROUPS is derived, not in build_config.h
 constexpr int NUM_WARPGROUPS = 3;  // MMA, Softmax, Correction
-constexpr int THREADS_PER_BLOCK = WARP_SIZE * NUM_WARPS_PER_WARPGROUP * NUM_WARPGROUPS;
 
-// Tile sizes (tuned for H100)
-constexpr int TILE_SIZE_M = 128;  // Query tile size
-constexpr int TILE_SIZE_N = 128;  // Key/Value tile size
-constexpr int TILE_SIZE_K = 64;   // Head dimension tile
+// Note: WARP_SIZE, NUM_WARPS_PER_WARPGROUP, THREADS_PER_BLOCK,
+// and TILE_SIZE_* are now defined in build_config.h as #defines
 
 /**
  * FlashAttention-Science forward pass.
@@ -123,13 +123,6 @@ void flash_attention_backward(
     const float softmax_scale,
     const bool causal
 );
-
-// Explicit template instantiations
-extern template void flash_attention_forward<__nv_bfloat16>(...);
-extern template void flash_attention_forward<half>(...);
-
-extern template void flash_attention_backward<__nv_bfloat16>(...);
-extern template void flash_attention_backward<half>(...);
 
 }  // namespace flashmoe
 

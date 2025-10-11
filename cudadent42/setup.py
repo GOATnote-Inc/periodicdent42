@@ -15,6 +15,34 @@ if CUDA_HOME is None:
     print("Please install CUDA toolkit and set CUDA_HOME environment variable.")
     sys.exit(1)
 
+# Multi-architecture support
+archs = os.environ.get("FA_ARCHS", "")
+gencodes = []
+if archs:
+    # Build for specified architectures
+    for a in archs.split(","):
+        a = a.strip()
+        gencodes += [f"-gencode=arch=compute_{a},code=sm_{a}"]
+else:
+    # Auto-detect from current GPU
+    try:
+        import torch
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability()
+            a = f"{major}{minor}"
+            gencodes = [f"-gencode=arch=compute_{a},code=sm_{a}"]
+            print(f"Auto-detected GPU: SM_{a}")
+        else:
+            # Default to SM75 (T4) if no GPU detected
+            gencodes = ["-gencode=arch=compute_75,code=sm_75"]
+            print("No GPU detected, defaulting to SM_75 (T4)")
+    except Exception:
+        gencodes = ["-gencode=arch=compute_75,code=sm_75"]
+        print("Could not detect GPU, defaulting to SM_75 (T4)")
+
+# Tile size preset (0=t4_safe, 1=ampere_balanced)
+tile_preset = os.environ.get("FA_TILE_PRESET", "0")
+
 # CUDA compilation flags
 CUDA_FLAGS = [
     '-O3',
@@ -22,14 +50,24 @@ CUDA_FLAGS = [
     '-lineinfo',  # For profiling with Nsight Compute
     '--expt-relaxed-constexpr',
     '--expt-extended-lambda',
-    '-arch=sm_90',  # Hopper (H100) - adjust for your GPU
-    # '-arch=sm_80',  # Ampere (A100)
-]
+    f'-DFA_TILE_PRESET={tile_preset}',
+    '-Xcompiler=-fno-omit-frame-pointer',
+    '-Xcompiler=-fno-common',
+    '-Xfatbin=-compress-all',  # Deterministic builds
+    '-Xptxas=-v',  # Print register/SMEM usage
+] + gencodes
+
+# FP16-only mode for SM75 (T4) to avoid BF16 host/device issues
+if archs and all(int(a) < 80 for a in archs.split(",")):
+    CUDA_FLAGS.append('-DFLASHMOE_DTYPE_FP16_ONLY')
+    print("Building FP16-only (SM75, no BF16)")
 
 # C++ compilation flags
 CXX_FLAGS = [
     '-O3',
     '-std=c++17',
+    '-fno-omit-frame-pointer',
+    '-fno-common',
 ]
 
 # Get version
@@ -54,6 +92,7 @@ ext_modules = [
         name='flashmoe_science._C',
         sources=[
             'python/flashmoe_science/csrc/flash_attention_science.cu',
+            'python/flashmoe_science/csrc/flash_attention_warp_specialized.cu',  # Phase 1: Warp specialization
             'python/flashmoe_science/csrc/flash_attention_backward.cu',
             'python/flashmoe_science/csrc/fused_moe.cu',
             'python/flashmoe_science/csrc/bindings.cpp',
