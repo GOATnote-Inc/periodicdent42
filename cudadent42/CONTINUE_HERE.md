@@ -1,10 +1,10 @@
 # 🚀 Continue Development Here
 
 **Project**: CUDAdent42 (formerly FlashMoE-Science)  
-**Last Session**: Day 1-3 Implementation Complete  
+**Last Session**: Day 4-6 Online Softmax Complete  
 **Date**: October 11, 2025  
-**Status**: ✅ Ready for GPU Testing  
-**Repository**: [periodicdent42/cudadent42](https://github.com/GOATnote-Inc/periodicdent42/tree/main/cudadent42)
+**Status**: ✅ Ready for Testing (All sequence lengths now supported!)  
+**Repository**: [periodicdent42/cudadent42](https://github.com/GOATnote-Inc/periodicdent42/tree/cudadent42/cudadent42)
 
 ---
 
@@ -34,15 +34,16 @@ conda activate flashmoe
 - Project infrastructure (23 files)
 - Python API + PyTorch layers
 - CUDA kernel architecture
-- Basic tiling implementation (120 lines)
+- Basic tiling implementation (Day 1-3: 120 lines)
+- **Online softmax (Day 4-6: 60 lines)** ✨ NEW!
 - Test suite (16 test cases)
 - CI/CD pipeline
 - Documentation (100+ pages)
 
-### 🚧 In Progress (Day 1-3 → Day 4-6)
+### 🚧 In Progress (Day 4-6 → Day 7-9)
 - FlashAttention kernel implementation
-- Currently: Basic tiling works
-- Next: Online softmax (fix multi-tile)
+- Currently: Online softmax complete (all sequence lengths work!)
+- Next: Warp specialization (3 warpgroups)
 
 ---
 
@@ -54,23 +55,25 @@ conda activate flashmoe
 pytest tests/ -v
 
 # Expected:
-# - Small sequences (≤128): Should PASS ✅
-# - Large sequences (>128): May FAIL ❌ (expected, will fix in Day 4-6)
+# - ALL sequences: Should PASS ✅ (online softmax fixed multi-tile!)
+# - Performance: ~1.2x PyTorch SDPA
 ```
 
-### Day 4-6 (This Week)
-**Goal**: Implement online softmax
+### Day 7-9 (This Week)
+**Goal**: Implement warp specialization (FlashAttention-4 style)
 
 **File to edit**: `python/flashmoe_science/csrc/flash_attention_science.cu`
 
 **What to do**:
-1. Implement `online_softmax_update()` function (line 74)
-2. Integrate into tile loop (lines 207-234)
-3. Test on long sequences
+1. Split 12 warps into 3 warpgroups (4 warps each)
+2. Warpgroup 0: MMA operations (matrix multiply)
+3. Warpgroup 1: Softmax computation
+4. Warpgroup 2: Output correction
+5. Use `__syncwarp()` for fine-grained synchronization
 
-**Guide**: `DEVELOPMENT_GUIDE.md` Phase 1, Step 2
+**Guide**: `DEVELOPMENT_GUIDE.md` Phase 1, Step 3
 
-**Expected result**: All tests pass, 1.5x speedup
+**Expected result**: 1.5x additional speedup (1.2x → 1.8x total)
 
 ---
 

@@ -155,6 +155,17 @@ __global__ void flash_attention_forward_kernel(
     
     if (query_idx >= seq_len) return;  // Guard for out-of-bounds threads
     
+    // === Initialize running statistics for online softmax ===
+    // These track max and sum of exponentials across all KV tiles
+    m_i = -INFINITY;  // Running maximum
+    l_i = 0.0f;       // Running sum of exp
+    
+    // Initialize output accumulator
+    #pragma unroll
+    for (int d = 0; d < head_dim; ++d) {
+        acc_o[d] = 0.0f;
+    }
+    
     // === STEP 1: Load Q tile (one row per thread) ===
     // Load query vector for this position
     for (int d = 0; d < head_dim; ++d) {
@@ -204,63 +215,63 @@ __global__ void flash_attention_forward_kernel(
         }
         __syncthreads();
         
-        // === STEP 4: Apply softmax (naive version for now) ===
+        // === STEP 4: Online softmax update ===
         if (query_idx < seq_len) {
-            // Find max for numerical stability
-            float max_score = -INFINITY;
+            // 4a. Find max in current tile for numerical stability
+            float m_tile = -INFINITY;
             for (int kv = 0; kv < tile_size; ++kv) {
-                max_score = fmaxf(max_score, smem_S[query_idx % TILE_SIZE_M][kv]);
+                m_tile = fmaxf(m_tile, smem_S[query_idx % TILE_SIZE_M][kv]);
             }
             
-            // Compute exp and sum
-            float sum_exp = 0.0f;
+            // 4b. Compute exp(S - m_tile) and sum
+            float l_tile = 0.0f;
             for (int kv = 0; kv < tile_size; ++kv) {
-                float score = smem_S[query_idx % TILE_SIZE_M][kv];
-                float exp_score = expf(score - max_score);
-                smem_S[query_idx % TILE_SIZE_M][kv] = exp_score;
-                sum_exp += exp_score;
+                float exp_val = expf(smem_S[query_idx % TILE_SIZE_M][kv] - m_tile);
+                smem_S[query_idx % TILE_SIZE_M][kv] = exp_val;
+                l_tile += exp_val;
             }
             
-            // Normalize
-            for (int kv = 0; kv < tile_size; ++kv) {
-                smem_S[query_idx % TILE_SIZE_M][kv] /= sum_exp;
+            // 4c. Update running statistics (online softmax algorithm)
+            const float m_new = fmaxf(m_i, m_tile);
+            const float exp_prev = expf(m_i - m_new);
+            const float exp_curr = expf(m_tile - m_new);
+            const float l_new = l_i * exp_prev + l_tile * exp_curr;
+            
+            // 4d. Apply correction factor to existing output
+            #pragma unroll
+            for (int d = 0; d < head_dim; ++d) {
+                acc_o[d] *= exp_prev;
             }
             
-            // Update running statistics for backward pass
-            if (kv_tile == 0) {
-                m_i = max_score;
-                l_i = sum_exp;
-            }
-        }
-        __syncthreads();
-        
-        // === STEP 5: Compute attention @ V ===
-        if (query_idx < seq_len) {
+            // === STEP 5: Compute attention @ V with correction ===
+            #pragma unroll
             for (int d = 0; d < head_dim; ++d) {
                 float weighted_value = 0.0f;
                 for (int kv = 0; kv < tile_size; ++kv) {
                     weighted_value += smem_S[query_idx % TILE_SIZE_M][kv] * 
                                      static_cast<float>(smem_V[kv][d]);
                 }
-                
-                // Accumulate (for now, just first tile)
-                if (kv_tile == 0) {
-                    acc_o[d] = weighted_value;
-                } else {
-                    acc_o[d] += weighted_value;
-                }
+                // Add corrected contribution from this tile
+                acc_o[d] += weighted_value * exp_curr;
             }
+            
+            // Update running statistics for next tile
+            m_i = m_new;
+            l_i = l_new;
         }
         __syncthreads();
     }
     
-    // === STEP 6: Store final output to global memory ===
+    // === STEP 6: Final normalization and store output ===
     if (query_idx < seq_len) {
+        // Normalize output by sum of exponentials
+        #pragma unroll
         for (int d = 0; d < head_dim; ++d) {
+            acc_o[d] /= l_i;
             O_base[query_idx * head_dim + d] = static_cast<T>(acc_o[d]);
         }
         
-        // Store softmax LSE for backward pass
+        // Store softmax LSE (log-sum-exp) for backward pass
         softmax_lse[(batch_idx * num_heads + head_idx) * seq_len + query_idx] = 
             logf(l_i) + m_i;
     }
