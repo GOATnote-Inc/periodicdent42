@@ -6,6 +6,49 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+def compute_seed_size(
+    train_pool_size: int,
+    num_classes: int,
+    min_per_class: int = 10
+) -> int:
+    """
+    Compute seed set size per NeurIPS/ICLR/JMLR protocol.
+    
+    Formula: max(0.02·|D_train|, 10·|C|) capped at 0.05·|D_train|
+    
+    Args:
+        train_pool_size: Total size of training pool
+        num_classes: Number of classes (or 1 for regression)
+        min_per_class: Minimum samples per class (default: 10)
+    
+    Returns:
+        Seed set size
+    
+    Example:
+        >>> compute_seed_size(train_pool_size=1000, num_classes=5)
+        50  # max(20, 50) = 50, capped at 50
+    """
+    if train_pool_size <= 0:
+        raise ValueError(f"train_pool_size must be positive, got {train_pool_size}")
+    
+    if num_classes <= 0:
+        raise ValueError(f"num_classes must be positive, got {num_classes}")
+    
+    # Minimum: larger of 2% of training pool or 10 per class
+    min_size = max(
+        int(0.02 * train_pool_size),  # 2% of training pool
+        min_per_class * num_classes    # 10 samples per class
+    )
+    
+    # Maximum: 5% of training pool
+    max_size = int(0.05 * train_pool_size)
+    
+    # Return minimum, capped at maximum
+    seed_size = min(min_size, max_size)
+    
+    return seed_size
+
+
 class PathConfig(BaseModel):
     """File path configuration."""
 
@@ -24,11 +67,12 @@ class PathConfig(BaseModel):
 
 
 class DataConfig(BaseModel):
-    """Data splitting and processing configuration."""
+    """Data splitting and processing configuration (NeurIPS/ICLR compliant)."""
 
-    test_size: float = Field(0.20, ge=0.0, le=1.0)
-    val_size: float = Field(0.10, ge=0.0, le=1.0)
-    seed_labeled_size: int = Field(50, ge=10)
+    test_size: float = Field(0.15, ge=0.0, le=1.0)  # FIXED: was 0.20, now 70/15/15 split
+    val_size: float = Field(0.15, ge=0.0, le=1.0)   # FIXED: was 0.10, now 70/15/15 split
+    # NOTE: seed_labeled_size removed - computed dynamically via compute_seed_size()
+    min_samples_per_class: int = Field(10, ge=1)  # NEW: for seed size formula
     stratify_bins: int = Field(5, ge=2)
     near_dup_threshold: float = Field(0.99, ge=0.0, le=1.0)  # Lower=stricter, tune per dataset
 
@@ -105,17 +149,21 @@ class OODConfig(BaseModel):
 
 
 class ActiveLearningConfig(BaseModel):
-    """Active learning configuration."""
+    """Active learning configuration (NeurIPS/ICLR compliant)."""
 
     acquisition_fn: Literal["ucb", "ei", "max_var", "eig_proxy"] = "ucb"
     diversity_method: Optional[Literal["kmedoids", "dpp"]] = "kmedoids"
     diversity_weight: float = Field(0.3, ge=0.0, le=1.0)
     budget_total: int = 200
-    k_per_round: int = 10
+    k_per_round: int = 10  # Used only if use_dynamic_batch_size=False
     ucb_beta: float = 2.0
     cost_weight: float = Field(0.0, ge=0.0)  # 0 = no cost penalty
     risk_gate_sigma_max: float = Field(10.0, gt=0.0)  # Max uncertainty allowed
     ood_block: bool = True  # Block OOD candidates
+    
+    # NEW: Dynamic batch sizing (Protocol compliance)
+    use_dynamic_batch_size: bool = True  # Use 5% of remaining pool
+    fixed_batch_size: Optional[int] = None  # Override if not None (ignores use_dynamic_batch_size)
 
 
 class Config(BaseModel):
