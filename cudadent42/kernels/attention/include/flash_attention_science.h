@@ -27,8 +27,12 @@
 #define FLASH_ATTENTION_SCIENCE_H
 
 #include <cuda_runtime.h>
-#include <cuda_bf16.h>
 #include <cuda_fp16.h>
+
+// Only include BF16 on SM80+ to avoid host/device compilation issues
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
+#include <cuda_bf16.h>
+#endif
 
 #ifdef __CUDA_ARCH__
 #if __CUDA_ARCH__ >= 900  // Hopper (H100)
