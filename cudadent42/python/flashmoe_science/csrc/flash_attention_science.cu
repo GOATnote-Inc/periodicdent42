@@ -42,6 +42,28 @@ namespace cg = cooperative_groups;
 
 namespace flashmoe {
 
+// Helper functions for type conversions
+__device__ __forceinline__ float to_float(__nv_bfloat16 x) {
+    return __bfloat162float(x);
+}
+
+__device__ __forceinline__ float to_float(half x) {
+    return __half2float(x);
+}
+
+template<typename T>
+__device__ __forceinline__ T from_float(float x);
+
+template<>
+__device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float x) {
+    return __float2bfloat16(x);
+}
+
+template<>
+__device__ __forceinline__ half from_float<half>(float x) {
+    return __float2half(x);
+}
+
 /**
  * Online softmax algorithm for numerical stability.
  * 
@@ -198,8 +220,8 @@ __global__ void flash_attention_forward_kernel(
                 float score = 0.0f;
                 #pragma unroll
                 for (int d = 0; d < TILE_SIZE_K && d < head_dim; ++d) {
-                    score += static_cast<float>(smem_Q[query_idx % TILE_SIZE_M][d]) * 
-                             static_cast<float>(smem_K[kv][d]);
+                    score += to_float(smem_Q[query_idx % TILE_SIZE_M][d]) * 
+                             to_float(smem_K[kv][d]);
                 }
                 
                 // Apply softmax scale
@@ -249,7 +271,7 @@ __global__ void flash_attention_forward_kernel(
                 float weighted_value = 0.0f;
                 for (int kv = 0; kv < tile_size; ++kv) {
                     weighted_value += smem_S[query_idx % TILE_SIZE_M][kv] * 
-                                     static_cast<float>(smem_V[kv][d]);
+                                     to_float(smem_V[kv][d]);
                 }
                 // Add corrected contribution from this tile
                 acc_o[d] += weighted_value * exp_curr;
@@ -268,7 +290,7 @@ __global__ void flash_attention_forward_kernel(
         #pragma unroll
         for (int d = 0; d < head_dim; ++d) {
             acc_o[d] /= l_i;
-            O_base[query_idx * head_dim + d] = static_cast<T>(acc_o[d]);
+            O_base[query_idx * head_dim + d] = from_float<T>(acc_o[d]);
         }
         
         // Store softmax LSE (log-sum-exp) for backward pass
