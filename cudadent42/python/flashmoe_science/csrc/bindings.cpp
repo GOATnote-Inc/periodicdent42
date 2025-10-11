@@ -98,6 +98,7 @@ torch::Tensor flash_attention_forward_cuda(
                                      torch::dtype(torch::kFloat32).device(Q.device()));
     
     // Dispatch based on dtype
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
     if (Q.dtype() == torch::kBFloat16) {
         flashmoe::flash_attention_forward<at::BFloat16>(
             reinterpret_cast<const at::BFloat16*>(Q.data_ptr()),
@@ -108,7 +109,9 @@ torch::Tensor flash_attention_forward_cuda(
             batch_size, num_heads, seq_len, head_dim,
             softmax_scale, causal
         );
-    } else if (Q.dtype() == torch::kFloat16) {
+    } else
+#endif
+    if (Q.dtype() == torch::kFloat16) {
         flashmoe::flash_attention_forward<at::Half>(
             reinterpret_cast<const at::Half*>(Q.data_ptr()),
             reinterpret_cast<const at::Half*>(K.data_ptr()),
@@ -153,6 +156,7 @@ std::vector<torch::Tensor> flash_attention_backward_cuda(
     auto dV = torch::empty_like(V);
     
     // Dispatch based on dtype
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
     if (Q.dtype() == torch::kBFloat16) {
         flashmoe::flash_attention_backward<at::BFloat16>(
             reinterpret_cast<const at::BFloat16*>(grad_output.data_ptr()),
@@ -167,7 +171,9 @@ std::vector<torch::Tensor> flash_attention_backward_cuda(
             batch_size, num_heads, seq_len, head_dim,
             softmax_scale, causal
         );
-    } else if (Q.dtype() == torch::kFloat16) {
+    } else
+#endif
+    if (Q.dtype() == torch::kFloat16) {
         flashmoe::flash_attention_backward<at::Half>(
             reinterpret_cast<const at::Half*>(grad_output.data_ptr()),
             reinterpret_cast<const at::Half*>(Q.data_ptr()),
@@ -237,6 +243,7 @@ torch::Tensor flash_attention_warp_specialized_cuda(
     cudaStream_t stream = c10::cuda::getCurrentCUDAStream(Q.device().index());
     
     // Dispatch based on dtype
+#if !defined(FLASHMOE_DTYPE_FP16_ONLY)
     if (Q.dtype() == torch::kBFloat16) {
         flashmoe::flash_attention_warp_specialized_launch<at::BFloat16>(
             reinterpret_cast<const at::BFloat16*>(Q.data_ptr()),
@@ -247,7 +254,9 @@ torch::Tensor flash_attention_warp_specialized_cuda(
             batch_size, num_heads, seq_len, head_dim,
             softmax_scale, causal, stream
         );
-    } else if (Q.dtype() == torch::kFloat16) {
+    } else
+#endif
+    if (Q.dtype() == torch::kFloat16) {
         flashmoe::flash_attention_warp_specialized_launch<at::Half>(
             reinterpret_cast<const at::Half*>(Q.data_ptr()),
             reinterpret_cast<const at::Half*>(K.data_ptr()),
