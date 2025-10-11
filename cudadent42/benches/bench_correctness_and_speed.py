@@ -7,6 +7,9 @@ Measures latency, throughput, and memory efficiency.
 
 import sys
 import os
+import argparse
+import csv
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
@@ -307,7 +310,57 @@ def test_memory_efficiency():
     print()
 
 
+def save_results_csv(results_pytorch, results_ours, dtype_name, output_dir):
+    """Save benchmark results to CSV."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    csv_path = output_dir / f"benchmark_results_{dtype_name}.csv"
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            'Config', 'B', 'H', 'S', 'D',
+            'PyTorch_Latency_ms', 'PyTorch_Latency_std',
+            'PyTorch_Throughput_tokens_per_sec',
+            'CUDAdent42_Latency_ms', 'CUDAdent42_Latency_std',
+            'CUDAdent42_Throughput_tokens_per_sec',
+            'Speedup'
+        ])
+        
+        for name in results_ours:
+            pytorch = results_pytorch[name]
+            ours = results_ours[name]
+            B, H, S, D = pytorch['config']
+            
+            writer.writerow([
+                name, B, H, S, D,
+                f"{pytorch['latency_ms']:.4f}",
+                f"{pytorch['latency_std']:.4f}",
+                f"{pytorch['throughput']:.2f}",
+                f"{ours['latency_ms']:.4f}",
+                f"{ours['latency_std']:.4f}",
+                f"{ours['throughput']:.2f}",
+                f"{ours['speedup']:.4f}"
+            ])
+    
+    print(f"✅ Results saved to: {csv_path}")
+    return csv_path
+
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='CUDAdent42 SOTA Benchmark vs PyTorch SDPA')
+    parser.add_argument('--output-dir', type=str, default='benchmark_results',
+                       help='Output directory for results')
+    parser.add_argument('--repeats', type=int, default=50,
+                       help='Number of timing repeats')
+    parser.add_argument('--warmup', type=int, default=10,
+                       help='Number of warmup iterations')
+    parser.add_argument('--save-csv', action='store_true',
+                       help='Save results to CSV')
+    parser.add_argument('--verbose', action='store_true',
+                       help='Verbose output')
+    args = parser.parse_args()
+    
     # FP16 benchmarks
     print()
     print("═" * 70)
@@ -315,6 +368,9 @@ if __name__ == '__main__':
     print("═" * 70)
     print()
     results_pytorch_fp16, results_ours_fp16 = run_benchmark_suite(dtype=torch.float16)
+    
+    if args.save_csv:
+        save_results_csv(results_pytorch_fp16, results_ours_fp16, 'fp16', args.output_dir)
     
     # Memory efficiency
     test_memory_efficiency()
@@ -328,6 +384,9 @@ if __name__ == '__main__':
         print("═" * 70)
         print()
         results_pytorch_bf16, results_ours_bf16 = run_benchmark_suite(dtype=torch.bfloat16)
+        
+        if args.save_csv:
+            save_results_csv(results_pytorch_bf16, results_ours_bf16, 'bf16', args.output_dir)
     
     print()
     print("╔═══════════════════════════════════════════════════════════════════════╗")
