@@ -398,36 +398,9 @@ void flash_attention_backward(
     cudaMemset(dV, 0, total_size * sizeof(T));
 }
 
-// Explicit template instantiations
-// BF16 only available on SM80+ (Ampere and newer)
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800) || !defined(__CUDA_ARCH__)
-template void flash_attention_forward<__nv_bfloat16>(
-    const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
-    __nv_bfloat16*, float*,
-    const int, const int, const int, const int, const float, const bool
-);
-
-template void flash_attention_backward<__nv_bfloat16>(
-    const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
-    const __nv_bfloat16*, const __nv_bfloat16*, const float*,
-    __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*,
-    const int, const int, const int, const int, const float, const bool
-);
-#endif
-
-// FP16 available on all architectures (SM75+)
-template void flash_attention_forward<half>(
-    const half*, const half*, const half*,
-    half*, float*,
-    const int, const int, const int, const int, const float, const bool
-);
-
-template void flash_attention_backward<half>(
-    const half*, const half*, const half*,
-    const half*, const half*, const float*,
-    half*, half*, half*,
-    const int, const int, const int, const int, const float, const bool
-);
+// Note: Template instantiations removed to avoid host/device compilation issues.
+// Templates will be instantiated implicitly when called from bindings.cpp.
+// This is Solution 2 from PHASE2_COMPILATION_BLOCKER_OCT11_2025.md
 
 }  // namespace flashmoe
 
