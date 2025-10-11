@@ -35,9 +35,11 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
-// Async memory pipeline (CUDA 11.7+)
+// Async memory pipeline (CUDA 11.7+, SM80+)
+#if HAS_CP_ASYNC
 #include <cuda/pipeline>
 #include <cuda/barrier>
+#endif
 
 // Cooperative groups for warp-level operations
 #include <cooperative_groups.h>
