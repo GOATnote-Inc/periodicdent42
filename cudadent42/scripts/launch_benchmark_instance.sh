@@ -22,7 +22,7 @@ echo "  Instance: $INSTANCE_NAME"
 echo "  Zone: $ZONE"
 echo "  Machine: $MACHINE_TYPE"
 echo "  GPU: $GPU_COUNT x $GPU_TYPE"
-echo "  Mode: Preemptible (cost-optimized)"
+echo "  Mode: On-demand (preemptible quota exceeded)"
 echo "  Results: gs://$BUCKET_NAME/cudadent42/"
 echo ""
 
@@ -51,7 +51,6 @@ gcloud compute instances create "$INSTANCE_NAME" \
     --boot-disk-size=50GB \
     --boot-disk-type=pd-standard \
     --maintenance-policy=TERMINATE \
-    --preemptible \
     --scopes=cloud-platform \
     --metadata-from-file=startup-script="$STARTUP_SCRIPT"
 
