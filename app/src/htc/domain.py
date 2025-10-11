@@ -47,6 +47,17 @@ except ImportError:
     SCIPY_AVAILABLE = False
     warnings.warn("scipy not available - uncertainty features limited")
 
+# v0.5.0: EXACT Allen-Dynes f₁/f₂ corrections
+try:
+    from app.src.htc.tuning.allen_dynes_corrections import (
+        allen_dynes_corrected_tc as allen_dynes_exact,
+        get_omega2_ratio,
+    )
+    HAS_EXACT_ALLEN_DYNES = True
+except ImportError:
+    HAS_EXACT_ALLEN_DYNES = False
+    logger.info("EXACT Allen-Dynes corrections not available (v0.5.0 module)")
+
 logger = logging.getLogger(__name__)
 
 
@@ -201,6 +212,8 @@ def allen_dynes_tc(
     lambda_ep: float,
     mu_star: float = 0.13,
     include_strong_coupling: bool = True,
+    use_exact: bool = None,
+    material: str = None,
 ) -> float:
     """
     Allen-Dynes formula with strong-coupling corrections.
@@ -217,6 +230,10 @@ def allen_dynes_tc(
         Coulomb pseudopotential
     include_strong_coupling : bool, default=True
         Include f1 and f2 correction factors
+    use_exact : bool, optional
+        Use EXACT v0.5.0 f₁/f₂ corrections (default: auto-detect if available)
+    material : str, optional
+        Material name for spectrum ratio lookup (v0.5.0)
 
     Returns
     -------
@@ -228,11 +245,43 @@ def allen_dynes_tc(
     Allen, P. B., & Dynes, R. C. (1975). "Transition temperature of
     strong-coupled superconductors reanalyzed".
     Physical Review B. 12 (3): 905.
+    
+    Notes
+    -----
+    v0.5.0: Auto-uses EXACT f₁/f₂ corrections when available.
     """
     if lambda_ep <= 0:
         return 0.0
 
-    # Strong-coupling correction factors
+    # v0.5.0: Use EXACT corrections if available (auto-detect)
+    if use_exact is None:
+        use_exact = HAS_EXACT_ALLEN_DYNES
+    
+    if use_exact and HAS_EXACT_ALLEN_DYNES and include_strong_coupling:
+        try:
+            # Get material-specific spectrum ratio
+            omega2_ratio = get_omega2_ratio(material) if material else 1.5
+            
+            # Use EXACT Allen-Dynes with μ*-dependent Λ₂
+            result = allen_dynes_exact(
+                lam=lambda_ep,
+                mu_star=mu_star,
+                omega_log=omega_log,
+                omega2_over_omegalog=omega2_ratio
+            )
+            
+            logger.debug(
+                f"v0.5.0 EXACT: Tc={result['Tc']:.2f}K, "
+                f"f₁={result['f1_factor']:.3f}, f₂={result['f2_factor']:.3f}"
+            )
+            
+            return float(result['Tc'])
+            
+        except Exception as e:
+            logger.warning(f"EXACT Allen-Dynes failed ({e}), using legacy")
+            # Fall through to legacy implementation
+
+    # Legacy implementation (pre-v0.5.0)
     if include_strong_coupling:
         f1 = (1 + (lambda_ep / 2.46) ** (3 / 2)) ** (1 / 3)
         f2 = 1 + (lambda_ep**2) / (lambda_ep**2 + 2.8)
