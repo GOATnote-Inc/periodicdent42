@@ -7,21 +7,27 @@
  * - Warpgroup 2 (warps 8-11): Output correction as softmax scale changes
  * 
  * Memory hierarchy:
- * - Shared memory (SRAM): 228KB per SM on H100
- * - L2 cache: 60MB on H100
- * - HBM3: 3.35 TB/s bandwidth
+ * - Shared memory (SRAM): 228KB per SM on H100, 48KB per SM on T4
+ * - L2 cache: 60MB on H100, 4MB on T4
+ * - HBM3: 3.35 TB/s bandwidth (H100), 320 GB/s (T4)
  * 
  * Optimization techniques:
  * 1. Tiling: Break sequence into tiles that fit in SRAM
- * 2. Async memory copy: Overlap next tile load with current compute
+ * 2. Async memory copy: Overlap next tile load with current compute (SM80+)
  * 3. Online softmax: Compute softmax incrementally without full matrix
- * 4. FP8 compute: Use Hopper's FP8 Tensor Cores (2x throughput vs BF16)
+ * 4. FP8 compute: Use Hopper's FP8 Tensor Cores (SM90+ only)
  * 5. Warp shuffle: Reduce shared memory usage for reductions
+ * 
+ * Architecture support:
+ * - SM75 (T4): FP16 only, no async copy, no native BF16
+ * - SM80 (A100): FP16 + BF16, cp.async, WMMA
+ * - SM90 (H100): FP16 + BF16 + FP8, WGMMA, TMA
  * 
  * @author GOATnote Autonomous Research Lab Initiative
  * @date 2025-10-11
  */
 
+#include "build_config.h"  // Architecture flags and tile presets
 #include "flash_attention_science.h"
 
 #include <cuda.h>
@@ -368,15 +374,11 @@ void flash_attention_backward(
 }
 
 // Explicit template instantiations
+// BF16 only available on SM80+ (Ampere and newer)
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800) || !defined(__CUDA_ARCH__)
 template void flash_attention_forward<__nv_bfloat16>(
     const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     __nv_bfloat16*, float*,
-    const int, const int, const int, const int, const float, const bool
-);
-
-template void flash_attention_forward<half>(
-    const half*, const half*, const half*,
-    half*, float*,
     const int, const int, const int, const int, const float, const bool
 );
 
@@ -384,6 +386,14 @@ template void flash_attention_backward<__nv_bfloat16>(
     const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, const __nv_bfloat16*, const float*,
     __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*,
+    const int, const int, const int, const int, const float, const bool
+);
+#endif
+
+// FP16 available on all architectures (SM75+)
+template void flash_attention_forward<half>(
+    const half*, const half*, const half*,
+    half*, float*,
     const int, const int, const int, const int, const float, const bool
 );
 
