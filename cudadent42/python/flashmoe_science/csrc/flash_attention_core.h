@@ -36,18 +36,18 @@ __global__ void flash_attention_kernel(
     // Initialize output accumulator and online softmax state
     float m_i = -INFINITY;  // Running max
     float l_i = 0.0f;       // Running sum of exp
-    float acc_o[64];        // Output accumulator (assumes K_dim <= 64)
+    float acc_o[128];       // Output accumulator (supports up to K_dim=128)
     
     // Initialize accumulator to zero
     #pragma unroll
-    for (int d = 0; d < K_dim && d < 64; d++) {
+    for (int d = 0; d < K_dim && d < 128; d++) {
         acc_o[d] = 0.0f;
     }
     
     // Load query vector (qid-th row of Q)
-    T q_vec[64];
+    T q_vec[128];
     #pragma unroll
-    for (int d = 0; d < K_dim && d < 64; d++) {
+    for (int d = 0; d < K_dim && d < 128; d++) {
         q_vec[d] = Q[qid * K_dim + d];
     }
     
@@ -56,7 +56,7 @@ __global__ void flash_attention_kernel(
         // Compute dot product: q_i @ k_j
         float qk = 0.0f;
         #pragma unroll
-        for (int d = 0; d < K_dim && d < 64; d++) {
+        for (int d = 0; d < K_dim && d < 128; d++) {
             float q_f = MathOps<T>::to_float(q_vec[d]);
             float k_f = MathOps<T>::to_float(K[kid * K_dim + d]);
             qk += q_f * k_f;
@@ -72,15 +72,15 @@ __global__ void flash_attention_kernel(
         l_i = alpha * l_i + beta;
         
         // Load value vector
-        T v_vec[64];
+        T v_vec[128];
         #pragma unroll
-        for (int d = 0; d < K_dim && d < 64; d++) {
+        for (int d = 0; d < K_dim && d < 128; d++) {
             v_vec[d] = V[kid * K_dim + d];
         }
         
         // Update output accumulator: O_i = alpha * O_i + beta * V_j
         #pragma unroll
-        for (int d = 0; d < K_dim && d < 64; d++) {
+        for (int d = 0; d < K_dim && d < 128; d++) {
             float v_f = MathOps<T>::to_float(v_vec[d]);
             acc_o[d] = alpha * acc_o[d] + beta * v_f;
         }
@@ -90,7 +90,7 @@ __global__ void flash_attention_kernel(
     
     // Final normalization: O_i = O_i / l_i
     #pragma unroll
-    for (int d = 0; d < K_dim && d < 64; d++) {
+    for (int d = 0; d < K_dim && d < 128; d++) {
         float o_normalized = acc_o[d] / l_i;
         O[qid * K_dim + d] = MathOps<T>::from_float(o_normalized);
     }
