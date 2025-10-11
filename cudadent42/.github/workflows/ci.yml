@@ -1,0 +1,121 @@
+name: FlashMoE-Science CI/CD
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test CUDA Kernels
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:12.3.0-devel-ubuntu22.04
+      options: --gpus all
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Python and dependencies
+      run: |
+        apt-get update && apt-get install -y python3-pip git
+        python3 -m pip install --upgrade pip
+        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu123
+        pip3 install pytest pytest-cov pytest-benchmark
+    
+    - name: Build CUDA extensions
+      run: |
+        cd flashmoe-science
+        python3 setup.py build_ext --inplace
+    
+    - name: Run correctness tests
+      run: |
+        cd flashmoe-science
+        pytest tests/test_attention_correctness.py -v --tb=short
+    
+    - name: Run performance benchmarks
+      run: |
+        cd flashmoe-science
+        pytest tests/ -v -m benchmark --benchmark-only || true
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: flashmoe-science/test-results/
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./flashmoe-science/coverage.xml
+        flags: cuda-kernels
+
+  profile:
+    name: Profile with Nsight Compute
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:12.3.0-devel-ubuntu22.04
+      options: --gpus all
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        apt-get update && apt-get install -y python3-pip
+        pip3 install torch pytest
+    
+    - name: Build extensions
+      run: |
+        cd flashmoe-science
+        python3 setup.py build_ext --inplace
+    
+    - name: Profile kernels
+      run: |
+        cd flashmoe-science
+        ncu --set full --export profile_attention \
+          python3 benchmarks/attention_benchmarks.py || true
+    
+    - name: Upload profiling results
+      uses: actions/upload-artifact@v4
+      with:
+        name: profiling-results
+        path: flashmoe-science/profile_*.ncu-rep
+
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install linters
+      run: |
+        pip install black flake8 mypy isort
+    
+    - name: Check Python formatting
+      run: |
+        cd flashmoe-science
+        black --check python/
+        isort --check python/
+    
+    - name: Run flake8
+      run: |
+        cd flashmoe-science
+        flake8 python/ --max-line-length=100
+    
+    - name: Check C++ formatting
+      run: |
+        # TODO: Add clang-format check for CUDA files
+        echo "C++ formatting check (TODO)"
+
