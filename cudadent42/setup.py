@@ -33,12 +33,12 @@ else:
             gencodes = [f"-gencode=arch=compute_{a},code=sm_{a}"]
             print(f"Auto-detected GPU: SM_{a}")
         else:
-            # Default to SM75 (T4) if no GPU detected
-            gencodes = ["-gencode=arch=compute_75,code=sm_75"]
-            print("No GPU detected, defaulting to SM_75 (T4)")
+            # Default to SM89 (L4) if no GPU detected
+            gencodes = ["-gencode=arch=compute_89,code=sm_89"]
+            print("No GPU detected, defaulting to SM_89 (L4)")
     except Exception:
-        gencodes = ["-gencode=arch=compute_75,code=sm_75"]
-        print("Could not detect GPU, defaulting to SM_75 (T4)")
+        gencodes = ["-gencode=arch=compute_89,code=sm_89"]
+        print("Could not detect GPU, defaulting to SM_89 (L4)")
 
 # Tile size preset (0=t4_safe, 1=ampere_balanced)
 tile_preset = os.environ.get("FA_TILE_PRESET", "0")
@@ -65,11 +65,8 @@ CXX_FLAGS = [
     '-fno-common',
 ]
 
-# FP16-only mode for SM75 (T4) to avoid BF16 host/device issues
-if archs and all(int(a) < 80 for a in archs.split(",")):
-    CUDA_FLAGS.append('-DFLASHMOE_DTYPE_FP16_ONLY')
-    CXX_FLAGS.append('-DFLASHMOE_DTYPE_FP16_ONLY')
-    print("Building FP16-only (SM75, no BF16)")
+# Note: FP16-only mode removed - L4 (SM89) has native BF16 support
+# If building for T4 (SM75), would need FP16-only mode or separate .cu files
 
 # Get version
 def get_version():
@@ -93,7 +90,7 @@ ext_modules = [
         name='flashmoe_science._C',
         sources=[
             'python/flashmoe_science/csrc/flash_attention_science.cu',
-            # 'python/flashmoe_science/csrc/flash_attention_warp_specialized.cu',  # Disabled for FP16-only build
+            'python/flashmoe_science/csrc/flash_attention_warp_specialized.cu',  # Re-enabled for L4 (SM89, has BF16)
             'python/flashmoe_science/csrc/flash_attention_backward.cu',
             'python/flashmoe_science/csrc/fused_moe.cu',
             'python/flashmoe_science/csrc/bindings.cpp',
