@@ -41,19 +41,19 @@ pip install torch
 git clone https://github.com/GOATnote-Inc/periodicdent42.git
 cd periodicdent42/cudadent42
 
-# Build with CMake (recommended)
-chmod +x build.sh
-./build.sh
+# Build with manual script (recommended - proven working)
+chmod +x build_manual.sh
+./build_manual.sh
 
-# Or build manually with CMake
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --parallel
-cd ..
+# Or try CMake (experimental - has device linkage issue)
+# chmod +x build.sh
+# ./build.sh
 
 # Test
 python3 tests/test_basic.py
 ```
+
+**Note**: The manual build script (`build_manual.sh`) is the proven method. CMake build compiles successfully but has a CUDA device linkage issue that needs refinement. See `PHASE3_START_OCT11_2025.md` for details.
 
 ### **Usage**
 
