@@ -34,17 +34,13 @@ gsutil ls "gs://$BUCKET_NAME" &>/dev/null || {
 }
 echo "✅ GCS bucket ready"
 
-# Upload startup script to GCS
-echo ""
-echo "Uploading startup script..."
-gsutil cp "$(dirname "$0")/gce_benchmark_startup.sh" "gs://$BUCKET_NAME/startup.sh"
-echo "✅ Startup script uploaded"
-
-# Create instance
+# Create instance with local startup script
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Creating GPU instance..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+STARTUP_SCRIPT="$(dirname "$0")/gce_benchmark_startup.sh"
 
 gcloud compute instances create "$INSTANCE_NAME" \
     --zone="$ZONE" \
@@ -57,7 +53,7 @@ gcloud compute instances create "$INSTANCE_NAME" \
     --maintenance-policy=TERMINATE \
     --preemptible \
     --scopes=cloud-platform \
-    --metadata-from-file=startup-script="gs://$BUCKET_NAME/startup.sh" \
+    --metadata-from-file=startup-script="$STARTUP_SCRIPT" \
     --metadata=install-nvidia-driver=True
 
 echo ""
