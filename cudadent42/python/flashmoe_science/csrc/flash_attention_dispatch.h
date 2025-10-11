@@ -6,19 +6,21 @@
 #include <cuda_runtime.h>
 
 // Forward declare C-linkage functions with explicit visibility
+extern "C"
 #if defined(__GNUC__) && !defined(_WIN32)
 __attribute__((visibility("default")))
 #endif
-extern "C" void flash_attention_forward_fp16(
+void flash_attention_forward_fp16(
     const void*, const void*, const void*, void*,
     int, int, int, int, cudaStream_t
 );
 
 #ifdef FLASHMOE_HAS_BF16
+extern "C"
 #if defined(__GNUC__) && !defined(_WIN32)
 __attribute__((visibility("default")))
 #endif
-extern "C" void flash_attention_forward_bf16(
+void flash_attention_forward_bf16(
     const void*, const void*, const void*, void*,
     int, int, int, int, cudaStream_t
 );

@@ -55,10 +55,11 @@ template void flash_attention_forward<half>(
 } // namespace flashmoe
 
 // C-linkage wrapper with explicit symbol visibility
+extern "C"
 #if defined(__GNUC__) && !defined(_WIN32)
 __attribute__((visibility("default")))
 #endif
-extern "C" void flash_attention_forward_fp16(
+void flash_attention_forward_fp16(
     const void* Q, const void* K, const void* V, void* O,
     int M, int N, int K_dim, int tile_size, cudaStream_t stream
 ) {

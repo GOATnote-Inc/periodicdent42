@@ -3,6 +3,8 @@
 // BF16 intrinsics: device code; only some host-available → split TUs.
 // Ref: https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__INTRINSIC__BFLOAT16.html
 
+#include <cstdio>  // for printf in debug builds
+
 namespace flashmoe {
 
 // Adapter struct pattern (no <cuda_fp16.h> or <cuda_bf16.h> needed)
