@@ -147,15 +147,15 @@ DEBYE_TEMP_DB = {
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 LAMBDA_CORRECTIONS = {
-    "element":  1.20,  # Pure transition metals (Al, Pb, Nb, V, Sn, In, Ta) — Empirically tuned v0.4.4
-    "A15":      2.60,  # High DOS → strong e-ph coupling (Nb3Sn, Nb3Ge, V3Si) — Grid-optimized v0.4.4
+    "element":  1.00,  # Pure transition metals (Al, Pb, Nb, V, Sn, In, Ta) — v0.5.0: Reset for EXACT f₁/f₂
+    "A15":      1.00,  # High DOS → strong e-ph coupling (Nb3Sn, Nb3Ge, V3Si) — v0.5.0: EXACT f₁/f₂ handles this
     "MgB2":     None,  # Multi-band σ/π bypass (handled separately, v0.4.4 multi-band model)
-    "diboride": 1.30,  # Moderate e-ph coupling (AlB2, TiB2)
-    "nitride":  1.40,  # Covalent bonding (NbN, TiN, VN) — Tuned for Tier B ≈38% MAPE
-    "carbide":  1.30,  # Moderate e-ph coupling (NbC, TaC) — Tuned for Tier B
-    "alloy":    1.10,  # Weak disorder enhancement (NbTi)
-    "hydride":  1.00,  # Light atoms → high ω_log (LaH10, YH6) — Reduced from 2.2 (wrong physics)
-    "cuprate":  0.50,  # d-wave approximation (YBCO, BSCCO) — BCS underestimates
+    "diboride": 1.00,  # Moderate e-ph coupling (AlB2, TiB2) — v0.5.0: Reset
+    "nitride":  1.00,  # Covalent bonding (NbN, TiN, VN) — v0.5.0: Reset
+    "carbide":  1.00,  # Moderate e-ph coupling (NbC, TaC) — v0.5.0: Reset
+    "alloy":    1.00,  # Weak disorder enhancement (NbTi) — v0.5.0: Reset
+    "hydride":  1.00,  # Light atoms → high ω_log (LaH10, YH6) — v0.5.0: Reset
+    "cuprate":  0.50,  # d-wave approximation (YBCO, BSCCO) — BCS underestimates (keep 0.5)
     "default":  1.00,  # Fallback for unknown classes
 }
 
