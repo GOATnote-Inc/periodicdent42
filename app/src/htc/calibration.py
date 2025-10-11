@@ -181,7 +181,7 @@ def predict_tc_for_material(composition: str, predictor: SuperconductorPredictor
     Predict Tc for a single material using Tier 1 calibration.
     
     Returns:
-        Dict with tc_predicted, lambda_ep, omega_log, runtime_ms
+        Dict with tc_predicted, lambda_ep, omega_log, runtime_ms, f1_factor, f2_factor
     """
     start_time = time.perf_counter()
     
@@ -198,6 +198,8 @@ def predict_tc_for_material(composition: str, predictor: SuperconductorPredictor
                 'lambda_ep': 0.3,
                 'omega_log': 500.0,
                 'runtime_ms': (time.perf_counter() - start_time) * 1000,
+                'f1_factor': None,
+                'f2_factor': None,
                 'error': 'Structure creation failed'
             }
             return prediction
@@ -205,8 +207,22 @@ def predict_tc_for_material(composition: str, predictor: SuperconductorPredictor
         # Use Tier 1 calibrated property estimation
         lambda_ep, omega_log, avg_mass = estimate_material_properties(structure, composition)
         
-        # Predict Tc using Allen-Dynes formula (NOTE: omega_log comes FIRST!)
-        tc_predicted = allen_dynes_tc(omega_log, lambda_ep, mu_star=0.13)
+        # v0.5.0: Try to get EXACT f1/f2 factors
+        f1_factor = None
+        f2_factor = None
+        try:
+            from app.src.htc.tuning.allen_dynes_corrections import (
+                allen_dynes_corrected_tc as allen_dynes_exact,
+                get_omega2_ratio,
+            )
+            omega2_ratio = get_omega2_ratio(composition)
+            result = allen_dynes_exact(lambda_ep, 0.13, omega_log, omega2_ratio)
+            tc_predicted = result['Tc']
+            f1_factor = result['f1_factor']
+            f2_factor = result['f2_factor']
+        except Exception:
+            # Fallback to standard allen_dynes_tc (which auto-uses EXACT if available)
+            tc_predicted = allen_dynes_tc(omega_log, lambda_ep, mu_star=0.13, material=composition)
         
         runtime_ms = (time.perf_counter() - start_time) * 1000
         
@@ -215,6 +231,8 @@ def predict_tc_for_material(composition: str, predictor: SuperconductorPredictor
             'lambda_ep': float(lambda_ep),
             'omega_log': float(omega_log),
             'avg_mass': float(avg_mass),
+            'f1_factor': float(f1_factor) if f1_factor is not None else None,
+            'f2_factor': float(f2_factor) if f2_factor is not None else None,
             'runtime_ms': runtime_ms,
         }
     
@@ -224,6 +242,8 @@ def predict_tc_for_material(composition: str, predictor: SuperconductorPredictor
             'tc_predicted': 0.0,
             'lambda_ep': 0.0,
             'omega_log': 0.0,
+            'f1_factor': None,
+            'f2_factor': None,
             'runtime_ms': (time.perf_counter() - start_time) * 1000,
             'error': str(e)
         }
@@ -922,30 +942,57 @@ def generate_html_report(results: Dict, output_path: Path):
 
 
 def generate_prometheus_metrics(results: Dict, output_path: Path):
-    """Generate Prometheus metrics file."""
-    metrics = f"""# HELP htc_calibration_mape_percent Overall MAPE percentage
+    """
+    Generate Prometheus metrics file with v0.5.0 f₁/f₂ averages.
+    
+    Micro-edit #4: Symbol clarity (Θ_D for Debye temp, ω_log for log-avg freq).
+    """
+    # Calculate f1/f2 averages (v0.5.0)
+    f1_values = [p.get('f1_factor') for p in results.get('predictions', []) if p.get('f1_factor') is not None]
+    f2_values = [p.get('f2_factor') for p in results.get('predictions', []) if p.get('f2_factor') is not None]
+    
+    f1_avg = sum(f1_values) / len(f1_values) if f1_values else 0.0
+    f2_avg = sum(f2_values) / len(f2_values) if f2_values else 0.0
+    
+    metrics = f"""# HELP htc_calibration_mape_percent Overall MAPE (Mean Absolute Percent Error)
 # TYPE htc_calibration_mape_percent gauge
+# UNIT htc_calibration_mape_percent percent
 htc_calibration_mape_percent {results['metrics']['overall']['mape']}
 
-# HELP htc_calibration_r2_score Overall R² score
+# HELP htc_calibration_r2_score Overall R² coefficient of determination
 # TYPE htc_calibration_r2_score gauge
+# UNIT htc_calibration_r2_score unitless
 htc_calibration_r2_score {results['metrics']['overall']['r2']}
 
-# HELP htc_calibration_rmse_kelvin Overall RMSE in Kelvin
+# HELP htc_calibration_rmse_kelvin Overall RMSE (Root Mean Squared Error)
 # TYPE htc_calibration_rmse_kelvin gauge
+# UNIT htc_calibration_rmse_kelvin kelvin
 htc_calibration_rmse_kelvin {results['metrics']['overall']['rmse']}
 
-# HELP htc_calibration_outlier_count Number of outliers (error > 30 K)
+# HELP htc_calibration_outlier_count Number of outliers (absolute error > 30 K)
 # TYPE htc_calibration_outlier_count gauge
+# UNIT htc_calibration_outlier_count count
 htc_calibration_outlier_count {results['metrics']['outliers']['count']}
 
-# HELP htc_calibration_latency_p99_ms P99 prediction latency in milliseconds
+# HELP htc_calibration_latency_p99_ms P99 prediction latency
 # TYPE htc_calibration_latency_p99_ms gauge
+# UNIT htc_calibration_latency_p99_ms milliseconds
 htc_calibration_latency_p99_ms {results['performance']['per_material_p99_ms']}
 
-# HELP htc_calibration_runtime_seconds Total calibration runtime in seconds
+# HELP htc_calibration_runtime_seconds Total calibration runtime
 # TYPE htc_calibration_runtime_seconds gauge
+# UNIT htc_calibration_runtime_seconds seconds
 htc_calibration_runtime_seconds {results['performance']['total_runtime_s']}
+
+# HELP htc_f1_avg_unitless Allen-Dynes f₁ factor average (strong-coupling correction, v0.5.0)
+# TYPE htc_f1_avg_unitless gauge
+# UNIT htc_f1_avg_unitless unitless
+htc_f1_avg_unitless {f1_avg:.6f}
+
+# HELP htc_f2_avg_unitless Allen-Dynes f₂ factor average (spectral shape correction, v0.5.0)
+# TYPE htc_f2_avg_unitless gauge
+# UNIT htc_f2_avg_unitless unitless
+htc_f2_avg_unitless {f2_avg:.6f}
 """
     
     with open(output_path, 'w') as f:
