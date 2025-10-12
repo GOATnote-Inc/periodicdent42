@@ -402,6 +402,320 @@ void flash_attention_forward(
 }
 
 /**
+ * FlashAttention-2 Split-K: Pass 1 - Compute Partial Attention
+ * 
+ * Each block computes attention for ONE (query_tile, kv_tile) pair.
+ * Stores partial results that will be reduced in Pass 2.
+ * 
+ * Grid: (num_heads, batch_size, num_query_tiles * num_kv_tiles)
+ * Block: (THREADS_PER_BLOCK, 1, 1)
+ */
+template<typename T>
+__global__ void flash_attention_forward_split_k_partial(
+    const T* Q,
+    const T* K,
+    const T* V,
+    T* partial_O,              // [B,H,Q_tiles,KV_tiles,TILE_SIZE_M,D]
+    float* partial_max,        // [B,H,Q_tiles,KV_tiles,TILE_SIZE_M]
+    float* partial_sum,        // [B,H,Q_tiles,KV_tiles,TILE_SIZE_M]
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int head_dim,
+    const int num_query_tiles,
+    const int num_kv_tiles,
+    const float softmax_scale,
+    const bool causal
+) {
+    // Block indices
+    const int head_idx = blockIdx.x;
+    const int batch_idx = blockIdx.y;
+    const int tile_pair_idx = blockIdx.z;
+    
+    // Decompose tile_pair_idx into query_tile and kv_tile
+    const int query_tile_idx = tile_pair_idx / num_kv_tiles;
+    const int kv_tile_idx = tile_pair_idx % num_kv_tiles;
+    
+    // Thread indices
+    const int query_idx_in_tile = threadIdx.x;
+    const int query_idx = query_tile_idx * TILE_SIZE_M + query_idx_in_tile;
+    
+    // Guard for valid queries
+    const bool is_valid_query = (query_idx_in_tile < TILE_SIZE_M) && (query_idx < seq_len);
+    
+    // Shared memory for Q, K, V tiles
+    __shared__ __align__(16) T smem_Q[TILE_SIZE_M][TILE_SIZE_K];
+    __shared__ __align__(16) T smem_K[TILE_SIZE_N][TILE_SIZE_K];
+    __shared__ __align__(16) T smem_V[TILE_SIZE_N][TILE_SIZE_K];
+    __shared__ __align__(16) float smem_S[TILE_SIZE_M][TILE_SIZE_N];
+    
+    // Base pointers
+    const int offset = (batch_idx * num_heads + head_idx) * seq_len * head_dim;
+    const T* Q_base = Q + offset;
+    const T* K_base = K + offset;
+    const T* V_base = V + offset;
+    
+    // K/V tile boundaries
+    const int kv_start = kv_tile_idx * TILE_SIZE_N;
+    const int kv_end = min(kv_start + TILE_SIZE_N, seq_len);
+    const int tile_size = kv_end - kv_start;
+    
+    // Register storage for output
+    float acc_o[128] = {0.0f};
+    
+    // Load Q tile
+    if (is_valid_query && head_dim % 8 == 0) {
+        const float4* Q_vec = reinterpret_cast<const float4*>(Q_base + query_idx * head_dim);
+        float4* smem_Q_vec = reinterpret_cast<float4*>(&smem_Q[query_idx_in_tile][0]);
+        #pragma unroll
+        for (int d = 0; d < head_dim / 8; ++d) {
+            smem_Q_vec[d] = Q_vec[d];
+        }
+    } else if (is_valid_query) {
+        for (int d = 0; d < head_dim; ++d) {
+            smem_Q[query_idx_in_tile][d] = Q_base[query_idx * head_dim + d];
+        }
+    }
+    __syncthreads();
+    
+    // Load K, V tiles (collaborative)
+    if (head_dim % 8 == 0) {
+        for (int kv = threadIdx.x; kv < tile_size; kv += blockDim.x) {
+            const int kv_idx = kv_start + kv;
+            const float4* K_vec = reinterpret_cast<const float4*>(K_base + kv_idx * head_dim);
+            const float4* V_vec = reinterpret_cast<const float4*>(V_base + kv_idx * head_dim);
+            float4* smem_K_vec = reinterpret_cast<float4*>(&smem_K[kv][0]);
+            float4* smem_V_vec = reinterpret_cast<float4*>(&smem_V[kv][0]);
+            #pragma unroll
+            for (int d = 0; d < head_dim / 8; ++d) {
+                smem_K_vec[d] = K_vec[d];
+                smem_V_vec[d] = V_vec[d];
+            }
+        }
+    } else {
+        for (int kv = threadIdx.x; kv < tile_size; kv += blockDim.x) {
+            const int kv_idx = kv_start + kv;
+            for (int d = 0; d < head_dim; ++d) {
+                smem_K[kv][d] = K_base[kv_idx * head_dim + d];
+                smem_V[kv][d] = V_base[kv_idx * head_dim + d];
+            }
+        }
+    }
+    __syncthreads();
+    
+    // Compute Q @ K^T
+    if (is_valid_query) {
+        for (int kv = 0; kv < tile_size; ++kv) {
+            const int kv_idx = kv_start + kv;
+            float score = 0.0f;
+            #pragma unroll
+            for (int d = 0; d < TILE_SIZE_K && d < head_dim; ++d) {
+                score += to_float(smem_Q[query_idx_in_tile][d]) * to_float(smem_K[kv][d]);
+            }
+            score *= softmax_scale;
+            if (causal && kv_idx > query_idx) {
+                score = -INFINITY;
+            }
+            smem_S[query_idx_in_tile][kv] = score;
+        }
+    }
+    __syncthreads();
+    
+    // Compute local softmax
+    float local_max = -INFINITY;
+    float local_sum = 0.0f;
+    
+    if (is_valid_query) {
+        // Find max
+        for (int kv = 0; kv < tile_size; ++kv) {
+            local_max = fmaxf(local_max, smem_S[query_idx_in_tile][kv]);
+        }
+        
+        // Compute exp and sum
+        for (int kv = 0; kv < tile_size; ++kv) {
+            float exp_val = expf(smem_S[query_idx_in_tile][kv] - local_max);
+            smem_S[query_idx_in_tile][kv] = exp_val;
+            local_sum += exp_val;
+        }
+        
+        // Compute partial output: O_partial = P @ V
+        #pragma unroll
+        for (int d = 0; d < head_dim; ++d) {
+            float weighted_value = 0.0f;
+            for (int kv = 0; kv < tile_size; ++kv) {
+                weighted_value += smem_S[query_idx_in_tile][kv] * to_float(smem_V[kv][d]);
+            }
+            acc_o[d] = weighted_value;
+        }
+    }
+    
+    // Store partial results to global memory
+    if (is_valid_query) {
+        // Calculate output index: [B,H,Q_tiles,KV_tiles,TILE_SIZE_M,D]
+        const int partial_offset = ((batch_idx * num_heads + head_idx) * num_query_tiles + query_tile_idx) 
+                                   * num_kv_tiles + kv_tile_idx;
+        T* partial_O_base = partial_O + (partial_offset * TILE_SIZE_M + query_idx_in_tile) * head_dim;
+        
+        for (int d = 0; d < head_dim; ++d) {
+            partial_O_base[d] = from_float<T>(acc_o[d]);
+        }
+        
+        // Store max and sum
+        const int stats_offset = ((batch_idx * num_heads + head_idx) * num_query_tiles + query_tile_idx)
+                                 * num_kv_tiles + kv_tile_idx;
+        partial_max[stats_offset * TILE_SIZE_M + query_idx_in_tile] = local_max;
+        partial_sum[stats_offset * TILE_SIZE_M + query_idx_in_tile] = local_sum;
+    }
+}
+
+/**
+ * FlashAttention-2 Split-K: Pass 2 - Reduce Partial Results
+ * 
+ * Each block reduces partial results for one query_tile across all kv_tiles.
+ * Applies online softmax reduction to correctly combine results.
+ * 
+ * Grid: (num_heads, batch_size, num_query_tiles)
+ * Block: (THREADS_PER_BLOCK, 1, 1)
+ */
+template<typename T>
+__global__ void flash_attention_forward_split_k_reduce(
+    const T* partial_O,
+    const float* partial_max,
+    const float* partial_sum,
+    T* O,
+    float* softmax_lse,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int head_dim,
+    const int num_query_tiles,
+    const int num_kv_tiles
+) {
+    const int head_idx = blockIdx.x;
+    const int batch_idx = blockIdx.y;
+    const int query_tile_idx = blockIdx.z;
+    const int query_idx_in_tile = threadIdx.x;
+    const int query_idx = query_tile_idx * TILE_SIZE_M + query_idx_in_tile;
+    
+    const bool is_valid_query = (query_idx_in_tile < TILE_SIZE_M) && (query_idx < seq_len);
+    
+    if (!is_valid_query) return;
+    
+    // Find global max across all kv_tiles
+    float global_max = -INFINITY;
+    const int stats_base = ((batch_idx * num_heads + head_idx) * num_query_tiles + query_tile_idx) * num_kv_tiles;
+    
+    for (int kv_tile = 0; kv_tile < num_kv_tiles; ++kv_tile) {
+        float local_max = partial_max[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
+        global_max = fmaxf(global_max, local_max);
+    }
+    
+    // Compute global sum with reweighting
+    float global_sum = 0.0f;
+    for (int kv_tile = 0; kv_tile < num_kv_tiles; ++kv_tile) {
+        float local_max = partial_max[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
+        float local_sum = partial_sum[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
+        global_sum += local_sum * expf(local_max - global_max);
+    }
+    
+    // Accumulate reweighted partial outputs
+    float final_o[128] = {0.0f};
+    
+    for (int kv_tile = 0; kv_tile < num_kv_tiles; ++kv_tile) {
+        float local_max = partial_max[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
+        float local_sum = partial_sum[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
+        float weight = local_sum * expf(local_max - global_max);
+        
+        const int partial_offset = ((batch_idx * num_heads + head_idx) * num_query_tiles + query_tile_idx)
+                                   * num_kv_tiles + kv_tile;
+        const T* partial_O_base = partial_O + (partial_offset * TILE_SIZE_M + query_idx_in_tile) * head_dim;
+        
+        for (int d = 0; d < head_dim; ++d) {
+            final_o[d] += weight * to_float(partial_O_base[d]);
+        }
+    }
+    
+    // Normalize and write final output
+    const int offset = (batch_idx * num_heads + head_idx) * seq_len * head_dim;
+    T* O_base = O + offset;
+    
+    for (int d = 0; d < head_dim; ++d) {
+        O_base[query_idx * head_dim + d] = from_float<T>(final_o[d] / global_sum);
+    }
+    
+    // Store softmax LSE
+    softmax_lse[(batch_idx * num_heads + head_idx) * seq_len + query_idx] = logf(global_sum) + global_max;
+}
+
+/**
+ * Host function for FlashAttention-2 Split-K (2-pass algorithm)
+ */
+template<typename T>
+void flash_attention_forward_split_k(
+    const T* Q,
+    const T* K,
+    const T* V,
+    T* O,
+    float* softmax_lse,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int head_dim,
+    const float softmax_scale,
+    const bool causal
+) {
+    const int num_query_tiles = (seq_len + TILE_SIZE_M - 1) / TILE_SIZE_M;
+    const int num_kv_tiles = (seq_len + TILE_SIZE_N - 1) / TILE_SIZE_N;
+    
+    // Allocate partial result buffers
+    const size_t partial_O_size = batch_size * num_heads * num_query_tiles * num_kv_tiles * TILE_SIZE_M * head_dim;
+    const size_t partial_stats_size = batch_size * num_heads * num_query_tiles * num_kv_tiles * TILE_SIZE_M;
+    
+    T* partial_O;
+    float* partial_max;
+    float* partial_sum;
+    
+    cudaMalloc(&partial_O, partial_O_size * sizeof(T));
+    cudaMalloc(&partial_max, partial_stats_size * sizeof(float));
+    cudaMalloc(&partial_sum, partial_stats_size * sizeof(float));
+    
+    // Pass 1: Compute partial attention for each (query_tile, kv_tile) pair
+    const int total_tile_pairs = num_query_tiles * num_kv_tiles;
+    dim3 grid1(num_heads, batch_size, total_tile_pairs);
+    dim3 block(THREADS_PER_BLOCK);
+    
+    flash_attention_forward_split_k_partial<T><<<grid1, block>>>(
+        Q, K, V, partial_O, partial_max, partial_sum,
+        batch_size, num_heads, seq_len, head_dim,
+        num_query_tiles, num_kv_tiles, softmax_scale, causal
+    );
+    
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error in split_k_partial: %s\n", cudaGetErrorString(err));
+    }
+    
+    // Pass 2: Reduce partial results
+    dim3 grid2(num_heads, batch_size, num_query_tiles);
+    
+    flash_attention_forward_split_k_reduce<T><<<grid2, block>>>(
+        partial_O, partial_max, partial_sum, O, softmax_lse,
+        batch_size, num_heads, seq_len, head_dim,
+        num_query_tiles, num_kv_tiles
+    );
+    
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error in split_k_reduce: %s\n", cudaGetErrorString(err));
+    }
+    
+    // Free partial buffers
+    cudaFree(partial_O);
+    cudaFree(partial_max);
+    cudaFree(partial_sum);
+}
+
+/**
  * FlashAttention-Science backward kernel (stub).
  * 
  * TODO: Implement backward pass for training.
