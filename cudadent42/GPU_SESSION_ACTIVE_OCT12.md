@@ -1,16 +1,50 @@
-# GPU Session Status: SESSION N+5 COMPLETE ✅
+# GPU Session Status: SESSION N+6 COMPLETE ✅
 
 **Instance**: cudadent42-l4-dev (L4, us-central1-a)  
-**Status**: RUNNING (Session N+5 complete, ready for N+6)  
-**Session N+5 Completed**: October 12, 2025, 06:20 PM UTC  
+**Status**: RUNNING (Session N+6 complete, ready for N+7)  
+**Session N+6 Completed**: October 12, 2025, 06:50 PM UTC  
 **External IP**: 34.172.98.137  
-**Duration**: 2 hours 10 minutes  
-**Cost**: $1.94 (GPU $0.44 + AI $1.50)  
-**Result**: ✅ **CORRECTNESS RESTORED** - All tests pass!
+**Duration**: 55 minutes  
+**Cost**: $0.93 (GPU $0.18 + AI $0.75)  
+**Result**: ✅ **BASELINE ESTABLISHED** - Root cause identified!
 
 ---
 
-## 🎉 Session N+5: OBJECTIVE ACHIEVED
+## 🎉 Session N+6: BASELINE ESTABLISHED
+
+**Primary Goal**: Measure performance baseline with correct kernel
+
+**Result**: ✅ **OBJECTIVE ACHIEVED**
+- Baseline measured (10 configs tested)
+- Root cause identified (sequential K/V loop)
+- Clear optimization roadmap (4 priorities)
+- Realistic expectations set (need FA-2 architecture)
+
+### Performance Summary
+
+| S | PyTorch | Ours | Speedup |
+|---|---------|------|---------|
+| 4 | 0.081 ms | 0.010 ms | **7.93×** ✅ |
+| 128 | 0.024 ms | 0.543 ms | 0.045× |
+| 512 | 0.032 ms | 2.133 ms | 0.015× |
+
+**Key Finding**: S=4 is 7.9× faster (launch overhead advantage), but S=512 is 66× slower (serial K/V loop bottleneck)
+
+### Root Cause
+
+**Sequential K/V loop** (FlashAttention-1 style):
+- Each block loops through all K/V tiles sequentially
+- No parallelism across K/V dimension
+- Redundant memory loads (64 blocks × 2 K/V tiles = 128 loads for same data!)
+
+**Solution**: Implement FlashAttention-2 style (4D grid, parallel K/V)
+- Expected: 10× speedup → 0.45-0.90× vs PyTorch
+- Time: 4-6 hours implementation
+- Approach: Split-K style (2-pass, no atomics)
+
+---
+
+## 🎉 Session N+5: CORRECTNESS ACHIEVED
 
 **Primary Goal**: Fix correctness bug (max_diff = 4.72 for S=128, D=64)
 
