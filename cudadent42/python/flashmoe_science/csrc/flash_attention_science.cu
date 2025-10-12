@@ -80,6 +80,13 @@ __device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float x) {
 }
 #endif
 
+// Kernel configuration constants
+// Defined as constexpr (not #define) to avoid conflicts with template parameters
+constexpr int WARP_SIZE = 32;
+constexpr int NUM_WARPS_PER_WARPGROUP = 4;
+constexpr int NUM_WARPS_PER_BLOCK = 12;  // 3 warpgroups
+constexpr int THREADS_PER_BLOCK = WARP_SIZE * NUM_WARPS_PER_BLOCK;  // 384
+
 /**
  * Online softmax algorithm for numerical stability.
  * 

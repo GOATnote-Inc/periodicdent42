@@ -12,11 +12,7 @@
 #include <cuda_bf16.h>
 #endif
 
-// Constants for warp specialization
-#define WARP_SIZE 32
-#define NUM_WARPS_PER_WARPGROUP 4
-#define THREADS_PER_BLOCK 128
-
-// Include the core kernel implementation
-#include "flash_attention_core.h"
+// Note: Kernel-specific constants (WARP_SIZE, TILE_SIZE_*, etc.) are defined
+// as constexpr in each .cu file to avoid preprocessor conflicts with template
+// parameter names. Do not #define them here.
 
