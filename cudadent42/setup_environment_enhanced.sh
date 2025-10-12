@@ -284,9 +284,10 @@ import flashmoe_science._C as fa
 
 # Test tiny config
 Q = K = V = torch.randn(1, 1, 32, 64, dtype=torch.float16, device='cuda')
+lse = torch.zeros(32, dtype=torch.float32, device='cuda')
 
 try:
-    O = fa.flash_attention_forward(Q, K, V, False, 0.125)
+    O = fa.flash_attention_forward(Q, K, V, lse, False, 0.125)
     
     # Correctness checks
     assert not torch.isnan(O).any(), 'NaN detected in output'
@@ -337,12 +338,12 @@ generate_summary() {
         log "Next steps:"
         log "  1. Clean: python3 setup.py clean --all"
         log "  2. Build: python3 setup.py build_ext --inplace"
-        log "  3. Re-run: ./setup_environment_enhanced.sh"
+        log "  3. Re-run: ./setup_environment.sh"
     fi
     
     log ""
     log "💡 Tip: Source this script to preserve LD_LIBRARY_PATH:"
-    log "   source ./setup_environment_enhanced.sh"
+    log "   source ./setup_environment.sh"
     log ""
     log "📄 Full log: $LOG_FILE"
     log "════════════════════════════════════════════════════════"
@@ -377,4 +378,3 @@ main
 
 # Return the exit code
 exit $?
-
