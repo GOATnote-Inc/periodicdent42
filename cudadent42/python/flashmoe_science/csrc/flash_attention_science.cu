@@ -531,22 +531,26 @@ __global__ void flash_attention_forward_split_k_partial(
             local_max = fmaxf(local_max, smem_S[query_idx_in_tile][kv]);
         }
         
-        // Compute exp and sum
-        for (int kv = 0; kv < tile_size; ++kv) {
-            float exp_val = expf(smem_S[query_idx_in_tile][kv] - local_max);
-            smem_S[query_idx_in_tile][kv] = exp_val;
-            local_sum += exp_val;
-        }
-        
-        // Compute partial output: O_partial = P @ V
-        #pragma unroll
-        for (int d = 0; d < head_dim; ++d) {
-            float weighted_value = 0.0f;
+        // Skip fully-masked K/V tiles (prevents NaN from exp(-INF - (-INF)))
+        if (!(isinf(local_max) && local_max < 0.0f)) {
+            // Compute exp and sum
             for (int kv = 0; kv < tile_size; ++kv) {
-                weighted_value += smem_S[query_idx_in_tile][kv] * to_float(smem_V[kv][d]);
+                float exp_val = expf(smem_S[query_idx_in_tile][kv] - local_max);
+                smem_S[query_idx_in_tile][kv] = exp_val;
+                local_sum += exp_val;
             }
-            acc_o[d] = weighted_value;
+            
+            // Compute partial output: O_partial = P @ V
+            #pragma unroll
+            for (int d = 0; d < head_dim; ++d) {
+                float weighted_value = 0.0f;
+                for (int kv = 0; kv < tile_size; ++kv) {
+                    weighted_value += smem_S[query_idx_in_tile][kv] * to_float(smem_V[kv][d]);
+                }
+                acc_o[d] = weighted_value;
+            }
         }
+        // else: acc_o stays at 0 (initialized earlier), which is correct for fully-masked tiles
     }
     
     // Store partial results to global memory
