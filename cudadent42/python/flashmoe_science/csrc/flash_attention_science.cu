@@ -205,9 +205,21 @@ __global__ void flash_attention_forward_kernel(
     }
     
     // === STEP 1: Load Q tile (one row per thread) ===
-    // Load query vector for this position
-    for (int d = 0; d < head_dim; ++d) {
-        smem_Q[query_idx % TILE_SIZE_M][d] = Q_base[query_idx * head_dim + d];
+    // OPTIMIZATION #1: Vectorized Q load using float4 (8 half values at once)
+    // Expected speedup: 1.5-2x on memory-bound configs
+    if (head_dim % 8 == 0) {
+        const float4* Q_vec = reinterpret_cast<const float4*>(Q_base + query_idx * head_dim);
+        float4* smem_Q_vec = reinterpret_cast<float4*>(&smem_Q[query_idx % TILE_SIZE_M][0]);
+        
+        #pragma unroll
+        for (int d = 0; d < head_dim / 8; ++d) {
+            smem_Q_vec[d] = Q_vec[d];  // Load 8 half values per iteration
+        }
+    } else {
+        // Fallback for non-aligned head_dim
+        for (int d = 0; d < head_dim; ++d) {
+            smem_Q[query_idx % TILE_SIZE_M][d] = Q_base[query_idx * head_dim + d];
+        }
     }
     __syncthreads();
     
@@ -218,11 +230,30 @@ __global__ void flash_attention_forward_kernel(
         const int tile_size = kv_end - kv_start;
         
         // Load K, V tiles (collaborative loading)
-        for (int kv = threadIdx.x; kv < tile_size; kv += blockDim.x) {
-            const int kv_idx = kv_start + kv;
-            for (int d = 0; d < head_dim; ++d) {
-                smem_K[kv][d] = K_base[kv_idx * head_dim + d];
-                smem_V[kv][d] = V_base[kv_idx * head_dim + d];
+        // OPTIMIZATION #1: Vectorized + coalesced K,V loads using float4
+        // Each thread loads multiple rows to maximize memory throughput
+        if (head_dim % 8 == 0) {
+            for (int kv = threadIdx.x; kv < tile_size; kv += blockDim.x) {
+                const int kv_idx = kv_start + kv;
+                const float4* K_vec = reinterpret_cast<const float4*>(K_base + kv_idx * head_dim);
+                const float4* V_vec = reinterpret_cast<const float4*>(V_base + kv_idx * head_dim);
+                float4* smem_K_vec = reinterpret_cast<float4*>(&smem_K[kv][0]);
+                float4* smem_V_vec = reinterpret_cast<float4*>(&smem_V[kv][0]);
+                
+                #pragma unroll
+                for (int d = 0; d < head_dim / 8; ++d) {
+                    smem_K_vec[d] = K_vec[d];  // Load 8 half values per iteration
+                    smem_V_vec[d] = V_vec[d];
+                }
+            }
+        } else {
+            // Fallback for non-aligned head_dim
+            for (int kv = threadIdx.x; kv < tile_size; kv += blockDim.x) {
+                const int kv_idx = kv_start + kv;
+                for (int d = 0; d < head_dim; ++d) {
+                    smem_K[kv][d] = K_base[kv_idx * head_dim + d];
+                    smem_V[kv][d] = V_base[kv_idx * head_dim + d];
+                }
             }
         }
         __syncthreads();
