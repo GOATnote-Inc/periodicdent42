@@ -195,10 +195,17 @@ __global__ void flash_attention_forward_kernel(
     // This implements simple tiling without advanced optimizations
     // Goal: Get first test passing with correct results
     
-    // Determine which query row this thread handles
-    const int query_idx = threadIdx.x;  // Each thread handles one query position
+    // === MULTI-TILE QUERY HANDLING ===
+    // Grid: (num_heads, batch_size, num_query_tiles)
+    // Block: (THREADS_PER_BLOCK=256, 1, 1)
+    // Each block processes TILE_SIZE_M=64 queries
+    const int query_tile_idx = blockIdx.z;              // Which query tile (0, 1, 2, ...)
+    const int query_idx_in_tile = threadIdx.x;          // Position within tile (0-63)
+    const int query_idx = query_tile_idx * TILE_SIZE_M + query_idx_in_tile;  // Global query index
     
-    if (query_idx >= seq_len) return;  // Guard for out-of-bounds threads
+    // Guard: Only threads handling valid queries within tile bounds participate
+    // This prevents invalid threads (64-255) from corrupting results
+    const bool is_valid_query = (query_idx_in_tile < TILE_SIZE_M) && (query_idx < seq_len);
     
     // === Initialize running statistics for online softmax ===
     // These track max and sum of exponentials across all KV tiles
@@ -214,18 +221,19 @@ __global__ void flash_attention_forward_kernel(
     // === STEP 1: Load Q tile (one row per thread) ===
     // OPTIMIZATION #1: Vectorized Q load using float4 (8 half values at once)
     // Expected speedup: 1.5-2x on memory-bound configs
-    if (head_dim % 8 == 0) {
+    // Only valid queries load data (guards against out-of-bounds access)
+    if (is_valid_query && head_dim % 8 == 0) {
         const float4* Q_vec = reinterpret_cast<const float4*>(Q_base + query_idx * head_dim);
-        float4* smem_Q_vec = reinterpret_cast<float4*>(&smem_Q[query_idx % TILE_SIZE_M][0]);
+        float4* smem_Q_vec = reinterpret_cast<float4*>(&smem_Q[query_idx_in_tile][0]);
         
         #pragma unroll
         for (int d = 0; d < head_dim / 8; ++d) {
             smem_Q_vec[d] = Q_vec[d];  // Load 8 half values per iteration
         }
-    } else {
+    } else if (is_valid_query) {
         // Fallback for non-aligned head_dim
         for (int d = 0; d < head_dim; ++d) {
-            smem_Q[query_idx % TILE_SIZE_M][d] = Q_base[query_idx * head_dim + d];
+            smem_Q[query_idx_in_tile][d] = Q_base[query_idx * head_dim + d];
         }
     }
     __syncthreads();
@@ -266,7 +274,7 @@ __global__ void flash_attention_forward_kernel(
         __syncthreads();
         
         // === STEP 3: Compute Q @ K^T for this query ===
-        if (query_idx < seq_len) {
+        if (is_valid_query) {
             for (int kv = 0; kv < tile_size; ++kv) {
                 const int kv_idx = kv_start + kv;
                 
@@ -274,7 +282,7 @@ __global__ void flash_attention_forward_kernel(
                 float score = 0.0f;
                 #pragma unroll
                 for (int d = 0; d < TILE_SIZE_K && d < head_dim; ++d) {
-                    score += to_float(smem_Q[query_idx % TILE_SIZE_M][d]) * 
+                    score += to_float(smem_Q[query_idx_in_tile][d]) * 
                              to_float(smem_K[kv][d]);
                 }
                 
@@ -286,24 +294,24 @@ __global__ void flash_attention_forward_kernel(
                     score = -INFINITY;
                 }
                 
-                smem_S[query_idx % TILE_SIZE_M][kv] = score;
+                smem_S[query_idx_in_tile][kv] = score;
             }
         }
         __syncthreads();
         
         // === STEP 4: Online softmax update ===
-        if (query_idx < seq_len) {
+        if (is_valid_query) {
             // 4a. Find max in current tile for numerical stability
             float m_tile = -INFINITY;
             for (int kv = 0; kv < tile_size; ++kv) {
-                m_tile = fmaxf(m_tile, smem_S[query_idx % TILE_SIZE_M][kv]);
+                m_tile = fmaxf(m_tile, smem_S[query_idx_in_tile][kv]);
             }
             
             // 4b. Compute exp(S - m_tile) and sum
             float l_tile = 0.0f;
             for (int kv = 0; kv < tile_size; ++kv) {
-                float exp_val = expf(smem_S[query_idx % TILE_SIZE_M][kv] - m_tile);
-                smem_S[query_idx % TILE_SIZE_M][kv] = exp_val;
+                float exp_val = expf(smem_S[query_idx_in_tile][kv] - m_tile);
+                smem_S[query_idx_in_tile][kv] = exp_val;
                 l_tile += exp_val;
             }
             
@@ -324,7 +332,7 @@ __global__ void flash_attention_forward_kernel(
             for (int d = 0; d < head_dim; ++d) {
                 float weighted_value = 0.0f;
                 for (int kv = 0; kv < tile_size; ++kv) {
-                    weighted_value += smem_S[query_idx % TILE_SIZE_M][kv] * 
+                    weighted_value += smem_S[query_idx_in_tile][kv] * 
                                      to_float(smem_V[kv][d]);
                 }
                 // Add corrected contribution from this tile
@@ -339,7 +347,8 @@ __global__ void flash_attention_forward_kernel(
     }
     
     // === STEP 6: Final normalization and store output ===
-    if (query_idx < seq_len) {
+    // Only valid queries write results (prevents out-of-bounds writes)
+    if (is_valid_query) {
         // Normalize output by sum of exponentials
         #pragma unroll
         for (int d = 0; d < head_dim; ++d) {
@@ -370,10 +379,12 @@ void flash_attention_forward(
     const float softmax_scale,
     const bool causal
 ) {
-    // Grid: One block per (head, batch) pair
-    dim3 grid(num_heads, batch_size);
+    // Grid: (num_heads, batch_size, num_query_tiles) - 3D grid for multi-tile queries
+    // Each block processes TILE_SIZE_M queries (64 queries per block)
+    const int num_query_tiles = (seq_len + TILE_SIZE_M - 1) / TILE_SIZE_M;
+    dim3 grid(num_heads, batch_size, num_query_tiles);
     
-    // Block: 3 warpgroups (12 warps, 384 threads)
+    // Block: 256 threads (8 warps, 2 warpgroups for L4)
     dim3 block(THREADS_PER_BLOCK);
     
     // Launch kernel
