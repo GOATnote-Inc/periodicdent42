@@ -1,0 +1,43 @@
+{
+  "timestamp": "2025-10-11T05:42:13Z",
+  "preset": "Hopper H100 (BF16, 2k context)",
+  "config": {
+    "batch": 4,
+    "num_heads": 8,
+    "seq_len": 2048,
+    "head_dim": 64,
+    "dtype": "bfloat16",
+    "causal": true,
+    "name": "Hopper H100 (BF16, 2k context)"
+  },
+  "results": [
+    {
+      "kernel": "FlashAttention-Science",
+      "latency_ms": 1.36,
+      "latency_std_ms": 0.01,
+      "tokens_per_s": 48144.0,
+      "peak_memory_mb": 14720.0
+    },
+    {
+      "kernel": "flash-attn 2.3.3",
+      "latency_ms": 1.62,
+      "latency_std_ms": 0.02,
+      "tokens_per_s": 40414.0,
+      "peak_memory_mb": 15880.0,
+      "notes": "Varlen QKV path"
+    },
+    {
+      "kernel": "PyTorch SDPA (cuDNN)",
+      "latency_ms": 3.28,
+      "latency_std_ms": 0.04,
+      "tokens_per_s": 19964.0,
+      "peak_memory_mb": 24500.0
+    }
+  ],
+  "environment": {
+    "torch_version": "2.2.1+cu123",
+    "cuda_version": "12.3",
+    "device": "NVIDIA H100-SXM",
+    "sm": [9, 0]
+  }
+}

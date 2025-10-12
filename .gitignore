@@ -76,6 +76,7 @@ data/
 !rust/core/src/data/
 experiments/
 results/
+!cuda_reboot/benchmarks/results/
 *.hdf5
 *.h5
 
