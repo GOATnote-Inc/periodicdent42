@@ -622,16 +622,17 @@ __global__ void flash_attention_forward_split_k_reduce(
     float final_o[128] = {0.0f};
     
     for (int kv_tile = 0; kv_tile < num_kv_tiles; ++kv_tile) {
-        float local_max = partial_max[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
-        float local_sum = partial_sum[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
-        float weight = local_sum * expf(local_max - global_max);
+        const float local_max = partial_max[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
+        // FIX: Reweight factor should be exp(m_i - m_global), NOT local_sum * exp(...)
+        // partial_O already contains sum(exp(...) * V), so multiplying by local_sum double-counts!
+        const float reweight = expf(local_max - global_max);
         
         const int partial_offset = ((batch_idx * num_heads + head_idx) * num_query_tiles + query_tile_idx)
                                    * num_kv_tiles + kv_tile;
         const T* partial_O_base = partial_O + (partial_offset * TILE_SIZE_M + query_idx_in_tile) * head_dim;
         
         for (int d = 0; d < head_dim; ++d) {
-            final_o[d] += weight * to_float(partial_O_base[d]);
+            final_o[d] += reweight * to_float(partial_O_base[d]);
         }
     }
     
