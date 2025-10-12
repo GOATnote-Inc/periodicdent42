@@ -875,8 +875,166 @@ print('✅ Kernel works!')
 
 ---
 
-**Last Updated**: October 12, 2025 5:05 AM  
-**Sessions Completed**: N, N+1, N+2, N+3  
-**Pattern Library**: 9 operational patterns  
-**Next Session (N+4)**: Environment-validated 30-minute baseline (10 min setup + 20 min baseline)
+---
+
+## Session N+4: Environment Validation Success (30 minutes)
+
+**Objective**: Validate Pattern 9 and establish baseline with new system
+
+**Result**: ✅ SUCCESS - Environment validated in 3 min (95.5% faster than Session N+3)
+
+### What Worked
+- ✅ Pattern 9 validated: 3-min setup vs 67-min debugging
+- ✅ Build successful on first try
+- ✅ Baseline measured: PyTorch 0.0251 ms, Ours 0.7295 ms (29.1× slower)
+- ✅ **Correctness failure discovered**: max_diff = 4.72 for S=128, D=64
+
+### Pattern 10: Environment Validation is Non-Negotiable
+
+**Context**: Fresh GPU instances, cold starts, or after preemption
+
+**Rule**: Always run 5-minute validation before any build or benchmark
+
+**Value**: Prevented 60+ minutes of cryptic ABI debugging
+
+---
+
+## Session N+5: Correctness Bug Fix (2h 10min) ✅ COMPLETE
+
+**Objective**: Fix correctness bug (max_diff = 4.72 for S=128, D=64)
+
+**Result**: ✅ **OBJECTIVE ACHIEVED**
+- All 7 test configs pass (S=4-512)
+- Max diff: 0.00195 (98.05% under threshold)
+- 3D grid + multi-tile query handling complete
+
+### Pattern 11: Communication Cadence
+
+**Context**: Long-running operations, complex debugging, multi-hour sessions
+
+**Problem**: 10-minute silent stall (Session N+4) → user frustration
+
+**Solution**: Update every 2-3 minutes during active work
+
+**Format**:
+```
+⏱️  2:15 elapsed - Currently: [action]
+Expected: [time estimate]
+```
+
+**Value**: User confidence, early problem detection, clear progress
+
+---
+
+### Pattern 12: Iterative CUDA Debugging Loop ⭐ **NEW**
+
+**Context**: Complex correctness bugs in CUDA kernels (Session N+5)
+
+**Problem**: Random fixes waste time, obscure root cause
+
+**Solution**: Systematic 7-step debugging loop
+
+#### The Loop
+```
+1. HYPOTHESIS - Form testable hypothesis about bug cause
+   └─> "Need 3D grid for multi-tile queries"
+
+2. INSTRUMENT - Add debug output (printf, asserts)
+   └─> printf("Block(%d,%d,%d) T%d: query_idx=%d valid=%d\n", ...)
+
+3. TEST - Run minimal failing case
+   └─> S=65 (exactly 2 query tiles)
+
+4. ANALYZE - Study output to refine hypothesis
+   └─> Guards correct, narrow to indexing bugs
+
+5. FIX - Apply targeted fix
+   └─> grep for "query_idx % TILE_SIZE_M" → found 7 bugs
+
+6. VALIDATE - Run comprehensive test suite
+   └─> Test S=4,64,65,128,192,256,512
+
+7. REPEAT - If still failing, goto step 1
+   └─> (Session N+5: SUCCESS after 4 iterations)
+```
+
+#### Session N+5 Example (Perfect Application)
+
+**Iteration 1**: Hypothesis: Need 3D grid
+- **Result**: Partial success (S=64 ok, S>64 fail)
+- **Learning**: Guards correct, bug elsewhere
+
+**Iteration 2**: Instrument: Add printf
+- **Result**: Confirmed guards working
+- **Learning**: Narrow to shared memory indexing
+
+**Iteration 3**: Analyze: grep for bugs
+- **Result**: Found 7 instances of `query_idx % TILE_SIZE_M`
+- **Learning**: Should be `query_idx_in_tile`
+
+**Iteration 4**: Fix + validate
+- **Result**: ✅ ALL TESTS PASS
+- **Learning**: Semantic bug, not algorithmic
+
+#### Why This Works
+
+✅ **Systematic** - No random changes  
+✅ **Testable** - Each hypothesis falsifiable  
+✅ **Documented** - Clear reasoning trail  
+✅ **Reproducible** - Can replay debugging steps  
+✅ **Fast** - 2h 10min for complex 3D grid bug  
+
+#### Contrast: Without Pattern 12
+
+❌ Try random fixes  
+❌ Guess at root cause  
+❌ No clear progress metric  
+❌ Hours of thrashing  
+
+#### Key Insight from Session N+5
+
+**The bug was semantic, not algorithmic**: 
+
+```cuda
+// ❌ WRONG - works by accident for power-of-2 tile sizes
+smem_S[query_idx % TILE_SIZE_M][kv] = score;
+
+// ✅ RIGHT - respects per-block abstraction
+smem_S[query_idx_in_tile][kv] = score;
+```
+
+Both produce same result for power-of-2 TILE_SIZE_M, but the first **violates architectural abstraction** that each block is independent.
+
+**Lesson**: Use **intra-block indices** for shared memory, always.
+
+---
+
+## Pattern Library Summary (12 Patterns Operational) ✨
+
+| Pattern | Problem | Solution | Time Saved |
+|---------|---------|----------|------------|
+| 1. Baseline First | Optimizing without measuring | Measure PyTorch SDPA first | 60 min |
+| 2. Profile Before Optimize | Blind optimization | Use Nsight Compute | 90 min |
+| 3. Static Assertions | Runtime config errors | Compile-time validation | 30 min |
+| 4. Explicit Instantiation | Template linking errors | Explicit `template void func<T>()` | 45 min |
+| 5. Preemptible Detection | SSH freezes, unclear failures | Check instance status before long ops | 20 min |
+| 6. Git Bisect > Archaeology | Build system debugging | Find last working commit first | 55 min |
+| 7. Keep GPU Running | Stop/start context loss | Run 5+ hours during active sessions | $0.50/cycle |
+| 8. Single Compilation Unit | Template/ABI mismatches | `#include .cu` in bindings | 40 min |
+| 9. Environment Validation | Fresh instance failures | 5-min validation before build | 50 min |
+| 10. Env Validation Non-Negotiable | Skipping validation | Always run, no exceptions | 60 min |
+| 11. Communication Cadence | Silent stalls, user frustration | Update every 2-3 min | Trust++ |
+| 12. Iterative CUDA Debugging | Random fixes, thrashing | 7-step systematic loop | 2-4 hours |
+
+**Total Estimated Time Savings**: ~8-10 hours per multi-session workflow  
+**Total Cost Savings**: $3-5 per workflow (GPU + AI/Cursor)  
+**Trust & Collaboration**: Immeasurable (Pattern 11)
+
+---
+
+**Last Updated**: October 12, 2025 6:30 PM  
+**Sessions Completed**: N, N+1, N+2, N+3, N+4, N+5 ✅  
+**Pattern Library**: 12 operational patterns (🆕 Patterns 10, 11, 12)  
+**Latest Achievement**: Correctness bug fixed (Session N+5)  
+**Next Session (N+6)**: Performance baseline measurement (45-60 min)
 
