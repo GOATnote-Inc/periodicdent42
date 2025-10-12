@@ -12,25 +12,24 @@
 #define FLASHMOE_BUILD_CONFIG_H
 
 // ============================================================================
-// WARP AND BLOCK CONFIGURATION (12 warps = 384 threads)
+// WARP AND BLOCK CONFIGURATION (8 warps = 256 threads for L4)
 // ============================================================================
 
 constexpr int WARP_SIZE = 32;
 
-// *** CRITICAL FIX: Changed from 4 to 12 warps ***
-// Original (WRONG): 4 warps = 128 threads → 0.12× speedup (8-29× slower)
-// Corrected (RIGHT): 12 warps = 384 threads → enables 3 warpgroup specialization
-constexpr int NUM_WARPS_PER_BLOCK = 12;  // Was 4, now 12 (3 warpgroups × 4 warps each)
+// *** L4 GPU CONFIGURATION: 8 warps = 256 threads (for 48KB shared memory) ***
+// L4 has only 48KB shared memory, so we use 2 warpgroups instead of 3
+constexpr int NUM_WARPS_PER_BLOCK = 8;  // L4: 2 warpgroups × 4 warps each
 
-constexpr int NUM_WARPS_PER_WARPGROUP = 4;  // FlashAttention-4 style
-constexpr int NUM_WARPGROUPS = 3;           // Producer, Consumer, Output correction
+constexpr int NUM_WARPS_PER_WARPGROUP = 4;
+constexpr int NUM_WARPGROUPS = 2;  // Reduced from 3 for L4
 
-// Total threads per block (MUST be 384 for optimized kernel)
-constexpr int THREADS_PER_BLOCK = NUM_WARPS_PER_BLOCK * WARP_SIZE;  // = 384
+// Total threads per block (256 for L4, 384 for H100)
+constexpr int THREADS_PER_BLOCK = NUM_WARPS_PER_BLOCK * WARP_SIZE;  // = 256
 
 // Verify configuration at compile time
-static_assert(THREADS_PER_BLOCK == 384, 
-              "THREADS_PER_BLOCK must be 384 for flash_attention_science.cu");
+static_assert(THREADS_PER_BLOCK == 256 || THREADS_PER_BLOCK == 384, 
+              "THREADS_PER_BLOCK must be 256 (L4) or 384 (H100)");
 static_assert(NUM_WARPS_PER_BLOCK == NUM_WARPGROUPS * NUM_WARPS_PER_WARPGROUP,
               "Warp configuration inconsistent");
 
@@ -38,19 +37,19 @@ static_assert(NUM_WARPS_PER_BLOCK == NUM_WARPGROUPS * NUM_WARPS_PER_WARPGROUP,
 // TILE SIZES (Memory hierarchy optimization)
 // ============================================================================
 
-// Tile dimensions for attention computation
-// These control shared memory usage and must fit within 48KB (SM75) or 228KB (SM90)
-constexpr int TILE_SIZE_M = 128;  // Query tile size (rows)
-constexpr int TILE_SIZE_N = 128;  // Key/Value tile size (rows)  
-constexpr int TILE_SIZE_K = 128;  // Head dimension (columns)
+// Tile dimensions for attention computation (L4 GPU configuration)
+// L4 has 48KB shared memory limit, so we use 64×64 tiles
+constexpr int TILE_SIZE_M = 64;  // Query tile size (rows)
+constexpr int TILE_SIZE_N = 64;  // Key/Value tile size (rows)  
+constexpr int TILE_SIZE_K = 64;  // Head dimension (columns)
 
 // Verify tiles don't exceed shared memory limits
-// Shared memory usage per block (worst case):
-// - smem_Q: TILE_SIZE_M × TILE_SIZE_K × 2 bytes (FP16) = 32KB
-// - smem_K: TILE_SIZE_N × TILE_SIZE_K × 2 bytes (FP16) = 32KB
-// - smem_V: TILE_SIZE_N × TILE_SIZE_K × 2 bytes (FP16) = 32KB
-// - smem_S: TILE_SIZE_M × TILE_SIZE_N × 4 bytes (FP32) = 64KB
-// Total: ~160KB (fits in SM80+, may spill on SM75)
+// Shared memory usage per block (L4 configuration):
+// - smem_Q: TILE_SIZE_M × TILE_SIZE_K × 2 bytes (FP16) = 8KB
+// - smem_K: TILE_SIZE_N × TILE_SIZE_K × 2 bytes (FP16) = 8KB
+// - smem_V: TILE_SIZE_N × TILE_SIZE_K × 2 bytes (FP16) = 8KB
+// - smem_S: TILE_SIZE_M × TILE_SIZE_N × 4 bytes (FP32) = 16KB
+// Total: ~40KB (fits in L4's 48KB limit)
 constexpr size_t SHARED_MEMORY_BYTES = 
     (TILE_SIZE_M * TILE_SIZE_K * 2) +  // Q
     (TILE_SIZE_N * TILE_SIZE_K * 2) +  // K
@@ -125,13 +124,18 @@ constexpr size_t SHARED_MEMORY_BYTES =
 /**
  * CHANGELOG:
  * 
- * October 12, 2025 - CRITICAL FIX
+ * October 12, 2025 (Session N+7B) - L4 GPU CONFIGURATION
+ * - Changed NUM_WARPS_PER_BLOCK from 12 to 8 (for L4 48KB shared memory limit)
+ * - Changed NUM_WARPGROUPS from 3 to 2
+ * - Reduced TILE_SIZE_M/N/K from 128 to 64
+ * - Shared memory usage: 160KB → 40KB (fits in L4's 48KB limit)
+ * 
+ * October 12, 2025 (Session N) - H100 CONFIGURATION
  * - Changed NUM_WARPS_PER_BLOCK from 4 to 12
- * - This fixes 0.12× regression (measured) vs 1.7× expected speedup
+ * - This fixed 0.12× regression (measured) vs 1.7× expected speedup
  * - Root cause: 128 threads (4 warps) called wrong kernel configuration
  * - Correct: 384 threads (12 warps) enables 3-warpgroup specialization
  * 
- * Performance impact:
- * - Before: block=(128,1,1) → 0.12× speedup (8-29× slower than PyTorch)
- * - After:  block=(384,1,1) → 1.3-1.7× speedup expected
+ * Note: H100 configuration (384 threads, 128 tiles) requires 160KB shared memory
+ * and does not work on L4 GPU (48KB limit). Use this L4 configuration instead.
  */
