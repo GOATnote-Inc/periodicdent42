@@ -1,0 +1,88 @@
+# Cursor AI Rules for Periodic Labs
+
+## GPU Instance Management (CRITICAL - READ FIRST)
+
+### ⚠️ COST OPTIMIZATION RULE: KEEP GPU RUNNING DURING ACTIVE SESSIONS
+
+**NEVER stop GPU instances during active validation/debugging sessions.**
+
+**Cost Analysis**:
+- L4 GPU: $0.20/hour = $1.00 for 5 hours
+- AI/Cursor cost per stop/start: $0.40-0.60 (context loss + re-discovery)
+- **Stopping GPU costs MORE than keeping it running**
+
+**When to KEEP RUNNING** (minimum 5 hours):
+- ✅ Active validation/debugging session
+- ✅ Multiple test iterations needed
+- ✅ Build system troubleshooting
+- ✅ Benchmark runs planned
+- ✅ Any GPU work within next 5 hours
+
+**When to STOP**:
+- ❌ No GPU work for 6+ hours
+- ❌ User explicitly says "stop GPU"
+- ❌ End of work day (user confirms)
+
+### Current Active Session
+**GPU**: cudadent42-l4-dev (L4, us-central1-a)  
+**Started**: October 12, 2025 12:15 AM  
+**Keep until**: 5:15 AM minimum (or user says stop)  
+**Status**: KEEP RUNNING ✅
+
+---
+
+## CUDAdent42 Validation Session State
+
+### Current Task
+Validating THREADS_PER_BLOCK fix (128→384) on L4 GPU.
+
+### Known Working State (October 12 early evening)
+- Branch: `opt/vectorized-loads` (old state, had 128 threads)
+- Build command: `python setup.py build_ext --inplace` with excluded kernels
+- Benchmark: `benches/bench_correctness_and_speed.py`
+- Result: 0.12× (proved configuration bug exists)
+
+### Fix Applied (October 12 late)
+- `build_config.h`: NUM_WARPS_PER_BLOCK = 12 (was 4)
+- Expected: 1.2-1.5× speedup (10-15× recovery)
+
+### Build Issues Encountered
+1. `flash_attention_warp_specialized.cu`: Type conversion errors (exclude for now)
+2. `fused_moe.cu`: Missing functions (exclude for now)
+3. Build strategy: Focus on `flash_attention_science.cu` only
+
+### Next Steps
+1. Start GPU (if stopped)
+2. Use known working build approach from evening session
+3. Apply build_config.h fix
+4. Run benchmark
+5. Measure actual speedup
+
+---
+
+## General Development Rules
+
+### Always Display Everything
+- Display all file changes, code diffs, linter warnings, and errors
+- Never hide or minimize alerts
+- Continuously prompt for best practices and security
+
+### Never Contact Support
+- Provide clear, systematic, step-by-step troubleshooting
+- Align with GOATnote engineering standards
+- Never suggest "contact support" as default
+
+---
+
+## Repository Information
+
+See main repo rules in the project-level documentation for:
+- Build instructions
+- Testing protocols  
+- Deployment procedures
+- Cost tracking requirements
+
+---
+
+**Last Updated**: October 12, 2025 12:20 AM
+
