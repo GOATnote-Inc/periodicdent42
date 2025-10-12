@@ -19,30 +19,15 @@ echo "Host: $(hostname)"
 echo "User: $(whoami)"
 echo ""
 
-# Verify CUDA is ready (Deep Learning VM has drivers pre-installed)
-echo "Verifying CUDA environment..."
-if ! nvidia-smi &>/dev/null; then
-    echo "❌ CUDA not available (unexpected on Deep Learning VM)"
-    exit 1
-fi
-echo "✅ CUDA ready"
-
-# Display GPU info
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🎮 GPU Information"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-nvidia-smi
-
 # Setup environment
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📦 Setting Up Environment"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Deep Learning VM already has most tools, just ensure git is available
+# Install essential tools
 apt-get update -qq 2>&1 > /dev/null || true
-apt-get install -y -qq git 2>&1 > /dev/null || true
+apt-get install -y -qq git python3-pip 2>&1 > /dev/null || true
 
 # Clone repository
 WORK_DIR="/tmp/cudadent42_benchmark"
@@ -53,12 +38,27 @@ echo "Cloning repository..."
 git clone https://github.com/GOATnote-Inc/periodicdent42.git
 cd periodicdent42/cudadent42
 
-# Setup Python environment (Deep Learning VM has PyTorch pre-installed)
-echo "Installing pip and dependencies..."
-apt-get install -y -qq python3-pip
-python3 -m pip install --user pybind11 --quiet
+# Install Python dependencies
+python3 -m pip install --user pybind11 torch --quiet || {
+    echo "❌ Failed to install Python dependencies"
+    exit 1
+}
 
-echo "✅ Environment ready"
+# Add CUDA to PATH (preflight will check this)
+export PATH="/usr/local/cuda/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+
+# Run preflight checks (self-healing, validates GPU + CUDA + PyTorch)
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ Running Preflight Checks"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+bash scripts/gen_preflight.sh
+bash tools/preflight.sh || {
+    echo "❌ Preflight failed - environment not ready"
+    exit 1
+}
+echo "✅ Environment validated"
 
 # Build library (inline build - Phase 2 manual build commands)
 echo ""

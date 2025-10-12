@@ -1,0 +1,16 @@
+name: smoke
+on: [push, workflow_dispatch]
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight must exist and pass
+        run: |
+          cd cudadent42
+          bash scripts/gen_preflight.sh
+          test -x tools/preflight.sh
+          echo "✅ Preflight script exists and is executable"
+          # Note: actual preflight will fail on CPU-only CI (no GPU)
+          # This just validates the script structure
+
