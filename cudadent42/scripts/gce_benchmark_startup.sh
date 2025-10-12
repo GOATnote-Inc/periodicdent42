@@ -54,11 +54,9 @@ git clone https://github.com/GOATnote-Inc/periodicdent42.git
 cd periodicdent42/cudadent42
 
 # Setup Python environment (Deep Learning VM has PyTorch pre-installed)
-echo "Installing additional Python dependencies..."
-python3 -m pip install --user pybind11 --quiet || {
-    echo "⚠️  Failed to install pybind11, trying without --user flag"
-    python3 -m pip install pybind11 --quiet
-}
+echo "Installing pip and dependencies..."
+apt-get install -y -qq python3-pip
+python3 -m pip install --user pybind11 --quiet
 
 echo "✅ Environment ready"
 
