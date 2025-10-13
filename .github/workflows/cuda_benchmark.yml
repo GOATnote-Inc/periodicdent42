@@ -25,6 +25,8 @@ jobs:
     
     - name: Check CUDA
       run: |
+        export PATH="/usr/local/cuda-12.8/bin:$PATH"
+        export LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH"
         nvidia-smi
         nvcc --version
     
@@ -34,12 +36,15 @@ jobs:
     
     - name: Build
       run: |
+        export PATH="/usr/local/cuda-12.8/bin:$PATH"
+        export LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH"
         cd cudadent42
         python setup.py build_ext --inplace
     
     - name: Benchmark
       id: bench
       run: |
+        export LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH"
         cd cudadent42/bench
         python integrated_test.py --output results.json
       continue-on-error: true
