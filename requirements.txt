@@ -25,8 +25,8 @@ gpytorch==1.11  # Gaussian Processes
 # ase==3.22.1  # Atomistic Simulation Environment
 
 # Data & Database
-psycopg2-binary==2.9.10
-sqlalchemy==2.0.43
+psycopg2-binary==2.9.11
+sqlalchemy==2.0.44
 alembic==1.12.1
 
 # Graph & Planning
