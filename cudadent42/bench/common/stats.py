@@ -261,7 +261,8 @@ def compare_distributions(
         cliffs_interp = "large"
     
     # Mann-Whitney U test
-    _, mann_whitney_p = mann_whitney_u_test(baseline, candidate)
+    mw_result = stats.mannwhitneyu(baseline, candidate, alternative='two-sided')
+    mann_whitney_p = mw_result.pvalue
     
     # Verdict
     if not overlap:
