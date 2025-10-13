@@ -239,8 +239,48 @@ def compare_distributions(
     speedup = baseline_median / candidate_median if candidate_median > 0 else float('inf')
     improvement_pct = ((baseline_median - candidate_median) / baseline_median) * 100
     
+    # Interpret effect sizes
+    abs_hedges = abs(hedges_g_value)
+    if abs_hedges < 0.2:
+        hedges_interp = "negligible"
+    elif abs_hedges < 0.5:
+        hedges_interp = "small"
+    elif abs_hedges < 0.8:
+        hedges_interp = "medium"
+    else:
+        hedges_interp = "large"
+    
+    abs_cliffs = abs(cliffs_delta_value)
+    if abs_cliffs < 0.147:
+        cliffs_interp = "negligible"
+    elif abs_cliffs < 0.33:
+        cliffs_interp = "small"
+    elif abs_cliffs < 0.474:
+        cliffs_interp = "medium"
+    else:
+        cliffs_interp = "large"
+    
+    # Mann-Whitney U test
+    _, mann_whitney_p = mann_whitney_u_test(baseline, candidate)
+    
+    # Verdict
+    if not overlap:
+        sig_text = "statistically significant"
+    else:
+        sig_text = "not statistically significant"
+    
+    verdict = (
+        f"Baseline achieved {baseline_median:.4f} ms "
+        f"(95% CI: [{baseline_ci[0]:.4f}, {baseline_ci[1]:.4f}]) vs. "
+        f"candidate {candidate_median:.4f} ms "
+        f"(95% CI: [{candidate_ci[0]:.4f}, {candidate_ci[1]:.4f}]), "
+        f"representing {speedup:.3f}× speedup ({improvement_pct:+.1f}%). "
+        f"Effect size (Hedges' g = {hedges_g_value:.3f}) indicates {hedges_interp} effect. "
+        f"Difference is {sig_text} (p={mann_whitney_p:.4f})."
+    )
+    
     return {
-        'baseline': {
+        'baseline_stats': {
             'median': baseline_median,
             'mean': baseline_mean,
             'std': baseline_std,
@@ -248,7 +288,7 @@ def compare_distributions(
             'ci_upper': baseline_ci[1],
             'n': len(baseline)
         },
-        'candidate': {
+        'candidate_stats': {
             'median': candidate_median,
             'mean': candidate_mean,
             'std': candidate_std,
@@ -256,14 +296,16 @@ def compare_distributions(
             'ci_upper': candidate_ci[1],
             'n': len(candidate)
         },
-        'comparison': {
-            'speedup': speedup,
-            'improvement_pct': improvement_pct,
-            'hedges_g': hedges_g_value,
-            'cliffs_delta': cliffs_delta_value,
-            'ci_overlap': overlap,
-            'significant': not overlap
-        }
+        'speedup': speedup,
+        'improvement_pct': improvement_pct,
+        'hedges_g': hedges_g_value,
+        'hedges_interpretation': hedges_interp,
+        'cliffs_delta': cliffs_delta_value,
+        'cliffs_interpretation': cliffs_interp,
+        'cis_overlap': overlap,
+        'is_significant': not overlap,
+        'mann_whitney_p': mann_whitney_p,
+        'verdict': verdict
     }
 
 
