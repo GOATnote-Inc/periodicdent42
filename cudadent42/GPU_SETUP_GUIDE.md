@@ -39,7 +39,7 @@ This guide provides step-by-step instructions for setting up GPU instances on Go
 gcloud config set project periodicdent42
 gcloud config set compute/zone us-central1-a
 
-# Create preemptible T4 instance
+# Create preemptible T4 instance (no public IP for security)
 gcloud compute instances create cudadent42-t4-dev \
     --zone=us-central1-a \
     --machine-type=n1-standard-4 \
@@ -49,10 +49,11 @@ gcloud compute instances create cudadent42-t4-dev \
     --image-family=pytorch-latest-gpu \
     --image-project=deeplearning-platform-release \
     --metadata="install-nvidia-driver=True" \
-    --scopes=cloud-platform
+    --scopes=cloud-platform \
+    --no-address
 
-# SSH into instance
-gcloud compute ssh cudadent42-t4-dev --zone=us-central1-a
+# SSH into instance (uses IAP tunnel since no public IP)
+gcloud compute ssh cudadent42-t4-dev --zone=us-central1-a --tunnel-through-iap
 ```
 
 ### Step 2: Setup Auto-Shutdown (Save Money!)
@@ -149,7 +150,7 @@ gcloud compute instances stop cudadent42-t4-dev --zone=us-central1-a
 ### Step 1: Create A100 Instance (Preemptible!)
 
 ```bash
-# Create preemptible A100 instance (70% cheaper than on-demand)
+# Create preemptible A100 instance (70% cheaper than on-demand, no public IP for security)
 gcloud compute instances create cudadent42-a100-opt \
     --zone=us-central1-a \
     --machine-type=a2-highgpu-1g \
@@ -159,10 +160,11 @@ gcloud compute instances create cudadent42-a100-opt \
     --image-family=pytorch-latest-gpu \
     --image-project=deeplearning-platform-release \
     --metadata="install-nvidia-driver=True" \
-    --scopes=cloud-platform
+    --scopes=cloud-platform \
+    --no-address
 
-# SSH into instance
-gcloud compute ssh cudadent42-a100-opt --zone=us-central1-a
+# SSH into instance (uses IAP tunnel since no public IP)
+gcloud compute ssh cudadent42-a100-opt --zone=us-central1-a --tunnel-through-iap
 ```
 
 ### Step 2: Create Disk Snapshot (Fast Resume)

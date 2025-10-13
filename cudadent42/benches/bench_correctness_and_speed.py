@@ -88,15 +88,16 @@ def benchmark_pytorch_sdpa(Q, K, V, warmup=10, repeats=100):
 
 def benchmark_flashmoe(Q, K, V, warmup=10, repeats=100):
     """Benchmark our FlashAttention kernel."""
-    # Flatten to [M, D] format
+    # Kernel expects 4D tensors: [B, H, S, D]
     B, H, S, D = Q.shape
-    Q_flat = Q.reshape(B * H * S, D).contiguous()
-    K_flat = K.reshape(B * H * S, D).contiguous()
-    V_flat = V.reshape(B * H * S, D).contiguous()
+    
+    # Standard attention parameters
+    causal = True
+    softmax_scale = 1.0 / (D ** 0.5)
     
     # Warmup
     for _ in range(warmup):
-        _ = fa.forward(Q_flat, K_flat, V_flat)
+        _ = fa.flash_attention_forward(Q, K, V, causal, softmax_scale)
     torch.cuda.synchronize()
     
     # Benchmark
@@ -106,7 +107,7 @@ def benchmark_flashmoe(Q, K, V, warmup=10, repeats=100):
     times = []
     for _ in range(repeats):
         start.record()
-        O = fa.forward(Q_flat, K_flat, V_flat)
+        O = fa.flash_attention_forward(Q, K, V, causal, softmax_scale)
         end.record()
         torch.cuda.synchronize()
         times.append(start.elapsed_time(end))

@@ -20,7 +20,8 @@ def load_result(path: Path) -> Dict:
 def compare_results(
     baseline_path: Path,
     current_path: Path,
-    regression_threshold: float = -3.0  # -3% is regression
+    regression_threshold: float = -3.0,  # -3% is regression
+    output_path: Optional[Path] = None
 ) -> bool:
     """
     Compare current results against baseline
@@ -86,6 +87,19 @@ def compare_results(
     print(f"Speedup:     {speedup:>6.4f}x")
     print(f"Improvement: {improvement_pct:>+6.2f}%")
     print(f"{'='*70}")
+    
+    # Export JSON for CI if requested
+    if output_path:
+        comparison_data = {
+            'speedup': float(speedup),
+            'improvement_pct': float(improvement_pct),
+            'is_regression': is_regression,
+            'baseline_time_ms': float(baseline_time),
+            'current_time_ms': float(current_time),
+            'threshold': float(regression_threshold)
+        }
+        with open(output_path, 'w') as f:
+            json.dump(comparison_data, f, indent=2)
     
     # Verdict
     if is_regression:
@@ -168,6 +182,11 @@ def main():
         action='store_true',
         help='Set current result as new baseline'
     )
+    parser.add_argument(
+        '--output',
+        type=Path,
+        help='Output JSON file for comparison results'
+    )
     
     args = parser.parse_args()
     
@@ -187,7 +206,7 @@ def main():
         return 1
     
     # Compare
-    passed = compare_results(baseline_path, args.current, args.threshold)
+    passed = compare_results(baseline_path, args.current, args.threshold, args.output)
     
     return 0 if passed else 1
 

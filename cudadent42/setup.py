@@ -90,9 +90,10 @@ ext_modules = [
         name='flashmoe_science._C',
         sources=[
             'python/flashmoe_science/csrc/flash_attention_science.cu',
-            'python/flashmoe_science/csrc/flash_attention_warp_specialized.cu',  # Re-enabled for L4 (SM89, has BF16)
-            'python/flashmoe_science/csrc/flash_attention_backward.cu',
-            'python/flashmoe_science/csrc/fused_moe.cu',
+            # DISABLED: These kernels are broken and not needed for Iteration 1
+            # 'python/flashmoe_science/csrc/flash_attention_warp_specialized.cu',
+            # 'python/flashmoe_science/csrc/flash_attention_backward.cu',
+            # 'python/flashmoe_science/csrc/fused_moe.cu',
             'python/flashmoe_science/csrc/bindings.cpp',
         ],
         include_dirs=[

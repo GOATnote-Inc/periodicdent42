@@ -21,6 +21,16 @@ from roofline_analyzer import RooflineAnalyzer
 
 def main():
     """Run integrated correctness + benchmark test"""
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='Integrated correctness and benchmark test')
+    parser.add_argument('--output', type=Path, help='Output JSON file path')
+    parser.add_argument('--batch', type=int, default=32, help='Batch size')
+    parser.add_argument('--heads', type=int, default=8, help='Number of heads')
+    parser.add_argument('--seq', type=int, default=128, help='Sequence length')
+    parser.add_argument('--dim', type=int, default=64, help='Head dimension')
+    args = parser.parse_args()
     
     if not torch.cuda.is_available():
         print("CUDA not available")
@@ -34,7 +44,7 @@ def main():
     print(f"PyTorch: {torch.__version__}")
     
     # Configuration
-    B, H, S, d = 32, 8, 128, 64
+    B, H, S, d = args.batch, args.heads, args.seq, args.dim
     dtype = torch.float16
     scale = 1.0 / (d ** 0.5)
     
@@ -130,12 +140,14 @@ def main():
         B=B, H=H, S=S, d=d
     )
     
-    # Save results
-    output_dir = Path(__file__).parent / "out"
-    harness.save_results(
-        bench_result,
-        output_dir / "integrated_test_result.json"
-    )
+    # Save results (default or specified path)
+    if args.output:
+        output_path = args.output
+    else:
+        output_dir = Path(__file__).parent / "out"
+        output_path = output_dir / "integrated_test_result.json"
+    
+    harness.save_results(bench_result, output_path)
     
     # ========================================================================
     # PHASE 3: ROOFLINE ANALYSIS
@@ -191,6 +203,41 @@ def main():
     print(f"  Sequence Length: {S}")
     print(f"  Head Dimension:  {d}")
     print(f"  Precision:       FP16")
+    
+    # Export structured JSON for CI
+    if args.output:
+        combined_result = {
+            'correctness': {
+                'passed': result.passed,
+                'max_abs_error': float(result.max_abs_error),
+                'mean_abs_error': float(result.mean_abs_error),
+                'correlation': float(result.correlation) if result.correlation is not None else None
+            },
+            'performance': {
+                'mean_time_ms': float(bench_result.metrics.mean_time_ms),
+                'std_dev_ms': float(bench_result.metrics.std_dev_ms),
+                'throughput_gflops': float(bench_result.metrics.throughput_gflops) if bench_result.metrics.throughput_gflops else None,
+                'bandwidth_gb_s': float(bench_result.metrics.bandwidth_gb_s) if bench_result.metrics.bandwidth_gb_s else None
+            },
+            'roofline': {
+                'arithmetic_intensity': float(roofline_result['arithmetic_intensity']),
+                'bottleneck': roofline_result['bottleneck'],
+                'efficiency_pct': float(roofline_result['efficiency_pct']),
+                'recommendation': roofline_result.get('recommendation', '')
+            },
+            'config': {
+                'batch_size': B,
+                'num_heads': H,
+                'seq_len': S,
+                'head_dim': d,
+                'dtype': 'float16'
+            },
+            'kernel_name': bench_result.kernel_name,
+            'timestamp': bench_result.timestamp
+        }
+        
+        with open(args.output, 'w') as f:
+            json.dump(combined_result, f, indent=2)
     
     if result.passed:
         print("\nResult: Both correctness and performance validated successfully.")

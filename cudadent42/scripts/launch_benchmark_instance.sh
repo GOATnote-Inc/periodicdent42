@@ -52,6 +52,7 @@ gcloud compute instances create "$INSTANCE_NAME" \
     --boot-disk-type=pd-standard \
     --maintenance-policy=TERMINATE \
     --scopes=cloud-platform \
+    --no-address \
     --metadata-from-file=startup-script="$STARTUP_SCRIPT"
 
 echo ""
@@ -63,7 +64,7 @@ echo "Benchmark execution will take approximately 10-15 minutes."
 echo "Instance will auto-shutdown when complete."
 echo ""
 echo "Monitor progress:"
-echo "  gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --command='tail -f /var/log/cuda-benchmark.log'"
+echo "  gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --tunnel-through-iap --command='tail -f /var/log/cuda-benchmark.log'"
 echo ""
 echo "View serial output:"
 echo "  gcloud compute instances get-serial-port-output $INSTANCE_NAME --zone=$ZONE"
