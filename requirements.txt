@@ -15,7 +15,7 @@ pandas==2.1.3
 
 # Machine Learning
 torch==2.8.0  # Updated for Python 3.12 compatibility
-scikit-learn==1.3.2
+scikit-learn==1.7.2
 gpytorch==1.11  # Gaussian Processes
 
 # Chemistry & Materials (moved to pyproject.toml[project.optional-dependencies.chem])

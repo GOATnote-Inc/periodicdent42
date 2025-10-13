@@ -30,7 +30,7 @@ htc = [
     "pymatgen==2024.3.1",     # Crystal structure analysis (shared with bete)
     "matplotlib==3.8.2",      # Visualization (shared with bete)
     "scipy==1.11.0",          # Statistical analysis and optimization
-    "scikit-learn==1.3.2",    # ML models (shared with dev)
+    "scikit-learn==1.7.2",    # ML models (shared with dev)
     "seaborn==0.12.0",        # Publication-quality plots
     "statsmodels==0.14.0",    # Statistical modeling
     "pandas==2.1.4",          # Data manipulation (shared with dev)
@@ -58,7 +58,7 @@ dev = [
     "sqlalchemy>=2.0",
     "pyyaml>=6.0",  # Required by llm_router
     # Phase 3: ML-powered test selection
-    "scikit-learn==1.3.2",
+    "scikit-learn==1.7.2",
     "pandas==2.1.4",
     "joblib==1.3.2",
 ]
