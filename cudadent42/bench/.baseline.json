@@ -1,0 +1,33 @@
+{
+  "correctness": {
+    "passed": true,
+    "max_abs_error": 0.00048291683197021484,
+    "mean_abs_error": 2.908899079313409e-05,
+    "correlation": 0.999999963697527
+  },
+  "performance": {
+    "mean_time_ms": 0.05216495996341109,
+    "std_dev_ms": 0.006712874103894056,
+    "throughput_gflops": 20583.583784079023,
+    "bandwidth_gb_s": 321.61849662623473
+  },
+  "roofline": {
+    "arithmetic_intensity": 64.0,
+    "bottleneck": "Memory Bandwidth",
+    "efficiency_pct": 107.20616554207825,
+    "recommendations": [
+      "MEMORY-BOUND: Focus on reducing memory traffic",
+      "  - Fuse operations to increase arithmetic intensity",
+      "  - Use shared memory to cache frequently accessed data"
+    ]
+  },
+  "config": {
+    "batch_size": 32,
+    "num_heads": 8,
+    "seq_len": 128,
+    "head_dim": 64,
+    "dtype": "float16"
+  },
+  "kernel_name": "pytorch_sdpa",
+  "timestamp": "2025-10-13 05:41:29"
+}
