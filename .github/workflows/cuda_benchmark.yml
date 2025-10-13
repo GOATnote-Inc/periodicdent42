@@ -26,7 +26,7 @@ jobs:
     - name: Check CUDA
       run: |
         nvidia-smi
-        nvcc --version
+        /usr/local/cuda-12.8/bin/nvcc --version
     
     - name: Install dependencies
       run: |
@@ -35,13 +35,13 @@ jobs:
     - name: Build
       run: |
         cd cudadent42
-        python setup.py build_ext --inplace
+        PATH="/usr/local/cuda-12.8/bin:$PATH" LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH" python setup.py build_ext --inplace
     
     - name: Benchmark
       id: bench
       run: |
         cd cudadent42/bench
-        python integrated_test.py --output results.json
+        LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH" python integrated_test.py --output results.json
       continue-on-error: true
     
     - name: Check baseline
