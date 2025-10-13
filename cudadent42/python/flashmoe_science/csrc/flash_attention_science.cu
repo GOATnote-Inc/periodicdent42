@@ -622,8 +622,8 @@ __global__ void flash_attention_forward_split_k_reduce(
         global_sum += local_sum * expf(local_max - global_max);
     }
     
-    // Accumulate reweighted partial outputs
-    float final_o[128] = {0.0f};
+    // Accumulate reweighted partial outputs (initialize ALL elements to zero)
+    float final_o[128] = {0};
     
     for (int kv_tile = 0; kv_tile < num_kv_tiles; ++kv_tile) {
         const float local_max = partial_max[(stats_base + kv_tile) * TILE_SIZE_M + query_idx_in_tile];
