@@ -432,6 +432,11 @@ __global__ void flash_attention_forward_split_k_partial(
     const int batch_idx = blockIdx.y;
     const int tile_pair_idx = blockIdx.z;
     
+    // DEBUG: Print from first thread to verify prints work
+    if (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+        printf("DEBUG: Partial kernel started! tile_pair_idx=%d\n", tile_pair_idx);
+    }
+    
     // Decompose tile_pair_idx into query_tile and kv_tile
     const int query_tile_idx = tile_pair_idx / num_kv_tiles;
     const int kv_tile_idx = tile_pair_idx % num_kv_tiles;
