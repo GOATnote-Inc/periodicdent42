@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""
+Integrated Correctness + Benchmark Test
+========================================
+Combines correctness checking and benchmarking for complete validation.
+
+Run this NOW on GPU to see both tools working together.
+"""
+
+import torch
+import sys
+from pathlib import Path
+
+# Add bench directory to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from correctness_checker import CUDACorrectnessChecker, CorrectnessConfig, ToleranceMode
+from benchmark_harness import CUDABenchmarkHarness, BenchmarkConfig
+
+
+def main():
+    """Run integrated correctness + benchmark test"""
+    
+    if not torch.cuda.is_available():
+        print("CUDA not available")
+        sys.exit(1)
+    
+    print("="*70)
+    print("INTEGRATED TEST: PyTorch SDPA")
+    print("="*70)
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f"CUDA: {torch.version.cuda}")
+    print(f"PyTorch: {torch.__version__}")
+    
+    # Configuration
+    B, H, S, d = 32, 8, 128, 64
+    dtype = torch.float16
+    scale = 1.0 / (d ** 0.5)
+    
+    # Create test inputs
+    torch.manual_seed(42)
+    Q = torch.randn(B, H, S, d, dtype=dtype, device='cuda')
+    K = torch.randn(B, H, S, d, dtype=dtype, device='cuda')
+    V = torch.randn(B, H, S, d, dtype=dtype, device='cuda')
+    
+    # ========================================================================
+    # PHASE 1: CORRECTNESS CHECK
+    # ========================================================================
+    
+    print("\n" + "="*70)
+    print("PHASE 1: CORRECTNESS")
+    print("="*70)
+    
+    # Reference: PyTorch SDPA (CPU)
+    Q_cpu = Q.cpu().float()
+    K_cpu = K.cpu().float()
+    V_cpu = V.cpu().float()
+    
+    with torch.no_grad():
+        ref_output = torch.nn.functional.scaled_dot_product_attention(
+            Q_cpu, K_cpu, V_cpu, scale=scale
+        )
+    
+    # CUDA: PyTorch SDPA (GPU)
+    with torch.no_grad():
+        cuda_output = torch.nn.functional.scaled_dot_product_attention(
+            Q, K, V, scale=scale
+        )
+    
+    # Check correctness
+    config = CorrectnessConfig(
+        atol=1e-3,  # FP16 precision
+        rtol=1e-3,
+        mode=ToleranceMode.MIXED
+    )
+    
+    checker = CUDACorrectnessChecker(config)
+    result = checker.check(
+        reference_output=ref_output.numpy(),
+        cuda_output=cuda_output.cpu().numpy(),
+        kernel_name="pytorch_sdpa_fp16"
+    )
+    
+    if not result.passed:
+        checker.print_detailed_report(
+            result, 
+            ref_output.numpy(), 
+            cuda_output.cpu().numpy()
+        )
+    
+    # ========================================================================
+    # PHASE 2: BENCHMARK
+    # ========================================================================
+    
+    print("\n" + "="*70)
+    print("PHASE 2: BENCHMARK")
+    print("="*70)
+    
+    def sdpa_wrapper(**kwargs):
+        """CUDA event timing wrapper"""
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        
+        start.record()
+        with torch.no_grad():
+            _ = torch.nn.functional.scaled_dot_product_attention(Q, K, V, scale=scale)
+        end.record()
+        torch.cuda.synchronize()
+        
+        return start.elapsed_time(end)
+    
+    # Calculate metrics
+    flop_count = 4 * B * H * S * S * d
+    memory_bytes = 4 * B * H * S * d * 2
+    
+    # Benchmark
+    bench_config = BenchmarkConfig(
+        warmup_iterations=50,
+        benchmark_iterations=200
+    )
+    
+    harness = CUDABenchmarkHarness(bench_config)
+    
+    bench_result = harness.benchmark_kernel(
+        kernel_func=sdpa_wrapper,
+        kernel_name="pytorch_sdpa",
+        flop_count=flop_count,
+        memory_bytes=memory_bytes,
+        B=B, H=H, S=S, d=d
+    )
+    
+    # Save results
+    output_dir = Path(__file__).parent / "out"
+    harness.save_results(
+        bench_result,
+        output_dir / "integrated_test_result.json"
+    )
+    
+    # ========================================================================
+    # PHASE 3: SUMMARY
+    # ========================================================================
+    
+    print("\n" + "="*70)
+    print("SUMMARY")
+    print("="*70)
+    
+    print(f"\nCorrectness:")
+    print(f"  Status:          {'PASS' if result.passed else 'FAIL'}")
+    print(f"  Max Abs Error:   {result.max_abs_error:.2e}")
+    print(f"  Mean Abs Error:  {result.mean_abs_error:.2e}")
+    corr_str = f"{result.correlation:.6f}" if result.correlation is not None else "N/A"
+    print(f"  Correlation:     {corr_str}")
+    
+    print(f"\nPerformance:")
+    print(f"  Mean Latency:    {bench_result.metrics.mean_time_ms:.4f} ms")
+    print(f"  Std Dev:         {bench_result.metrics.std_dev_ms:.4f} ms")
+    print(f"  Throughput:      {bench_result.metrics.throughput_gflops:.2f} GFLOPS")
+    print(f"  Bandwidth:       {bench_result.metrics.bandwidth_gb_s:.2f} GB/s")
+    
+    print(f"\nConfiguration:")
+    print(f"  Batch Size:      {B}")
+    print(f"  Num Heads:       {H}")
+    print(f"  Sequence Length: {S}")
+    print(f"  Head Dimension:  {d}")
+    print(f"  Precision:       FP16")
+    
+    if result.passed:
+        print("\nResult: Both correctness and performance validated successfully.")
+        return 0
+    else:
+        print("\nResult: Correctness check failed.")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
