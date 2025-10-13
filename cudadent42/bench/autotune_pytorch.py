@@ -94,34 +94,30 @@ class PyTorchSDPAAutotuner:
             # OOM or other error
             return None
         
-        # Configure backend
+        # Configure backend flags
         if backend == "flash":
-            context = torch.backends.cuda.sdp_kernel(
-                enable_flash=True,
-                enable_math=False,
-                enable_mem_efficient=False
-            )
+            enable_flash = True
+            enable_math = False
+            enable_mem_efficient = False
         elif backend == "memory_efficient":
-            context = torch.backends.cuda.sdp_kernel(
-                enable_flash=False,
-                enable_math=False,
-                enable_mem_efficient=True
-            )
+            enable_flash = False
+            enable_math = False
+            enable_mem_efficient = True
         elif backend == "math":
-            context = torch.backends.cuda.sdp_kernel(
-                enable_flash=False,
-                enable_math=True,
-                enable_mem_efficient=False
-            )
+            enable_flash = False
+            enable_math = True
+            enable_mem_efficient = False
         else:  # auto
-            context = torch.backends.cuda.sdp_kernel(
-                enable_flash=True,
-                enable_math=False,
-                enable_mem_efficient=True
-            )
+            enable_flash = True
+            enable_math = False
+            enable_mem_efficient = True
         
         # Warmup
-        with context:
+        with torch.backends.cuda.sdp_kernel(
+            enable_flash=enable_flash,
+            enable_math=enable_math,
+            enable_mem_efficient=enable_mem_efficient
+        ):
             for _ in range(self.warmup):
                 _ = F.scaled_dot_product_attention(Q, K, V)
         
@@ -130,7 +126,11 @@ class PyTorchSDPAAutotuner:
         # Benchmark
         times = []
         try:
-            with context:
+            with torch.backends.cuda.sdp_kernel(
+                enable_flash=enable_flash,
+                enable_math=enable_math,
+                enable_mem_efficient=enable_mem_efficient
+            ):
                 for _ in range(self.iterations):
                     start = torch.cuda.Event(enable_timing=True)
                     end = torch.cuda.Event(enable_timing=True)
