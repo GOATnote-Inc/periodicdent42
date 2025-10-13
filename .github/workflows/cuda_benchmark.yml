@@ -35,13 +35,13 @@ jobs:
     - name: Build
       run: |
         cd cudadent42
-        PATH="/usr/local/cuda-12.8/bin:$PATH" LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH" python setup.py build_ext --inplace
+        PATH="/usr/local/cuda-12.8/bin:$PATH" LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH" python3 setup.py build_ext --inplace
     
     - name: Benchmark
       id: bench
       run: |
         cd cudadent42/bench
-        LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH" python integrated_test.py --output results.json
+        LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH" python3 integrated_test.py --output results.json
       continue-on-error: true
     
     - name: Check baseline
@@ -58,7 +58,7 @@ jobs:
       if: steps.baseline.outputs.exists == 'true'
       run: |
         cd cudadent42/bench
-        python compare_baseline.py results.json \
+        python3 compare_baseline.py results.json \
           --baseline ../../${{ env.BASELINE_FILE }} \
           --threshold ${{ env.REGRESSION_THRESHOLD }} \
           --output comparison.json
