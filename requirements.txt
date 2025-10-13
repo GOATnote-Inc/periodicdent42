@@ -49,7 +49,7 @@ hypothesis==6.92.1  # Property-based testing
 # Code Quality
 mypy==1.7.1
 black==25.9.0
-ruff==0.1.6
+ruff==0.14.0
 
 # Utilities
 python-dotenv==1.0.0
