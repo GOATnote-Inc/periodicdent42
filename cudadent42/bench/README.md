@@ -5,16 +5,18 @@ Objective, reproducible benchmarking infrastructure for FlashAttention kernels o
 ## Quick Start
 
 ```bash
-# Run PyTorch SDPA baseline
-python3 run_sdpa.py
+# FASTEST: Complete validation (correctness + benchmark + roofline)
+python3 integrated_test.py
 
-# Run our kernel (once build succeeds)
-python3 run_ours.py
+# Individual baselines
+python3 run_sdpa.py    # PyTorch SDPA
+python3 run_ours.py    # Our kernel (once built)
 
-# Compare results
+# Aggregate and compare
 python3 compare.py
 
-# View report
+# Full details
+cat QUICK_START.md
 cat ../benchmarks/ATTN_L4_report.md
 ```
 
@@ -27,18 +29,37 @@ cat ../benchmarks/ATTN_L4_report.md
 - **`run_ours.py`** - Benchmark our FA-1 kernel
 - **`compare.py`** - Aggregate results to CSV and markdown tables
 
-### Production Harness
+### Production Tools
 
-- **`benchmark_harness.py`** - Production-grade benchmarking framework with:
+- **`integrated_test.py`** ⭐ - Complete validation (correctness + benchmark + roofline)
+- **`benchmark_harness.py`** - Production-grade benchmarking framework:
   - CUDA event timing
   - Statistical analysis (mean, median, std, percentiles)
   - L2 cache flushing support
   - Clock locking awareness
   - GFLOPS and bandwidth calculation
   - JSON output for reproducibility
-  - Baseline comparison
-
-- **`example_harness_usage.py`** - Demonstrates harness integration
+  
+- **`correctness_checker.py`** - Numerical validation:
+  - Multiple tolerance modes (absolute, relative, mixed, ULP)
+  - Statistical analysis (correlation, KL divergence)
+  - Error distribution analysis
+  - NaN/Inf detection
+  - Worst-case debugging
+  
+- **`roofline_analyzer.py`** - Bottleneck analysis:
+  - Memory vs compute bound determination
+  - Efficiency calculation
+  - GPU specs database (A100, H100, L4, V100, RTX4090)
+  - Actionable recommendations
+  
+- **`compare_baseline.py`** - Regression detection:
+  - Baseline comparison with threshold
+  - Automatic regression alerts
+  - Set/update baselines
+  
+- **`example_harness_usage.py`** - Usage examples
+- **`QUICK_START.md`** - Concrete examples with real results
 
 ### Output
 
