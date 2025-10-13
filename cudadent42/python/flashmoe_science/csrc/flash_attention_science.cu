@@ -460,8 +460,8 @@ __global__ void flash_attention_forward_split_k_partial(
     const int kv_end = min(kv_start + TILE_SIZE_N, seq_len);
     const int tile_size = kv_end - kv_start;
     
-    // Register storage for output
-    float acc_o[128] = {0.0f};
+    // Register storage for output (initialize ALL elements to zero)
+    float acc_o[128] = {0};
     
     // Load Q tile
     if (is_valid_query && head_dim % 8 == 0) {
