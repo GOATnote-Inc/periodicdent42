@@ -38,12 +38,13 @@ def lock_environment() -> None:
     # Lock dtype to FP16
     torch.set_default_dtype(torch.float16)
     
-    # Disable TF32 (can silently change results)
+    # Set explicit precision to highest (disables TF32)
+    # Note: "high" would enable TF32, "highest" uses FP32 precision
+    torch.set_float32_matmul_precision("highest")
+    
+    # Explicitly disable TF32 (must come AFTER set_float32_matmul_precision)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-    
-    # Set explicit precision
-    torch.set_float32_matmul_precision("high")
     
     # Enable deterministic algorithms
     torch.use_deterministic_algorithms(True, warn_only=True)
