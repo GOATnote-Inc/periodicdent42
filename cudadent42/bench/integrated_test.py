@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from correctness_checker import CUDACorrectnessChecker, CorrectnessConfig, ToleranceMode
 from benchmark_harness import CUDABenchmarkHarness, BenchmarkConfig
+from roofline_analyzer import RooflineAnalyzer
 
 
 def main():
@@ -137,7 +138,34 @@ def main():
     )
     
     # ========================================================================
-    # PHASE 3: SUMMARY
+    # PHASE 3: ROOFLINE ANALYSIS
+    # ========================================================================
+    
+    print("\n" + "="*70)
+    print("PHASE 3: ROOFLINE ANALYSIS")
+    print("="*70)
+    
+    # Detect GPU
+    gpu_name = torch.cuda.get_device_name(0)
+    if "L4" in gpu_name:
+        gpu_name = "L4"
+    elif "A100" in gpu_name:
+        gpu_name = "A100-SXM4-80GB"
+    elif "H100" in gpu_name:
+        gpu_name = "H100-SXM5-80GB"
+    elif "V100" in gpu_name:
+        gpu_name = "V100-SXM2-32GB"
+    
+    analyzer = RooflineAnalyzer(gpu_name=gpu_name, dtype="fp16")
+    roofline_result = analyzer.analyze(
+        flop_count=flop_count,
+        memory_bytes=memory_bytes,
+        time_ms=bench_result.metrics.mean_time_ms
+    )
+    analyzer.print_analysis(roofline_result)
+    
+    # ========================================================================
+    # PHASE 4: SUMMARY
     # ========================================================================
     
     print("\n" + "="*70)
