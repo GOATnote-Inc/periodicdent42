@@ -22,6 +22,8 @@ void flash_attention_forward(
     const float softmax_scale, const bool causal
 );
 
+// DISABLED: Split-K has linking issues
+#if 0
 template<typename T>
 void flash_attention_forward_split_k(
     const T* Q, const T* K, const T* V,
@@ -30,6 +32,7 @@ void flash_attention_forward_split_k(
     const int seq_len, const int head_dim,
     const float softmax_scale, const bool causal
 );
+#endif
 
 }  // namespace flashmoe
 
@@ -108,6 +111,8 @@ torch::Tensor flash_attention_forward_cuda(
     return O;
 }
 
+// DISABLED: Split-K has linking issues
+#if 0
 /**
  * FlashAttention-2 Split-K forward pass (Python interface).
  * 
@@ -185,7 +190,10 @@ torch::Tensor flash_attention_forward_split_k_cuda(
     
     return O;
 }
+#endif  // End of disabled split_k code
 
+// DISABLED: Backward pass not implemented yet
+#if 0
 /**
  * FlashAttention backward pass (Python interface).
  */
@@ -249,7 +257,11 @@ std::vector<torch::Tensor> flash_attention_backward_cuda(
     
     return {dQ, dK, dV};
 }
+#endif  // End of disabled backward
 
+// DISABLED: Warp-specialized kernel never properly implemented
+// Commenting out to fix compilation error
+#if 0
 /**
  * FlashAttention warp-specialized forward pass (Python interface).
  * 
@@ -330,6 +342,7 @@ torch::Tensor flash_attention_warp_specialized_cuda(
     
     return O;
 }
+#endif  // End of disabled warp-specialized code
 
 /**
  * Fused MoE forward pass (Python interface) - stub.
@@ -349,12 +362,15 @@ torch::Tensor fused_moe_forward_cuda(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("flash_attention_forward", &flash_attention_forward_cuda,
           "FlashAttention-Science forward pass");
-    m.def("flash_attention_forward_split_k", &flash_attention_forward_split_k_cuda,
-          "FlashAttention-2 Split-K forward pass (parallel K/V tiles)");
-    m.def("flash_attention_warp_specialized", &flash_attention_warp_specialized_cuda,
-          "FlashAttention-Science warp-specialized forward pass (Phase 1)");
-    m.def("flash_attention_backward", &flash_attention_backward_cuda,
-          "FlashAttention-Science backward pass");
+    // DISABLED: split_k has linking issues
+    // m.def("flash_attention_forward_split_k", &flash_attention_forward_split_k_cuda,
+    //       "FlashAttention-2 Split-K forward pass (parallel K/V tiles)");
+    // DISABLED: warp_specialized never implemented
+    // m.def("flash_attention_warp_specialized", &flash_attention_warp_specialized_cuda,
+    //       "FlashAttention-Science warp-specialized forward pass (Phase 1)");
+    // DISABLED: backward not implemented yet
+    // m.def("flash_attention_backward", &flash_attention_backward_cuda,
+    //       "FlashAttention-Science backward pass");
     m.def("fused_moe_forward", &fused_moe_forward_cuda,
           "Fused MoE forward pass");
 }

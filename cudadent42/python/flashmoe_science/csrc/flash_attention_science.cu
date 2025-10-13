@@ -39,6 +39,10 @@
 #include <cuda_bf16.h>
 #endif
 
+// ATen types for explicit instantiations
+#include <ATen/ATen.h>
+#include <c10/core/ScalarType.h>
+
 // Async memory pipeline (CUDA 11.7+, SM80+)
 #if HAS_CP_ASYNC
 #include <cuda/pipeline>
@@ -60,6 +64,15 @@ __device__ __forceinline__ float to_float(half x) {
     return __half2float(x);
 }
 
+// ATen type conversions
+__device__ __forceinline__ float to_float(at::Half x) {
+    return __half2float(*reinterpret_cast<const __half*>(&x));
+}
+
+__device__ __forceinline__ float to_float(float x) {
+    return x;
+}
+
 template<typename T>
 __device__ __forceinline__ T from_float(float x);
 
@@ -68,15 +81,31 @@ __device__ __forceinline__ half from_float<half>(float x) {
     return __float2half(x);
 }
 
+template<>
+__device__ __forceinline__ at::Half from_float<at::Half>(float x) {
+    __half h = __float2half(x);
+    return *reinterpret_cast<at::Half*>(&h);
+}
+
 #if !defined(FLASHMOE_DTYPE_FP16_ONLY)
 // BF16 conversions only when not in FP16-only mode
 __device__ __forceinline__ float to_float(__nv_bfloat16 x) {
     return __bfloat162float(x);
 }
 
+__device__ __forceinline__ float to_float(at::BFloat16 x) {
+    return __bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&x));
+}
+
 template<>
 __device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float x) {
     return __float2bfloat16(x);
+}
+
+template<>
+__device__ __forceinline__ at::BFloat16 from_float<at::BFloat16>(float x) {
+    __nv_bfloat16 bf = __float2bfloat16(x);
+    return *reinterpret_cast<at::BFloat16*>(&bf);
 }
 #endif
 
@@ -349,6 +378,12 @@ __global__ void flash_attention_forward_kernel(
     // === STEP 6: Final normalization and store output ===
     // Only valid queries write results (prevents out-of-bounds writes)
     if (is_valid_query) {
+        // DEBUG: Print from query 0
+        if (batch_idx == 0 && head_idx == 0 && query_idx == 0) {
+            printf("FA1[q=0]: m_i=%.4f, l_i=%.4f, acc_o[0:3]=[%.4f,%.4f,%.4f] (before norm)\\n",
+                   m_i, l_i, acc_o[0], acc_o[1], acc_o[2]);
+        }
+        
         // Normalize output by sum of exponentials
         #pragma unroll
         for (int d = 0; d < head_dim; ++d) {
@@ -360,6 +395,259 @@ __global__ void flash_attention_forward_kernel(
         softmax_lse[(batch_idx * num_heads + head_idx) * seq_len + query_idx] = 
             logf(l_i) + m_i;
     }
+}
+
+/**
+ * ITERATION 1: KV-Split Parallelism
+ * 
+ * This kernel processes ONE chunk of KV tiles per CTA, enabling massive parallelism.
+ * Grid: (num_heads, batch_size, q_tiles × kv_splits)
+ * Each CTA computes partial attention for its KV chunk and stores (O_partial, m_i, l_i).
+ * A fusion kernel then combines all partials using log-sum-exp trick.
+ * 
+ * Goal: Increase CTAs from ~2 to 256+ for better GPU utilization (3% → 60%+).
+ */
+template<typename T>
+__global__ void flash_attention_forward_kv_split_partial(
+    const T* __restrict__ Q,
+    const T* __restrict__ K,
+    const T* __restrict__ V,
+    T* __restrict__ O_partial,        // [B, H, Q_tiles, KV_splits, head_dim]
+    float* __restrict__ m_partial,    // [B, H, Q_tiles, KV_splits]
+    float* __restrict__ l_partial,    // [B, H, Q_tiles, KV_splits]
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int head_dim,
+    const int num_kv_splits,
+    const float softmax_scale,
+    const bool causal
+) {
+    // Decode grid indices
+    const int head_idx = blockIdx.x;
+    const int batch_idx = blockIdx.y;
+    const int flat_idx = blockIdx.z;  // Flattened (q_tile, kv_split) index
+    
+    const int num_query_tiles = (seq_len + TILE_SIZE_M - 1) / TILE_SIZE_M;
+    const int kv_split_idx = flat_idx % num_kv_splits;
+    const int query_tile_idx = flat_idx / num_kv_splits;
+    
+    const int query_idx_in_tile = threadIdx.x;
+    const int query_idx = query_tile_idx * TILE_SIZE_M + query_idx_in_tile;
+    const bool is_valid_query = (query_idx_in_tile < TILE_SIZE_M) && (query_idx < seq_len);
+    
+    // Shared memory
+    __shared__ __align__(16) T smem_Q[TILE_SIZE_M][TILE_SIZE_K];
+    __shared__ __align__(16) T smem_K[TILE_SIZE_N][TILE_SIZE_K];
+    __shared__ __align__(16) T smem_V[TILE_SIZE_N][TILE_SIZE_K];
+    __shared__ __align__(16) float smem_S[TILE_SIZE_M][TILE_SIZE_N];
+    
+    // Register storage
+    float acc_o[128] = {0};
+    float m_i = -INFINITY;
+    float l_i = 0.0f;
+    
+    // Base pointers
+    const int offset = (batch_idx * num_heads + head_idx) * seq_len * head_dim;
+    const T* Q_base = Q + offset;
+    const T* K_base = K + offset;
+    const T* V_base = V + offset;
+    
+    // Load Q tile (same as original kernel)
+    if (is_valid_query && head_dim % 8 == 0) {
+        const float4* Q_vec = reinterpret_cast<const float4*>(Q_base + query_idx * head_dim);
+        float4* smem_Q_vec = reinterpret_cast<float4*>(&smem_Q[query_idx_in_tile][0]);
+        #pragma unroll
+        for (int d = 0; d < head_dim / 8; ++d) {
+            smem_Q_vec[d] = Q_vec[d];
+        }
+    }
+    __syncthreads();
+    
+    // Compute which KV tiles this split handles
+    const int num_kv_tiles = (seq_len + TILE_SIZE_N - 1) / TILE_SIZE_N;
+    const int tiles_per_split = (num_kv_tiles + num_kv_splits - 1) / num_kv_splits;
+    const int kv_tile_start = kv_split_idx * tiles_per_split;
+    const int kv_tile_end = min(kv_tile_start + tiles_per_split, num_kv_tiles);
+    
+    // Process only this split's KV tiles
+    for (int kv_tile = kv_tile_start; kv_tile < kv_tile_end; ++kv_tile) {
+        const int kv_start = kv_tile * TILE_SIZE_N;
+        const int kv_end = min(kv_start + TILE_SIZE_N, seq_len);
+        const int tile_size = kv_end - kv_start;
+        
+        // Load K, V tiles (vectorized)
+        if (head_dim % 8 == 0) {
+            for (int kv = threadIdx.x; kv < tile_size; kv += blockDim.x) {
+                const int kv_idx = kv_start + kv;
+                const float4* K_vec = reinterpret_cast<const float4*>(K_base + kv_idx * head_dim);
+                const float4* V_vec = reinterpret_cast<const float4*>(V_base + kv_idx * head_dim);
+                float4* smem_K_vec = reinterpret_cast<float4*>(&smem_K[kv][0]);
+                float4* smem_V_vec = reinterpret_cast<float4*>(&smem_V[kv][0]);
+                #pragma unroll
+                for (int d = 0; d < head_dim / 8; ++d) {
+                    smem_K_vec[d] = K_vec[d];
+                    smem_V_vec[d] = V_vec[d];
+                }
+            }
+        }
+        __syncthreads();
+        
+        // Compute Q @ K^T
+        if (is_valid_query) {
+            for (int kv = 0; kv < tile_size; ++kv) {
+                const int kv_idx = kv_start + kv;
+                float score = 0.0f;
+                #pragma unroll
+                for (int d = 0; d < TILE_SIZE_K && d < head_dim; ++d) {
+                    score += to_float(smem_Q[query_idx_in_tile][d]) * to_float(smem_K[kv][d]);
+                }
+                score *= softmax_scale;
+                if (causal && kv_idx > query_idx) score = -INFINITY;
+                smem_S[query_idx_in_tile][kv] = score;
+            }
+        }
+        __syncthreads();
+        
+        // Online softmax update (same as original)
+        if (is_valid_query) {
+            float m_tile = -INFINITY;
+            for (int kv = 0; kv < tile_size; ++kv) {
+                m_tile = fmaxf(m_tile, smem_S[query_idx_in_tile][kv]);
+            }
+            
+            // Skip fully-masked tiles
+            if (!(isinf(m_tile) && m_tile < 0.0f)) {
+                float l_tile = 0.0f;
+                for (int kv = 0; kv < tile_size; ++kv) {
+                    float exp_val = expf(smem_S[query_idx_in_tile][kv] - m_tile);
+                    smem_S[query_idx_in_tile][kv] = exp_val;
+                    l_tile += exp_val;
+                }
+                
+                const float m_new = fmaxf(m_i, m_tile);
+                const float exp_prev = expf(m_i - m_new);
+                const float exp_curr = expf(m_tile - m_new);
+                const float l_new = l_i * exp_prev + l_tile * exp_curr;
+                
+                #pragma unroll
+                for (int d = 0; d < head_dim; ++d) {
+                    acc_o[d] *= exp_prev;
+                }
+                
+                #pragma unroll
+                for (int d = 0; d < head_dim; ++d) {
+                    float weighted_value = 0.0f;
+                    for (int kv = 0; kv < tile_size; ++kv) {
+                        weighted_value += smem_S[query_idx_in_tile][kv] * to_float(smem_V[kv][d]);
+                    }
+                    acc_o[d] += weighted_value * exp_curr;
+                }
+                
+                m_i = m_new;
+                l_i = l_new;
+            }
+        }
+        __syncthreads();
+    }
+    
+    // Store partial results (NO normalization yet!)
+    if (is_valid_query) {
+        const int partial_idx = ((batch_idx * num_heads + head_idx) * num_query_tiles + query_tile_idx) 
+                                * num_kv_splits + kv_split_idx;
+        T* O_partial_base = O_partial + partial_idx * TILE_SIZE_M * head_dim + query_idx_in_tile * head_dim;
+        
+        // DEBUG: Print from query 0, split 0
+        if (batch_idx == 0 && head_idx == 0 && query_tile_idx == 0 && query_idx_in_tile == 0 && kv_split_idx == 0) {
+            printf("PARTIAL[q=0,split=0]: m_i=%.4f, l_i=%.4f, acc_o[0:3]=[%.4f,%.4f,%.4f]\\n",
+                   m_i, l_i, acc_o[0], acc_o[1], acc_o[2]);
+        }
+        
+        #pragma unroll
+        for (int d = 0; d < head_dim; ++d) {
+            O_partial_base[d] = from_float<T>(acc_o[d]);
+        }
+        
+        m_partial[partial_idx * TILE_SIZE_M + query_idx_in_tile] = m_i;
+        l_partial[partial_idx * TILE_SIZE_M + query_idx_in_tile] = l_i;
+    }
+}
+
+/**
+ * ITERATION 1: KV-Split Fusion Kernel
+ * 
+ * Combines partial results from all KV splits using log-sum-exp trick.
+ * Grid: (num_heads, batch_size, q_tiles)
+ * Each CTA handles one query tile and combines all its KV splits.
+ */
+template<typename T>
+__global__ void flash_attention_kv_split_fusion(
+    const T* __restrict__ O_partial,
+    const float* __restrict__ m_partial,
+    const float* __restrict__ l_partial,
+    T* __restrict__ O_final,
+    float* __restrict__ softmax_lse,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int head_dim,
+    const int num_kv_splits
+) {
+    const int head_idx = blockIdx.x;
+    const int batch_idx = blockIdx.y;
+    const int query_tile_idx = blockIdx.z;
+    const int query_idx_in_tile = threadIdx.x;
+    
+    const int query_idx = query_tile_idx * TILE_SIZE_M + query_idx_in_tile;
+    if (query_idx >= seq_len || query_idx_in_tile >= TILE_SIZE_M) return;
+    
+    const int num_query_tiles = (seq_len + TILE_SIZE_M - 1) / TILE_SIZE_M;
+    const int base_partial_idx = ((batch_idx * num_heads + head_idx) * num_query_tiles + query_tile_idx) 
+                                  * num_kv_splits;
+    
+    // Find global max across all splits
+    float m_global = -INFINITY;
+    for (int split = 0; split < num_kv_splits; ++split) {
+        float m_split = m_partial[(base_partial_idx + split) * TILE_SIZE_M + query_idx_in_tile];
+        m_global = fmaxf(m_global, m_split);
+    }
+    
+    // Compute corrected sum across all splits
+    float l_global = 0.0f;
+    for (int split = 0; split < num_kv_splits; ++split) {
+        float m_split = m_partial[(base_partial_idx + split) * TILE_SIZE_M + query_idx_in_tile];
+        float l_split = l_partial[(base_partial_idx + split) * TILE_SIZE_M + query_idx_in_tile];
+        l_global += expf(m_split - m_global) * l_split;
+    }
+    
+    // Combine outputs with reweighting
+    float final_o[128] = {0};
+    for (int split = 0; split < num_kv_splits; ++split) {
+        float m_split = m_partial[(base_partial_idx + split) * TILE_SIZE_M + query_idx_in_tile];
+        float scale = expf(m_split - m_global) / l_global;
+        
+        const T* O_split = O_partial + (base_partial_idx + split) * TILE_SIZE_M * head_dim 
+                                      + query_idx_in_tile * head_dim;
+        for (int d = 0; d < head_dim; ++d) {
+            final_o[d] += scale * to_float(O_split[d]);
+        }
+    }
+    
+    // DEBUG: Print from query 0
+    if (batch_idx == 0 && head_idx == 0 && query_tile_idx == 0 && query_idx_in_tile == 0) {
+        printf("FUSION[q=0]: m_global=%.4f, l_global=%.4f, final_o[0:3]=[%.4f,%.4f,%.4f]\\n",
+               m_global, l_global, final_o[0], final_o[1], final_o[2]);
+    }
+    
+    // Write final output
+    const int offset = (batch_idx * num_heads + head_idx) * seq_len * head_dim;
+    T* O_base = O_final + offset;
+    for (int d = 0; d < head_dim; ++d) {
+        O_base[query_idx * head_dim + d] = from_float<T>(final_o[d]);
+    }
+    
+    // Store softmax LSE
+    softmax_lse[(batch_idx * num_heads + head_idx) * seq_len + query_idx] = logf(l_global) + m_global;
 }
 
 /**
@@ -402,6 +690,92 @@ void flash_attention_forward(
 }
 
 /**
+ * ITERATION 1: Host function for KV-Split Parallelism
+ * 
+ * This launches the KV-split kernels to increase parallelism from ~2 CTAs to 256+.
+ * Uses a 2-pass approach: partial computation + fusion.
+ * 
+ * NOTE: This replaces the old flash_attention_forward_split_k with a working implementation.
+ */
+template<typename T>
+void flash_attention_forward_split_k(
+    const T* Q,
+    const T* K,
+    const T* V,
+    T* O,
+    float* softmax_lse,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int head_dim,
+    const float softmax_scale,
+    const bool causal,
+    const int num_kv_splits = 4  // Default: 4 splits per query tile
+) {
+    const int num_query_tiles = (seq_len + TILE_SIZE_M - 1) / TILE_SIZE_M;
+    const int num_kv_tiles = (seq_len + TILE_SIZE_N - 1) / TILE_SIZE_N;
+    
+    // BUG FIX: Never create more splits than KV tiles (avoids zero-initialized partials)
+    const int actual_num_kv_splits = (num_kv_splits < num_kv_tiles) ? num_kv_splits : num_kv_tiles;
+    
+    // Allocate temporary buffers for partial results
+    T* O_partial;
+    float* m_partial;
+    float* l_partial;
+    
+    const size_t partial_size = batch_size * num_heads * num_query_tiles * actual_num_kv_splits * TILE_SIZE_M * head_dim;
+    const size_t stats_size = batch_size * num_heads * num_query_tiles * actual_num_kv_splits * TILE_SIZE_M;
+    
+    cudaMalloc(&O_partial, partial_size * sizeof(T));
+    cudaMalloc(&m_partial, stats_size * sizeof(float));
+    cudaMalloc(&l_partial, stats_size * sizeof(float));
+    
+    // Pass 1: Compute partial attention for each KV split
+    // Grid: (num_heads, batch_size, q_tiles × kv_splits)
+    dim3 grid_partial(num_heads, batch_size, num_query_tiles * actual_num_kv_splits);
+    dim3 block(THREADS_PER_BLOCK);
+    
+    flash_attention_forward_kv_split_partial<T><<<grid_partial, block>>>(
+        Q, K, V, O_partial, m_partial, l_partial,
+        batch_size, num_heads, seq_len, head_dim, actual_num_kv_splits,
+        softmax_scale, causal
+    );
+    
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error in kv_split_partial: %s\n", cudaGetErrorString(err));
+        cudaFree(O_partial);
+        cudaFree(m_partial);
+        cudaFree(l_partial);
+        return;
+    }
+    
+    // Pass 2: Fusion - combine partial results
+    // Grid: (num_heads, batch_size, q_tiles)
+    dim3 grid_fusion(num_heads, batch_size, num_query_tiles);
+    
+    flash_attention_kv_split_fusion<T><<<grid_fusion, block>>>(
+        O_partial, m_partial, l_partial, O, softmax_lse,
+        batch_size, num_heads, seq_len, head_dim, actual_num_kv_splits
+    );
+    
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error in kv_split_fusion: %s\n", cudaGetErrorString(err));
+    }
+    
+    // Cleanup
+    cudaFree(O_partial);
+    cudaFree(m_partial);
+    cudaFree(l_partial);
+}
+
+// ============================================================================
+// OLD SPLIT-K KERNELS FROM SESSIONS N+7 - DISABLED (BROKEN, REPLACED BY ITERATION 1)
+// ============================================================================
+#if 0  // Comment out old broken implementation
+
+/**
  * FlashAttention-2 Split-K: Pass 1 - Compute Partial Attention
  * 
  * Each block computes attention for ONE (query_tile, kv_tile) pair.
@@ -411,7 +785,7 @@ void flash_attention_forward(
  * Block: (THREADS_PER_BLOCK, 1, 1)
  */
 template<typename T>
-__global__ void flash_attention_forward_split_k_partial(
+__global__ void flash_attention_forward_split_k_partial_OLD(
     const T* Q,
     const T* K,
     const T* V,
@@ -673,73 +1047,14 @@ __global__ void flash_attention_forward_split_k_reduce(
     softmax_lse[(batch_idx * num_heads + head_idx) * seq_len + query_idx] = logf(global_sum) + global_max;
 }
 
-/**
- * Host function for FlashAttention-2 Split-K (2-pass algorithm)
- */
-template<typename T>
-void flash_attention_forward_split_k(
-    const T* Q,
-    const T* K,
-    const T* V,
-    T* O,
-    float* softmax_lse,
-    const int batch_size,
-    const int num_heads,
-    const int seq_len,
-    const int head_dim,
-    const float softmax_scale,
-    const bool causal
-) {
-    const int num_query_tiles = (seq_len + TILE_SIZE_M - 1) / TILE_SIZE_M;
-    const int num_kv_tiles = (seq_len + TILE_SIZE_N - 1) / TILE_SIZE_N;
-    
-    // Allocate partial result buffers
-    const size_t partial_O_size = batch_size * num_heads * num_query_tiles * num_kv_tiles * TILE_SIZE_M * head_dim;
-    const size_t partial_stats_size = batch_size * num_heads * num_query_tiles * num_kv_tiles * TILE_SIZE_M;
-    
-    T* partial_O;
-    float* partial_max;
-    float* partial_sum;
-    
-    cudaMalloc(&partial_O, partial_O_size * sizeof(T));
-    cudaMalloc(&partial_max, partial_stats_size * sizeof(float));
-    cudaMalloc(&partial_sum, partial_stats_size * sizeof(float));
-    
-    // Pass 1: Compute partial attention for each (query_tile, kv_tile) pair
-    const int total_tile_pairs = num_query_tiles * num_kv_tiles;
-    dim3 grid1(num_heads, batch_size, total_tile_pairs);
-    dim3 block(THREADS_PER_BLOCK);
-    
-    flash_attention_forward_split_k_partial<T><<<grid1, block>>>(
-        Q, K, V, partial_O, partial_max, partial_sum,
-        batch_size, num_heads, seq_len, head_dim,
-        num_query_tiles, num_kv_tiles, softmax_scale, causal
-    );
-    
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA error in split_k_partial: %s\n", cudaGetErrorString(err));
-    }
-    
-    // Pass 2: Reduce partial results
-    dim3 grid2(num_heads, batch_size, num_query_tiles);
-    
-    flash_attention_forward_split_k_reduce<T><<<grid2, block>>>(
-        partial_O, partial_max, partial_sum, O, softmax_lse,
-        batch_size, num_heads, seq_len, head_dim,
-        num_query_tiles, num_kv_tiles
-    );
-    
-    err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA error in split_k_reduce: %s\n", cudaGetErrorString(err));
-    }
-    
-    // Free partial buffers
-    cudaFree(partial_O);
-    cudaFree(partial_max);
-    cudaFree(partial_sum);
-}
+// REMOVED: Old broken Split-K host function from Sessions N+7
+// Replaced by new KV-split implementation from Iteration 1 (see line ~654)
+
+#endif  // End of disabled old Split-K code
+
+// ============================================================================
+// END OF OLD SPLIT-K KERNELS
+// ============================================================================
 
 /**
  * FlashAttention-Science backward kernel (stub).
@@ -772,9 +1087,22 @@ void flash_attention_backward(
     cudaMemset(dV, 0, total_size * sizeof(T));
 }
 
-// Note: Template instantiations removed to avoid host/device compilation issues.
-// Templates will be instantiated implicitly when called from bindings.cpp.
-// This is Solution 2 from PHASE2_COMPILATION_BLOCKER_OCT11_2025.md
+// Explicit template instantiations for linking with bindings.cpp
+template void flash_attention_forward<at::Half>(
+    const at::Half* Q, const at::Half* K, const at::Half* V,
+    at::Half* O, float* softmax_lse,
+    const int batch_size, const int num_heads,
+    const int seq_len, const int head_dim,
+    const float softmax_scale, const bool causal
+);
+
+template void flash_attention_forward<at::BFloat16>(
+    const at::BFloat16* Q, const at::BFloat16* K, const at::BFloat16* V,
+    at::BFloat16* O, float* softmax_lse,
+    const int batch_size, const int num_heads,
+    const int seq_len, const int head_dim,
+    const float softmax_scale, const bool causal
+);
 
 }  // namespace flashmoe
 
