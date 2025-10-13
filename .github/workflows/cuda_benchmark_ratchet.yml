@@ -11,6 +11,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 env:
   BASELINE_PATH: cudadent42/bench/results/baseline.json
   REGRESSION_THRESHOLD: -3.0
