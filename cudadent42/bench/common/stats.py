@@ -296,3 +296,134 @@ if __name__ == "__main__":
     
     print("\n✓ Module test complete")
 
+
+
+def format_comparison_report(
+    comparison: Dict[str, Any],
+    baseline_name: str = "Baseline (SDPA)",
+    candidate_name: str = "Candidate",
+    config: Optional[Dict[str, Any]] = None
+) -> str:
+    """
+    Format comparison results into markdown report
+    
+    Args:
+        comparison: Dict from compare_distributions()
+        baseline_name: Name of baseline configuration
+        candidate_name: Name of candidate configuration
+        config: Optional config dict (B, H, S, D)
+    
+    Returns:
+        Markdown formatted report string
+    """
+    lines = [
+        "# Fixed-Shape Performance Analysis (S=512)\n",
+        "**Statistical Comparison with Bootstrap Confidence Intervals**\n",
+        "---\n",
+    ]
+    
+    # Configuration
+    if config:
+        lines.extend([
+            "## Configuration\n",
+            f"- Batch Size (B): {config.get('batch', 32)}",
+            f"- Attention Heads (H): {config.get('heads', 8)}",
+            f"- Sequence Length (S): {config.get('seq', 512)}",
+            f"- Head Dimension (D): {config.get('dim', 64)}",
+            f"- Precision: FP16 (TF32 disabled)",
+            f"- Sample Size: N={comparison['baseline_stats']['n']}\n",
+        ])
+    
+    # Baseline statistics
+    lines.extend([
+        f"## {baseline_name}\n",
+        f"**Median**: {comparison['baseline_stats']['median']:.4f} ms",
+        f"**95% CI**: [{comparison['baseline_stats']['ci_lower']:.4f}, {comparison['baseline_stats']['ci_upper']:.4f}] ms",
+        f"**Mean**: {comparison['baseline_stats']['mean']:.4f} ms",
+        f"**Std Dev**: {comparison['baseline_stats']['std']:.4f} ms\n",
+    ])
+    
+    # Candidate statistics
+    lines.extend([
+        f"## {candidate_name}\n",
+        f"**Median**: {comparison['candidate_stats']['median']:.4f} ms",
+        f"**95% CI**: [{comparison['candidate_stats']['ci_lower']:.4f}, {comparison['candidate_stats']['ci_upper']:.4f}] ms",
+        f"**Mean**: {comparison['candidate_stats']['mean']:.4f} ms",
+        f"**Std Dev**: {comparison['candidate_stats']['std']:.4f} ms\n",
+    ])
+    
+    # Statistical comparison
+    speedup = comparison['speedup']
+    improvement_pct = comparison['improvement_pct']
+    
+    # Determine if speedup or slowdown
+    if speedup >= 1.05:
+        result_emoji = "🎉"
+        result_text = f"Candidate is **{speedup:.3f}× faster** ({improvement_pct:+.1f}%)"
+    elif speedup <= 0.95:
+        result_emoji = "⚠️"
+        result_text = f"Candidate is **{1/speedup:.3f}× slower** ({improvement_pct:+.1f}%)"
+    else:
+        result_emoji = "➡️"
+        result_text = f"**No significant difference** ({improvement_pct:+.1f}%)"
+    
+    lines.extend([
+        "## Statistical Comparison\n",
+        f"{result_emoji} {result_text}\n",
+        "### Effect Sizes",
+        f"- **Hedges' g**: {comparison['hedges_g']:.3f} ({comparison['hedges_interpretation']})",
+        f"- **Cliff's Delta**: {comparison['cliffs_delta']:.3f} ({comparison['cliffs_interpretation']})\n",
+        "### Significance Testing",
+        f"- **CIs Overlap**: {comparison['cis_overlap']}",
+        f"- **Mann-Whitney U p-value**: {comparison['mann_whitney_p']:.4f}",
+        f"- **Statistically Significant**: {comparison['is_significant']}\n",
+    ])
+    
+    # Publication-ready statement
+    lines.extend([
+        "## 📝 Publication-Ready Statement\n",
+        comparison['verdict'] + "\n",
+    ])
+    
+    # Interpretation
+    lines.extend([
+        "## Interpretation\n",
+    ])
+    
+    if speedup >= 1.10:
+        lines.extend([
+            f"The candidate achieved a **{improvement_pct:.1f}% improvement** over the baseline, ",
+            f"representing a practically significant speedup. Effect sizes confirm this is a large ",
+            f"and meaningful difference (Hedges' g = {comparison['hedges_g']:.2f}). ",
+            "Non-overlapping confidence intervals provide statistical evidence for the improvement.\n",
+        ])
+    elif speedup >= 1.05:
+        lines.extend([
+            f"The candidate shows a **moderate {improvement_pct:.1f}% improvement**. ",
+            f"Effect size (Hedges' g = {comparison['hedges_g']:.2f}) indicates this is a measurable difference. ",
+            "Consider the practical trade-offs of implementation complexity vs. performance gain.\n",
+        ])
+    elif speedup >= 0.95:
+        lines.extend([
+            "**No meaningful performance difference detected**. ",
+            f"The {abs(improvement_pct):.1f}% difference is within measurement noise. ",
+            f"Small effect size (Hedges' g = {abs(comparison['hedges_g']):.2f}) confirms this. ",
+            "**Baseline configuration is already optimal** for this workload.\n",
+        ])
+    else:
+        lines.extend([
+            f"**Candidate is slower** by {abs(improvement_pct):.1f}%. ",
+            f"Negative effect size (Hedges' g = {comparison['hedges_g']:.2f}) indicates a regression. ",
+            "Baseline should be preferred.\n",
+        ])
+    
+    # Reproducibility
+    lines.extend([
+        "## 🔬 Reproducibility\n",
+        "- **Environment**: Locked (TF32 disabled, deterministic algorithms enabled)",
+        "- **Bootstrap Method**: 10,000 resamples with seed=42",
+        "- **Raw Data**: Available in `.npy` files for reanalysis",
+        "- **Statistical Tests**: Non-parametric (Mann-Whitney U, Cliff's Delta)\n",
+    ])
+    
+    return "\n".join(lines)
