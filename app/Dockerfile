@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Cache-busting argument (set to current timestamp to force rebuild)
 ARG CACHE_BUST=unknown
