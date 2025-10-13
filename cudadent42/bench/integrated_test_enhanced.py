@@ -105,6 +105,9 @@ def benchmark_pytorch_sdpa(
     bytes_transferred = 3 * batch * heads * seq * dim * 2 + batch * heads * seq * dim * 2
     bandwidth_gb_s = float((bytes_transferred / (median_ms / 1000)) / 1e9)
     
+    # Get memory statistics
+    mem_stats = mem_tracker.get_stats()
+    
     return {
         "config": {
             "batch": batch,
@@ -129,8 +132,10 @@ def benchmark_pytorch_sdpa(
         },
         "memory": {
             "peak_mb": mem_tracker.peak_mb,
-            "allocated_mb": mem_tracker.allocated_mb,
-            "reserved_mb": mem_tracker.reserved_mb
+            "allocated_mb": mem_stats.allocated_mb,
+            "reserved_mb": mem_stats.reserved_mb,
+            "peak_allocated_mb": mem_stats.peak_allocated_mb,
+            "peak_reserved_mb": mem_stats.peak_reserved_mb
         },
         "raw_latencies": times  # For post-hoc analysis
     }
