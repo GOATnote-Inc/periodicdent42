@@ -553,6 +553,14 @@ __global__ void flash_attention_forward_split_k_partial(
         // else: acc_o stays at 0 (initialized earlier), which is correct for fully-masked tiles
     }
     
+    // DEBUG: Print for specific threads on first KV tile only
+    if (kv_tile_idx == 0 && batch_idx == 0 && head_idx == 0) {
+        if (query_idx_in_tile == 0 || query_idx_in_tile == 32 || query_idx_in_tile == 45 || query_idx_in_tile == 63) {
+            printf("Partial[q=%d]: max=%.6f, sum=%.6f, acc_o[0:3]=[%.6f,%.6f,%.6f]\n",
+                   query_idx_in_tile, local_max, local_sum, acc_o[0], acc_o[1], acc_o[2]);
+        }
+    }
+    
     // Store partial results to global memory
     if (is_valid_query) {
         // Calculate output index: [B,H,Q_tiles,KV_tiles,TILE_SIZE_M,D]
@@ -637,6 +645,14 @@ __global__ void flash_attention_forward_split_k_reduce(
         
         for (int d = 0; d < head_dim; ++d) {
             final_o[d] += reweight * to_float(partial_O_base[d]);
+        }
+    }
+    
+    // DEBUG: Print for specific threads
+    if (batch_idx == 0 && head_idx == 0) {
+        if (query_idx_in_tile == 0 || query_idx_in_tile == 32 || query_idx_in_tile == 45 || query_idx_in_tile == 63) {
+            printf("Reduce[q=%d]: global_max=%.6f, global_sum=%.6f, final_o[0:3]=[%.6f,%.6f,%.6f]\n",
+                   query_idx_in_tile, global_max, global_sum, final_o[0], final_o[1], final_o[2]);
         }
     }
     
