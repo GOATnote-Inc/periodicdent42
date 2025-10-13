@@ -1,6 +1,8 @@
 /**
  * FlashAttention-Science: CUDA kernel implementation
  * 
+ * Test: Validating performance ratchet system (PR trigger)
+ * 
  * Implements FlashAttention-4 warp specialization pattern:
  * - Warpgroup 0 (warps 0-3): MMA operations (Q@K^T, attention@V)
  * - Warpgroup 1 (warps 4-7): Online softmax with numerical stability
