@@ -30,5 +30,5 @@ httpx==0.25.2
 # BETE-NET Dependencies (superconductor predictions)
 pymatgen==2023.9.10  # Crystal structure handling and analysis
 matplotlib==3.8.0    # Plotting α²F(ω) spectral functions
-scipy==1.11.3        # Allen-Dynes T_c calculations
+scipy==1.16.2        # Allen-Dynes T_c calculations
 
