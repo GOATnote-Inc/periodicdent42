@@ -25,7 +25,7 @@ numpy==1.26.2  # Required by pint and scientific computing modules
 # Testing
 pytest==8.4.2
 pytest-asyncio==0.21.1
-httpx==0.25.2
+httpx==0.28.1
 
 # BETE-NET Dependencies (superconductor predictions)
 pymatgen==2023.9.10  # Crystal structure handling and analysis
