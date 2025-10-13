@@ -31,7 +31,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v9
       
       - name: Configure Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@v3
+        uses: DeterminateSystems/magic-nix-cache-action@v13
       
       - name: Verify flake
         run: |
@@ -129,7 +129,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v9
       
       - name: Configure Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@v3
+        uses: DeterminateSystems/magic-nix-cache-action@v13
       
       - name: Build Docker image hermetically
         run: |
@@ -171,7 +171,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v9
       
       - name: Configure Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@v3
+        uses: DeterminateSystems/magic-nix-cache-action@v13
       
       - name: Run all checks
         run: |
