@@ -208,7 +208,7 @@ def main():
     if args.output:
         combined_result = {
             'correctness': {
-                'passed': result.passed,
+                'passed': bool(result.passed),
                 'max_abs_error': float(result.max_abs_error),
                 'mean_abs_error': float(result.mean_abs_error),
                 'correlation': float(result.correlation) if result.correlation is not None else None
@@ -220,10 +220,10 @@ def main():
                 'bandwidth_gb_s': float(bench_result.metrics.bandwidth_gb_s) if bench_result.metrics.bandwidth_gb_s else None
             },
             'roofline': {
-                'arithmetic_intensity': float(roofline_result['arithmetic_intensity']),
-                'bottleneck': roofline_result['bottleneck'],
-                'efficiency_pct': float(roofline_result['efficiency_pct']),
-                'recommendation': roofline_result.get('recommendation', '')
+                'arithmetic_intensity': float(roofline_result.arithmetic_intensity),
+                'bottleneck': roofline_result.bottleneck,
+                'efficiency_pct': float(roofline_result.efficiency_percent),
+                'recommendations': roofline_result.recommendations[:3] if len(roofline_result.recommendations) > 0 else []
             },
             'config': {
                 'batch_size': B,

@@ -38,9 +38,12 @@ def compare_results(
     baseline = load_result(baseline_path)
     current = load_result(current_path)
     
-    # Extract key metrics
-    baseline_time = baseline['metrics']['mean_time_ms']
-    current_time = current['metrics']['mean_time_ms']
+    # Extract key metrics (support both old 'metrics' and new 'performance' keys)
+    baseline_perf = baseline.get('performance', baseline.get('metrics', {}))
+    current_perf = current.get('performance', current.get('metrics', {}))
+    
+    baseline_time = baseline_perf['mean_time_ms']
+    current_time = current_perf['mean_time_ms']
     
     # Calculate speedup and improvement
     speedup = baseline_time / current_time
@@ -63,22 +66,22 @@ def compare_results(
     print(f"{'Mean Time (ms)':<25} {baseline_time:>13.4f} {current_time:>13.4f} "
           f"{improvement_pct:>+13.2f}%")
     
-    b_std = baseline['metrics']['std_dev_ms']
-    c_std = current['metrics']['std_dev_ms']
+    b_std = baseline_perf.get('std_dev_ms', 0)
+    c_std = current_perf.get('std_dev_ms', 0)
     print(f"{'Std Dev (ms)':<25} {b_std:>13.4f} {c_std:>13.4f}")
     
     # Throughput
-    if 'throughput_gflops' in baseline['metrics'] and baseline['metrics']['throughput_gflops']:
-        b_gflops = baseline['metrics']['throughput_gflops']
-        c_gflops = current['metrics']['throughput_gflops']
+    if 'throughput_gflops' in baseline_perf and baseline_perf['throughput_gflops']:
+        b_gflops = baseline_perf['throughput_gflops']
+        c_gflops = current_perf['throughput_gflops']
         gflops_change = ((c_gflops - b_gflops) / b_gflops) * 100
         print(f"{'Throughput (GFLOPS)':<25} {b_gflops:>13.2f} {c_gflops:>13.2f} "
               f"{gflops_change:>+13.2f}%")
     
     # Bandwidth
-    if 'bandwidth_gb_s' in baseline['metrics'] and baseline['metrics']['bandwidth_gb_s']:
-        b_bw = baseline['metrics']['bandwidth_gb_s']
-        c_bw = current['metrics']['bandwidth_gb_s']
+    if 'bandwidth_gb_s' in baseline_perf and baseline_perf['bandwidth_gb_s']:
+        b_bw = baseline_perf['bandwidth_gb_s']
+        c_bw = current_perf['bandwidth_gb_s']
         bw_change = ((c_bw - b_bw) / b_bw) * 100
         print(f"{'Bandwidth (GB/s)':<25} {b_bw:>13.2f} {c_bw:>13.2f} "
               f"{bw_change:>+13.2f}%")
