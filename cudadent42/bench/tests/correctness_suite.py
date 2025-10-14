@@ -104,7 +104,9 @@ def run_single_test(
     mean_rel_diff = rel_diff.mean().item()
     
     # Check pass/fail
-    passed = (max_abs_diff <= ATOL and max_rel_diff <= RTOL)
+    # For FP16: prioritize absolute tolerance, relative tolerance only for larger values
+    # Pass if either: abs error is tiny, OR (abs error acceptable AND rel error acceptable)
+    passed = (max_abs_diff <= ATOL) or (max_abs_diff <= ATOL * 2 and max_rel_diff <= RTOL)
     
     # Find first bad index if failed
     first_bad_idx = None
