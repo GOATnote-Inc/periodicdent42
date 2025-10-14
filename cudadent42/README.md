@@ -9,6 +9,19 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.2+-orange.svg)](https://pytorch.org/)
 
+## 🏆 Production Champion: PyTorch SDPA
+
+**Current production kernel:** `torch.nn.functional.scaled_dot_product_attention` (L4 GPU)
+- **Performance:** 0.073 ms per call (B=2, H=8, S=512, D=64, FP16)
+- **Correctness:** 100% (industry-standard reference implementation)
+- **Status:** Stable, validated, ready for production
+
+**Custom kernel development:** In progress on `feature/v3-fix-s512` branch
+- V2 (tensor cores): 6.5× slower than SDPA (correctness validated)
+- V3 (large tiles): Under correctness repair; performance TBD
+
+See `ENGINEER_LOG.md` for detailed development history and `artifacts/` for all validation evidence.
+
 ---
 
 ## 📋 Project Overview

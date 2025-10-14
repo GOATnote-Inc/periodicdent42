@@ -6,6 +6,26 @@
 
 ---
 
+## 2025-10-14 23:30 UTC — Post-Mortem Plan: V3 Correctness Repair (ACTIVE SESSION)
+
+**Context:**  
+- V3 (large tiles) shows NaN outputs for B=2,S=512,H=8,D=64 with TF32=off.
+- Prior attempts focused on illegal memory access fixes; now pivoting to systematic correctness debugging.
+
+**Decision:**  
+- **Production champion:** PyTorch SDPA (0.073 ms, 100% correct) — documented in README.
+- V3 repair on `feature/v3-fix-s512` branch (logical, not created yet).
+- Max 2 bug-fix iterations at tile level; if not green, SDPA stays champion.
+
+**Step 0 — Guardrails (COMPLETE):**
+- ✅ README updated: SDPA set as production champion (commit pending)
+- ✅ `artifacts/` directories created: `oracle/`, `sanitizers/`, `correctness/`, `bench/`, `stats/`, `nsight/`
+- ✅ ENGINEER_LOG.md updated with post-mortem plan
+
+**Next:** Step 1 — Tiny tile oracle (B=1,H=1,S=32,D=64) to localize V3 numerical bug (S vs P vs O).
+
+---
+
 ## Fix Plan
 
 ### Root Cause Hypothesis
