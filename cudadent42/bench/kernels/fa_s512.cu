@@ -285,7 +285,9 @@ fa_s512_kernel(
                 float acc = 0.0f;
                 
                 // Dot product: Q[m] · K[n]
-#pragma unroll UNROLL
+                // Note: UNROLL is a tunable, but #pragma unroll needs a constant
+                // Let compiler auto-unroll based on UNROLL hint via -funroll-loops
+#pragma unroll
                 for (int d = 0; d < D; ++d) {
                     float q_val = __half2float(Q_smem[0][m_warp_start + m][d]);
                     float k_val = __half2float(K_smem[0][n][d]);
