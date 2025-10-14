@@ -453,3 +453,43 @@ cudaError_t launch_fa_s512_v3(
     
     return cudaGetLastError();
 }
+
+// ============================================================================
+// Template Instantiations (Pre-compile promising configs)
+// ============================================================================
+
+// Config 1: BLOCK_M=32, BLOCK_N=64, WARPS=6, STAGES=2, SWIZZLE=1, HALF2=1
+using Traits_32_64_6_2_1_1 = KernelTraits<32, 64, 64, 6, 2, true, true>;
+
+extern "C" cudaError_t launch_fa_s512_v3_32_64_6_2_1_1(
+    const half* Q, const half* K, const half* V, half* O,
+    float softmax_scale, int B, int H, int S, bool is_causal, cudaStream_t stream
+) {
+    return launch_fa_s512_v3<Traits_32_64_6_2_1_1>(
+        Q, K, V, O, softmax_scale, B, H, S, is_causal, stream
+    );
+}
+
+// Config 2: BLOCK_M=32, BLOCK_N=32, WARPS=6, STAGES=2, SWIZZLE=1, HALF2=1
+using Traits_32_32_6_2_1_1 = KernelTraits<32, 32, 64, 6, 2, true, true>;
+
+extern "C" cudaError_t launch_fa_s512_v3_32_32_6_2_1_1(
+    const half* Q, const half* K, const half* V, half* O,
+    float softmax_scale, int B, int H, int S, bool is_causal, cudaStream_t stream
+) {
+    return launch_fa_s512_v3<Traits_32_32_6_2_1_1>(
+        Q, K, V, O, softmax_scale, B, H, S, is_causal, stream
+    );
+}
+
+// Config 3: BLOCK_M=48, BLOCK_N=64, WARPS=8, STAGES=2, SWIZZLE=1, HALF2=1
+using Traits_48_64_8_2_1_1 = KernelTraits<48, 64, 64, 8, 2, true, true>;
+
+extern "C" cudaError_t launch_fa_s512_v3_48_64_8_2_1_1(
+    const half* Q, const half* K, const half* V, half* O,
+    float softmax_scale, int B, int H, int S, bool is_causal, cudaStream_t stream
+) {
+    return launch_fa_s512_v3<Traits_48_64_8_2_1_1>(
+        Q, K, V, O, softmax_scale, B, H, S, is_causal, stream
+    );
+}
