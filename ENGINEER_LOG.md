@@ -29,11 +29,27 @@ V3 kernel has "CUDA illegal memory access" at runtime. Likely causes:
 
 ## Diffs Applied
 
-### Timestamp: [PENDING]
+### Timestamp: 2025-10-14T00:00:00Z - Step 0 Complete
 
-**File**: TBD  
-**Change**: TBD  
-**Reason**: TBD
+**Files Modified**:
+- `cudadent42/bench/kernels/detail/debug_utils.cuh` (NEW)
+- `cudadent42/bench/kernels/fa_s512_v3.cu`
+
+**Changes**:
+1. Created `debug_utils.cuh` with:
+   - `oob()` helper for bounds checking
+   - `CUDA_DEBUG_ASSERT()` macro (enabled with -DDEBUG_V3)
+   - `is_aligned_16()` for cp.async alignment validation
+   - `gmem_in_bounds()` and `smem_in_bounds()` helpers
+
+2. Modified `fa_s512_v3.cu`:
+   - Added `#include "detail/debug_utils.cuh"`
+   - Added static_assert in `smem_bytes()` to enforce 48KB limit
+   - Added work distribution bounds checking (batch_idx, head_idx, m_block)
+   - Added cp.async alignment checks in `load_K_async()` and `load_V_async()`
+   - Added stage/row/col bounds checking before all SMEM accesses
+
+**Reason**: Establish debug infrastructure to pinpoint illegal memory access root cause via compute-sanitizer
 
 ---
 
