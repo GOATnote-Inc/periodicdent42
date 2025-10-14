@@ -4,6 +4,9 @@
 
 set -e
 
+# Ensure CUDA tools are in PATH
+export PATH=/usr/local/cuda/bin:$PATH
+
 TOOL=${1:-memcheck}
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 ARTIFACTS_DIR="${SCRIPT_DIR}/../../artifacts/sanitizers"
