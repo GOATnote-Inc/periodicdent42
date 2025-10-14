@@ -16,6 +16,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <cassert>
+#include <cstdio>
 
 // ============================================================================
 // CONSTANTS - Derived from Theoretical Optimal for L4 (SM_89)
@@ -54,8 +56,9 @@
 static_assert(TILE_M % NUM_WARPS == 0, "TILE_M must be divisible by NUM_WARPS");
 static_assert(ROWS_PER_WARP == 16, "Must have 16 rows per warp for Tensor Cores");
 static_assert((HEAD_DIM * sizeof(half)) % 16 == 0, "HEAD_DIM must be 16-byte aligned");
-static_assert(SEQ_LEN % TILE_M == 0, "SEQ_LEN must be divisible by TILE_M for no boundary conditions");
-static_assert(SEQ_LEN % TILE_N == 0, "SEQ_LEN must be divisible by TILE_N");
+// Note: We DON'T require SEQ_LEN % TILE_M == 0
+// This allows non-power-of-2 tile sizes (Constraint Inversion)
+// We'll handle boundary conditions explicitly in the kernel
 
 // ============================================================================
 // HELPER FUNCTIONS
