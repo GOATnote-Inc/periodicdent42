@@ -81,8 +81,9 @@ __device__ void load_Q_tile(
     const int tid = threadIdx.x;
     const int elements_per_thread = (TILE_M * TILE_K) / NUM_THREADS;
     
-    const int base_offset = batch_idx * seq_len * num_heads * HEAD_DIM + 
-                           head_idx * HEAD_DIM;
+    // FIX: Correct PyTorch (B, H, S, D) layout strides: [H*S*D, S*D, D, 1]
+    const int base_offset = batch_idx * num_heads * seq_len * HEAD_DIM + 
+                           head_idx * seq_len * HEAD_DIM;
     
     #pragma unroll
     for (int i = 0; i < elements_per_thread; i++) {
@@ -93,7 +94,7 @@ __device__ void load_Q_tile(
         const int m = m_block * TILE_M + row;
         
         if (m < seq_len && row < TILE_M) {
-            const int global_idx = base_offset + m * num_heads * HEAD_DIM + col;
+            const int global_idx = base_offset + m * HEAD_DIM + col;
             smem->Q[row][col] = Q_global[global_idx];
         } else {
             smem->Q[row][col] = float_to_half(0.0f);
@@ -113,8 +114,9 @@ __device__ void load_K_tile(
     const int tid = threadIdx.x;
     const int elements_per_thread = (TILE_N * TILE_K) / NUM_THREADS;
     
-    const int base_offset = batch_idx * seq_len * num_heads * HEAD_DIM + 
-                           head_idx * HEAD_DIM;
+    // FIX: Correct PyTorch (B, H, S, D) layout strides: [H*S*D, S*D, D, 1]
+    const int base_offset = batch_idx * num_heads * seq_len * HEAD_DIM + 
+                           head_idx * seq_len * HEAD_DIM;
     
     #pragma unroll
     for (int i = 0; i < elements_per_thread; i++) {
@@ -125,7 +127,7 @@ __device__ void load_K_tile(
         const int n = n_block * TILE_N + row;
         
         if (n < seq_len && row < TILE_N) {
-            const int global_idx = base_offset + n * num_heads * HEAD_DIM + col;
+            const int global_idx = base_offset + n * HEAD_DIM + col;
             smem->K[row][col] = K_global[global_idx];
         } else {
             smem->K[row][col] = float_to_half(0.0f);
@@ -145,8 +147,9 @@ __device__ void load_V_tile(
     const int tid = threadIdx.x;
     const int elements_per_thread = (TILE_N * TILE_K) / NUM_THREADS;
     
-    const int base_offset = batch_idx * seq_len * num_heads * HEAD_DIM + 
-                           head_idx * HEAD_DIM;
+    // FIX: Correct PyTorch (B, H, S, D) layout strides: [H*S*D, S*D, D, 1]
+    const int base_offset = batch_idx * num_heads * seq_len * HEAD_DIM + 
+                           head_idx * seq_len * HEAD_DIM;
     
     #pragma unroll
     for (int i = 0; i < elements_per_thread; i++) {
@@ -157,7 +160,7 @@ __device__ void load_V_tile(
         const int n = n_block * TILE_N + row;
         
         if (n < seq_len && row < TILE_N) {
-            const int global_idx = base_offset + n * num_heads * HEAD_DIM + col;
+            const int global_idx = base_offset + n * HEAD_DIM + col;
             smem->V[row][col] = V_global[global_idx];
         } else {
             smem->V[row][col] = float_to_half(0.0f);
@@ -470,8 +473,9 @@ __global__ void flash_attention_inverted_kernel(
     }
     
     // Final normalization and write output
-    const int base_offset = batch_idx * seq_len * num_heads * HEAD_DIM + 
-                           head_idx * HEAD_DIM;
+    // FIX: Correct PyTorch (B, H, S, D) layout strides: [H*S*D, S*D, D, 1]
+    const int base_offset = batch_idx * num_heads * seq_len * HEAD_DIM + 
+                           head_idx * seq_len * HEAD_DIM;
     
     for (int row = 0; row < TILE_M; row++) {
         const int m = m_block * TILE_M + row;
@@ -481,7 +485,7 @@ __global__ void flash_attention_inverted_kernel(
         
         for (int col = tid; col < HEAD_DIM; col += NUM_THREADS) {
             const int out_idx = row * HEAD_DIM + col;
-            const int global_idx = base_offset + m * num_heads * HEAD_DIM + col;
+            const int global_idx = base_offset + m * HEAD_DIM + col;
             O[global_idx] = float_to_half(O_shared[out_idx] * scale);
         }
     }
