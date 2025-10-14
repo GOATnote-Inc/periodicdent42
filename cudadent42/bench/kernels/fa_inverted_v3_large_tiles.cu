@@ -3,14 +3,15 @@
 // ============================================================================
 // Methodology: Hardware-First Design + Tensor Core + Tile Optimization
 // VERSION: 3.0 (Priority 2 - Increase Tile Sizes)
-// GOAL: 1.5-2× speedup via larger tiles (better amortization)
+// GOAL: 1.3-1.5× speedup via larger tiles (better amortization)
 // BASELINE: V2 = 0.3184 ms (1.58× vs V1)
-// TARGET: V3 = 0.18 ms (2.8× vs V1, 1.75× vs V2)
+// TARGET: V3 = 0.21 ms (2.4× vs V1, 1.5× vs V2)
 // ============================================================================
 // Target GPU: NVIDIA L4 (SM 8.9, Ada Lovelace)
 // - 232 Tensor Cores (4th gen, m16n16k16 fragments)
-// - TILE_M: 32 → 64 (2× larger, better SMEM amortization)
-// - NUM_WARPS: 4 → 8 (better occupancy)
+// - TILE_M: 32 → 48 (1.5× larger, fits in 48KB SMEM limit)
+// - NUM_WARPS: 4 → 6 (better occupancy)
+// - SMEM: 45.5KB < 48KB ✓
 // ============================================================================
 
 #include <cuda_runtime.h>
@@ -26,11 +27,11 @@ using namespace nvcuda;
 // L4-OPTIMIZED CONFIGURATION V3 (LARGE TILES)
 // ============================================================================
 
-constexpr int NUM_WARPS = 8;  // Increased from 4 for better occupancy
+constexpr int NUM_WARPS = 6;  // Increased from 4 for better occupancy
 constexpr int WARP_SIZE = 32;
-constexpr int NUM_THREADS = NUM_WARPS * WARP_SIZE;  // 256 threads (was 128)
+constexpr int NUM_THREADS = NUM_WARPS * WARP_SIZE;  // 192 threads (compromise)
 
-constexpr int TILE_M = 64;  // Increased from 32 for better amortization
+constexpr int TILE_M = 48;  // Increased from 32, fits in 48KB SMEM limit
 constexpr int TILE_N = 32;
 constexpr int HEAD_DIM = 64;
 constexpr int TILE_K = HEAD_DIM;
@@ -175,15 +176,14 @@ __device__ void load_V_tile(
 __device__ void compute_QK_wmma(SharedMemory* smem) {
     const int warp_id = threadIdx.x / WARP_SIZE;
     
-    // Warp work distribution V3 (TILE_M=64, 8 warps):
-    // - 4 M-blocks (0-15, 16-31, 32-47, 48-63), 2 N-blocks (0-15, 16-31)
-    // - 8 warps → each warp does 1 tile (16×16)
-    // - Warp 0-1: M=0,  N=0-1
-    // - Warp 2-3: M=1,  N=0-1
-    // - Warp 4-5: M=2,  N=0-1
-    // - Warp 6-7: M=3,  N=0-1
-    const int m_block = warp_id / 2;  // 0, 0, 1, 1, 2, 2, 3, 3
-    const int n_block = warp_id % 2;  // 0, 1, 0, 1, 0, 1, 0, 1
+    // Warp work distribution V3 (TILE_M=48, 6 warps):
+    // - 3 M-blocks (0-15, 16-31, 32-47), 2 N-blocks (0-15, 16-31)
+    // - 6 warps → each warp does 1 tile (16×16)
+    // - Warp 0-1: M=0, N=0-1
+    // - Warp 2-3: M=1, N=0-1
+    // - Warp 4-5: M=2, N=0-1
+    const int m_block = warp_id / 2;  // 0, 0, 1, 1, 2, 2
+    const int n_block = warp_id % 2;  // 0, 1, 0, 1, 0, 1
     
     // wmma fragments
     wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
@@ -310,15 +310,14 @@ __device__ void compute_SV_wmma(
     const int warp_id = threadIdx.x / WARP_SIZE;
     const int lane_id = threadIdx.x % WARP_SIZE;
     
-    // Warp work distribution V3 (TILE_M=64, 8 warps):
-    // - 4 M-blocks (0-15, 16-31, 32-47, 48-63), 4 N-blocks (HEAD_DIM=64 / WMMA_N=16)
-    // - 8 warps → each warp does 1 M-block × 2 N-blocks = 16×32 output
+    // Warp work distribution V3 (TILE_M=48, 6 warps):
+    // - 3 M-blocks (0-15, 16-31, 32-47), 4 N-blocks (HEAD_DIM=64 / WMMA_N=16)
+    // - 6 warps → each warp does 1 M-block × 2 N-blocks = 16×32 output
     // - Warp 0-1: M=0, N=0-1 and N=2-3
     // - Warp 2-3: M=1, N=0-1 and N=2-3
     // - Warp 4-5: M=2, N=0-1 and N=2-3
-    // - Warp 6-7: M=3, N=0-1 and N=2-3
-    const int m_block = warp_id / 2;  // 0, 0, 1, 1, 2, 2, 3, 3
-    const int n_start = (warp_id % 2) * 2;  // 0, 2, 0, 2, 0, 2, 0, 2
+    const int m_block = warp_id / 2;  // 0, 0, 1, 1, 2, 2
+    const int n_start = (warp_id % 2) * 2;  // 0, 2, 0, 2, 0, 2
     
     // wmma fragments
     wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
