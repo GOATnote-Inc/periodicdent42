@@ -27,8 +27,9 @@
 #include <mma.h>
 
 // Compile-time tunables (set via -D flags)
+// Defaults optimized for L4 (48KB shared memory limit)
 #ifndef BLOCK_M
-#define BLOCK_M 128
+#define BLOCK_M 64  // Reduced from 128 to fit in shared memory
 #endif
 
 #ifndef BLOCK_N
@@ -44,7 +45,7 @@
 #endif
 
 #ifndef STAGES
-#define STAGES 2
+#define STAGES 1  // Reduced from 2 to fit in shared memory (can increase later)
 #endif
 
 #ifndef UNROLL
