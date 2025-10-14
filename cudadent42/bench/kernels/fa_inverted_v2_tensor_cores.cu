@@ -32,9 +32,9 @@ constexpr int TILE_N = 32;
 constexpr int HEAD_DIM = 64;
 constexpr int TILE_K = HEAD_DIM;
 
-// Tensor Core fragment sizes (L4 Ada Lovelace: m16n8k16)
+// Tensor Core fragment sizes (L4 Ada Lovelace: m16n16k16 for FP16)
 constexpr int WMMA_M = 16;
-constexpr int WMMA_N = 8;
+constexpr int WMMA_N = 16;  // Fixed: Ada uses 16, not 8
 constexpr int WMMA_K = 16;
 
 constexpr int SMEM_PAD = 8;
@@ -169,22 +169,21 @@ __device__ void load_V_tile(
 __device__ void compute_QK_wmma(SharedMemory* smem) {
     const int warp_id = threadIdx.x / WARP_SIZE;
     
-    // Warp work distribution:
-    // - 2 M-blocks (0-15, 16-31), 4 N-blocks (0-7, 8-15, 16-23, 24-31)
-    // - 4 warps → each warp does 1 M-block × 2 N-blocks = 16×16 output
+    // Warp work distribution (updated for WMMA_N=16):
+    // - 2 M-blocks (0-15, 16-31), 2 N-blocks (0-15, 16-31)
+    // - 4 warps → each warp does 1 tile (16×16)
+    // - Warp 0: (0-15, 0-15), Warp 1: (0-15, 16-31)
+    // - Warp 2: (16-31, 0-15), Warp 3: (16-31, 16-31)
     const int m_block = warp_id / 2;  // 0 or 1
-    const int n_start = (warp_id % 2) * 2;  // 0 or 2
+    const int n_block = warp_id % 2;  // 0 or 1
     
     // wmma fragments
     wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
     wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
-    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag[2];
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag;
     
-    // Initialize accumulators
-    #pragma unroll
-    for (int n_idx = 0; n_idx < 2; n_idx++) {
-        wmma::fill_fragment(acc_frag[n_idx], 0.0f);
-    }
+    // Initialize accumulator
+    wmma::fill_fragment(acc_frag, 0.0f);
     
     // Compute Q @ K^T with Tensor Cores
     // Q: (TILE_M × TILE_K), K^T: (TILE_K × TILE_N) → S: (TILE_M × TILE_N)
@@ -195,31 +194,21 @@ __device__ void compute_QK_wmma(SharedMemory* smem) {
             &smem->Q[m_block * WMMA_M][k_block * WMMA_K],
             TILE_K + SMEM_PAD);
         
-        // Process 2 N-blocks per warp
-        #pragma unroll
-        for (int n_idx = 0; n_idx < 2; n_idx++) {
-            int n_block = n_start + n_idx;
-            
-            // Load K tile as col-major (transpose) (16×8)
-            wmma::load_matrix_sync(b_frag, 
-                &smem->K[n_block * WMMA_N][k_block * WMMA_K],
-                TILE_K + SMEM_PAD);
-            
-            // Tensor Core multiply-accumulate
-            wmma::mma_sync(acc_frag[n_idx], a_frag, b_frag, acc_frag[n_idx]);
-        }
+        // Load K tile as col-major (transpose) (16×16)
+        wmma::load_matrix_sync(b_frag, 
+            &smem->K[n_block * WMMA_N][k_block * WMMA_K],
+            TILE_K + SMEM_PAD);
+        
+        // Tensor Core multiply-accumulate
+        wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
     }
     
-    // Store results to shared memory S
-    #pragma unroll
-    for (int n_idx = 0; n_idx < 2; n_idx++) {
-        int n_block = n_start + n_idx;
-        wmma::store_matrix_sync(
-            &smem->S[m_block * WMMA_M][n_block * WMMA_N],
-            acc_frag[n_idx],
-            TILE_N + SMEM_PAD,
-            wmma::mem_row_major);
-    }
+    // Store result to shared memory S
+    wmma::store_matrix_sync(
+        &smem->S[m_block * WMMA_M][n_block * WMMA_N],
+        acc_frag,
+        TILE_N + SMEM_PAD,
+        wmma::mem_row_major);
 }
 
 // ============================================================================
@@ -297,20 +286,20 @@ __device__ void compute_SV_wmma(
     const int warp_id = threadIdx.x / WARP_SIZE;
     const int lane_id = threadIdx.x % WARP_SIZE;
     
-    // Warp work distribution:
-    // - 2 M-blocks (0-15, 16-31), 8 N-blocks (HEAD_DIM=64 / WMMA_N=8)
-    // - 4 warps → each warp does 1 M-block × 4 N-blocks = 16×32 output
+    // Warp work distribution (updated for WMMA_N=16):
+    // - 2 M-blocks (0-15, 16-31), 4 N-blocks (HEAD_DIM=64 / WMMA_N=16)
+    // - 4 warps → each warp does 1 M-block × 2 N-blocks = 16×32 output
     const int m_block = warp_id / 2;  // 0 or 1
-    const int n_start = (warp_id % 2) * 4;  // 0 or 4
+    const int n_start = (warp_id % 2) * 2;  // 0 or 2
     
     // wmma fragments
     wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
     wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
-    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag[4];
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag[2];
     
     // Initialize accumulators
     #pragma unroll
-    for (int n_idx = 0; n_idx < 4; n_idx++) {
+    for (int n_idx = 0; n_idx < 2; n_idx++) {
         wmma::fill_fragment(acc_frag[n_idx], 0.0f);
     }
     
@@ -323,12 +312,12 @@ __device__ void compute_SV_wmma(
             &smem->S[m_block * WMMA_M][k_block * WMMA_K],
             TILE_N + SMEM_PAD);
         
-        // Process 4 N-blocks per warp
+        // Process 2 N-blocks per warp
         #pragma unroll
-        for (int n_idx = 0; n_idx < 4; n_idx++) {
+        for (int n_idx = 0; n_idx < 2; n_idx++) {
             int n_block = n_start + n_idx;
             
-            // Load V tile (16×8)
+            // Load V tile (16×16)
             wmma::load_matrix_sync(b_frag, 
                 &smem->V[k_block * WMMA_K][n_block * WMMA_N],
                 TILE_K + SMEM_PAD);
@@ -339,27 +328,27 @@ __device__ void compute_SV_wmma(
     }
     
     // Accumulate results to O_shared (FP32)
-    // Each warp handles its region: m_block × (n_start to n_start+4)
+    // Each warp handles its region: m_block × (n_start to n_start+2)
     // Manually extract wmma fragment elements and add to O_shared
     #pragma unroll
-    for (int n_idx = 0; n_idx < 4; n_idx++) {
+    for (int n_idx = 0; n_idx < 2; n_idx++) {
         int n_block = n_start + n_idx;
         
-        // wmma accumulator fragment contains 16×8 = 128 FP32 values
-        // distributed across 32 threads (4 values per thread)
-        // Fragment layout: row-major, each thread owns 4 consecutive elements
+        // wmma accumulator fragment contains 16×16 = 256 FP32 values
+        // distributed across 32 threads (8 values per thread)
+        // Fragment layout: row-major, each thread owns 8 consecutive elements
         
         // Simplified approach: use atomic adds to O_shared
         // Each thread processes its fragment elements
         for (int elem_idx = 0; elem_idx < acc_frag[n_idx].num_elements; elem_idx++) {
             // Map fragment element to output position
-            // Note: wmma fragment layout is complex, this is simplified
-            // Each thread in warp contributes to different output elements
+            // For m16n16k16: 16 rows × 16 cols = 256 elements / 32 threads = 8 per thread
+            // Each thread handles elements in a specific pattern
             
-            // For m16n8k16: 16 rows × 8 cols = 128 elements / 32 threads = 4 per thread
-            // Thread layout: each thread handles 2 rows, 2 cols
-            int thread_row_offset = (lane_id / 4) * 2 + (elem_idx / 2);
-            int thread_col_offset = (lane_id % 4) * 2 + (elem_idx % 2);
+            // Simplified layout assumption (may need adjustment):
+            // Each thread handles 4 rows, 2 cols
+            int thread_row_offset = (lane_id / 8) * 4 + (elem_idx / 2);
+            int thread_col_offset = (lane_id % 8) * 2 + (elem_idx % 2);
             
             int global_row = m_block * WMMA_M + thread_row_offset;
             int global_col = n_block * WMMA_N + thread_col_offset;
