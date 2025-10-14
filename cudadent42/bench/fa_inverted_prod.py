@@ -13,13 +13,16 @@ import torch
 import torch.utils.cpp_extension
 from pathlib import Path
 
-# Get kernel path
-KERNEL_PATH = Path(__file__).parent / "kernels" / "fa_inverted_prod.cu"
+# Get kernel paths
+KERNEL_DIR = Path(__file__).parent / "kernels"
+KERNEL_CU = KERNEL_DIR / "fa_inverted_prod.cu"
+KERNEL_BINDINGS = KERNEL_DIR / "fa_inverted_prod_bindings.cpp"
 
 # Load the CUDA extension (JIT compilation)
+# Following cookbook best practices: separate kernel and bindings
 flash_attention_inverted = torch.utils.cpp_extension.load(
     name="flash_attention_inverted_prod",
-    sources=[str(KERNEL_PATH)],
+    sources=[str(KERNEL_BINDINGS), str(KERNEL_CU)],  # Bindings first, then CUDA
     extra_cuda_cflags=[
         "-O3",
         "-use_fast_math",
@@ -79,21 +82,9 @@ def flash_attention_inverted_forward(
     if softmax_scale is None:
         softmax_scale = 1.0 / (head_dim ** 0.5)
     
-    # Allocate output
-    O = torch.empty_like(Q)
-    
-    # Launch kernel
-    flash_attention_inverted.launch_flash_attention_inverted(
-        Q.data_ptr(),
-        K.data_ptr(),
-        V.data_ptr(),
-        O.data_ptr(),
-        softmax_scale,
-        batch_size,
-        num_heads,
-        seq_len,
-        is_causal,
-        torch.cuda.current_stream().cuda_stream,
+    # Call kernel via PyBind11 bindings (proper type handling)
+    O = flash_attention_inverted.forward(
+        Q, K, V, softmax_scale, is_causal
     )
     
     return O
