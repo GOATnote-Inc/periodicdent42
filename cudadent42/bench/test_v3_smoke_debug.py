@@ -68,7 +68,8 @@ def run_smoke_test(module):
         softmax_scale = 1.0 / (D ** 0.5)
         is_causal = False
         
-        O = module.forward(config_id, Q, K, V, softmax_scale, is_causal)
+        # Bindings signature: forward(Q, K, V, softmax_scale, is_causal, config_id)
+        O = module.forward(Q, K, V, softmax_scale, is_causal, config_id)
         
         print(f"   Output shape: {O.shape}")
         print(f"   Output range: [{O.min():.4f}, {O.max():.4f}]")
