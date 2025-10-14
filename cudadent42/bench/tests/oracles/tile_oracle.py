@@ -172,7 +172,7 @@ def compare_intermediates(ref, test, name):
         "worst_idx": [int(x) for x in worst_idx],
         "ref_val": float(ref[worst_idx]),
         "test_val": float(test[worst_idx]),
-        "passed": passed,
+        "passed": bool(passed),  # Convert numpy bool_ to Python bool for JSON
     }
 
 
