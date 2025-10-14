@@ -25,7 +25,8 @@ def build_v3_release():
     # Release build flags
     release_flags = [
         "-O3",                 # Maximum optimization
-        "-use_fast_math",      # Fast math
+        # NOTE: Removed -use_fast_math to test if it causes numerical errors
+        # "-use_fast_math",      # Fast math
         "-DNDEBUG",            # Disable assertions
         "-UDEBUG_V3",          # Disable DEBUG_V3
         "-lineinfo",           # Keep line info for profiling
@@ -33,6 +34,9 @@ def build_v3_release():
         "-arch=sm_89",         # L4
         "--expt-relaxed-constexpr",
         "--ptxas-options=-v",  # Verbose ptxas (shows regs/thread)
+        "-ftz=false",          # Don't flush denormals to zero
+        "-prec-div=true",      # Precise division
+        "-prec-sqrt=true",     # Precise sqrt
     ]
     
     print("Release flags:")
