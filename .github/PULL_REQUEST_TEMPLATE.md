@@ -1,136 +1,87 @@
-<!-- 
-Periodic Labs - Epistemic CI
-PR Template for Ready-to-Merge Changes
--->
+# Pull Request
 
-## 📋 Summary
+## Description
 
-<!-- One-sentence description of the change -->
+<!-- Provide a brief description of the changes in this PR -->
 
-**Rationale:**  
-<!-- Why is this change necessary? What problem does it solve? -->
+## Type of Change
 
-**Impact:** ⭐⭐⭐  
-<!-- Rate 1-5 stars for business/scientific impact -->
-
-**Effort:** **[S/M/L]**  
-<!-- S=<4h, M=4-16h, L=>16h -->
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [ ] New feature (non-breaking change which adds functionality)
+- [ ] Performance optimization (non-breaking change which improves performance)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
 
 ---
 
-## 🎯 Changes
+## ⚡ Performance Checks
 
-<!-- Bullet list of key changes -->
+<!-- Required for changes to CUDA kernels, benchmarking, or optimization -->
 
-- [ ] Change 1
-- [ ] Change 2
-- [ ] Change 3
-
----
-
-## ✅ Acceptance Criteria
-
-<!-- Checklist of requirements for merge -->
-
-- [ ] All tests pass (`pytest -v`)
-- [ ] Coverage ≥85% (`pytest --cov-fail-under=85`)
-- [ ] Secrets scan clean (trufflehog)
-- [ ] Reproducible with `--seed 42`
-- [ ] Documentation updated (README, docstrings)
-- [ ] Performance within budget (time/cost caps)
-
-### ⚡ Performance Checks (if touching `csrc/`, `bench/`, `cudadent42/`)
-
-- [ ] Correctness fuzzing passes (`python cudadent42/bench/correctness_fuzz.py`)
-- [ ] No regression > 3% vs baseline
-- [ ] If claiming improvement: ≥10% speedup with non-overlapping 95% CIs
-- [ ] Nsight evidence attached (`.ncu-rep` or screenshot)
+- [ ] Correctness fuzzing passed (27 configs)
+- [ ] Baseline benchmark run (N=100 samples)
+- [ ] Statistical comparison performed (bootstrap CIs, effect sizes)
+- [ ] Nsight profiling captured (if claiming >10% improvement)
+- [ ] Performance regression < 3% (or justified)
 
 ---
 
 ## ⚡ Performance Intent & Hypothesis
 
-<!-- Required if touching CUDA kernels or benchmarks -->
+**Target Shapes**: <!-- e.g., B=32, H=8, S=512, D=64 -->
 
-**Target Shape(s):** <!-- e.g., B=32, H=8, S=512, D=64 -->
+**Bottleneck Hypothesis**: <!-- e.g., Low tensor core utilization (57% → target 80%+) -->
 
-**Hypothesis (Bottleneck):** <!-- What bottleneck does this PR address? -->
+**Proposed Fix**: <!-- e.g., Increase block size from 128 to 256 threads -->
 
-**Nsight Evidence:** 
-<!-- Link to Nsight report or attach screenshot -->
-- Before: `artifacts/ncu/baseline_*.ncu-rep`
-- After: `artifacts/ncu/optimized_*.ncu-rep`
+### Nsight Evidence (Before/After)
 
-**Result:**
-- Median Δ: <!-- e.g., +12.5% faster -->
-- CI Overlap: <!-- Yes/No -->
-- Cliff's δ: <!-- e.g., 0.42 (medium effect) -->
-- Verdict: <!-- ✅ Improvement / ⚠️ No significant difference / ❌ Regression -->
+**Baseline** (commit: `XXXXXXX`):
+- Tensor Core Utilization: XX%
+- DRAM Throughput: XX% of peak
+- L2 Hit Rate: XX%
+- Latency: X.XXX ms [CI: X.XXX, X.XXX]
 
----
+**After This PR**:
+- Tensor Core Utilization: XX%
+- DRAM Throughput: XX% of peak  
+- L2 Hit Rate: XX%
+- Latency: X.XXX ms [CI: X.XXX, X.XXX]
 
-## 🧪 Test Plan
+**Artifacts**: `bench/artifacts/ncu/before_vs_after.ncu-rep`
 
-<!-- How was this tested? -->
+### Statistical Results
 
-**Local Testing:**
-```bash
-# Commands used to verify
-make mock SEED=42
-pytest tests/test_*.py -v
-```
-
-**Expected Output:**
-```
-✅ All tests pass
-✅ Artifacts match expected (bit-identical if seeded)
-✅ No regressions in CI metrics
-```
+- **Median Δ**: +X.X% (X.XXX ms → X.XXX ms)
+- **95% CI Overlap**: Yes/No
+- **Cliff's δ**: X.XXX (negligible/small/medium/large)
+- **Mann-Whitney U p-value**: X.XXXX
+- **Verdict**: Faster/Maintained/Slower
 
 ---
 
-## 📊 Evidence
+## Testing
 
-<!-- Links to artifacts, logs, screenshots -->
-
-- **Experiment Ledger:** `experiments/ledger/{run_id}.json`
-- **CI Metrics:** `artifact/ci_metrics.json`
-- **Coverage Report:** `coverage.json`
-
----
-
-## 🔗 Related Issues
-
-<!-- Link to related issues/PRs -->
-
-Closes #<!-- issue number -->  
-Related: #<!-- related issue -->
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Correctness fuzzing passes (if kernel changes)
+- [ ] Performance regression < 3% (if optimization)
 
 ---
 
-## 📝 Checklist (for reviewer)
+## Checklist
 
-- [ ] Code follows project style (PEP 8, 4-space indent)
-- [ ] No secrets committed (.env.example only)
-- [ ] Error handling present (no exposed stack traces)
-- [ ] Logging added for key paths
-- [ ] Schema validated (if data model changes)
-- [ ] Backward compatible (or migration provided)
-
----
-
-## 🚀 Deployment Notes
-
-<!-- Any special deployment considerations -->
-
-**Breaking Changes:**  
-<!-- None / List breaking changes -->
-
-**Required Actions:**  
-<!-- Steps needed post-merge (e.g., run migrations, update secrets) -->
+- [ ] My code follows the style guidelines of this project
+- [ ] I have performed a self-review of my own code
+- [ ] I have commented my code, particularly in hard-to-understand areas
+- [ ] I have made corresponding changes to the documentation
+- [ ] My changes generate no new warnings or errors
+- [ ] I have added tests that prove my fix is effective or that my feature works
+- [ ] New and existing unit tests pass locally with my changes
+- [ ] Any dependent changes have been merged and published
 
 ---
 
-**Signed-off-by:** <!-- Your name <email@example.com> -->  
-**Date:** <!-- YYYY-MM-DD -->  
-**Review Requested:** @<!-- reviewer GitHub username -->
+## Additional Context
+
+<!-- Add any other context, screenshots, or references about the PR here -->

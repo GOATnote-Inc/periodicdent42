@@ -21,6 +21,7 @@
 #include <cmath>
 #include "detail/cp_async.hpp"
 #include "detail/smem_swizzle.hpp"
+#include "detail/debug_utils.cuh"
 
 using namespace nvcuda;
 
@@ -76,7 +77,12 @@ template<typename Traits>
 constexpr size_t smem_bytes() {
     size_t k_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::K_STRIDE * sizeof(half);
     size_t v_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::V_STRIDE * sizeof(half);
-    return k_bytes + v_bytes;
+    size_t total = k_bytes + v_bytes;
+    
+    // Static assertion: Must fit in L4's 48KB limit
+    static_assert(total <= 49152, "SMEM exceeds 48KB limit");
+    
+    return total;
 }
 
 // ============================================================================
@@ -150,6 +156,17 @@ __device__ void load_K_async(
         
         // Use cp.async for 16-byte aligned loads
         for (int d = 0; d < Traits::HEAD_DIM; d += 8) {
+            #ifdef DEBUG_V3
+            // Check 16-byte alignment for cp.async
+            const half* gmem_ptr = K_gmem + offset + d;
+            half* smem_ptr = &smem->K[stage][row][d];
+            CUDA_DEBUG_ASSERT(is_aligned_16(gmem_ptr));
+            CUDA_DEBUG_ASSERT(is_aligned_16(smem_ptr));
+            CUDA_DEBUG_ASSERT(stage >= 0 && stage < Traits::STAGES);
+            CUDA_DEBUG_ASSERT(row >= 0 && row < Traits::BLOCK_N);
+            CUDA_DEBUG_ASSERT(d >= 0 && d + 8 <= Traits::HEAD_DIM);
+            #endif
+            
             detail::cp_async_ca<16>(
                 &smem->K[stage][row][d],
                 K_gmem + offset + d
@@ -184,6 +201,17 @@ __device__ void load_V_async(
                           n * num_heads * Traits::HEAD_DIM;
         
         for (int d = 0; d < Traits::HEAD_DIM; d += 8) {
+            #ifdef DEBUG_V3
+            // Check 16-byte alignment for cp.async
+            const half* gmem_ptr = V_gmem + offset + d;
+            half* smem_ptr = &smem->V[stage][row][d];
+            CUDA_DEBUG_ASSERT(is_aligned_16(gmem_ptr));
+            CUDA_DEBUG_ASSERT(is_aligned_16(smem_ptr));
+            CUDA_DEBUG_ASSERT(stage >= 0 && stage < Traits::STAGES);
+            CUDA_DEBUG_ASSERT(row >= 0 && row < Traits::BLOCK_N);
+            CUDA_DEBUG_ASSERT(d >= 0 && d + 8 <= Traits::HEAD_DIM);
+            #endif
+            
             detail::cp_async_ca<16>(
                 &smem->V[stage][row][d],
                 V_gmem + offset + d
@@ -367,6 +395,13 @@ flash_attention_s512_v3_kernel(
         const int temp = work_id / num_blocks_m;
         const int head_idx = temp % num_heads;
         const int batch_idx = temp / num_heads;
+        
+        // Debug: Check work distribution bounds
+        #ifdef DEBUG_V3
+        CUDA_DEBUG_ASSERT(batch_idx >= 0 && batch_idx < batch_size);
+        CUDA_DEBUG_ASSERT(head_idx >= 0 && head_idx < num_heads);
+        CUDA_DEBUG_ASSERT(m_block >= 0 && m_block < num_blocks_m);
+        #endif
         
         // Initialize accumulators
         for (int i = 0; i < rows_per_warp; i++) {
