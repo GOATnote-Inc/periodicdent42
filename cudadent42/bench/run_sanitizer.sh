@@ -31,7 +31,7 @@ run_tool() {
             compute-sanitizer \
                 --tool memcheck \
                 --leak-check full \
-                --report-api-errors yes \
+                --report-api-errors=explicit \
                 python3 "${SCRIPT_DIR}/test_v3_smoke_debug.py" \
                 2>&1 | tee "$log_file"
             ;;
