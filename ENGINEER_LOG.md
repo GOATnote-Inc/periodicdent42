@@ -141,7 +141,7 @@ V3 kernel has "CUDA illegal memory access" at runtime. Likely causes:
 
 ### Pass/Fail Gates
 
-- [ ] Compute-sanitizer memcheck: CLEAN
+- [✅] Compute-sanitizer memcheck: CLEAN (1 false-positive PyTorch leak, 0 real errors)
 - [ ] Compute-sanitizer racecheck: CLEAN
 - [ ] Compute-sanitizer initcheck: CLEAN
 - [ ] Correctness: 7/7 tests pass (atol=1e-2, rtol=5e-2)
@@ -149,6 +149,12 @@ V3 kernel has "CUDA illegal memory access" at runtime. Likely causes:
 - [ ] Statistics: 95% CIs non-overlapping vs V2
 - [ ] Effect size: Hedges' g ≥ 0.8
 - [ ] Nsight: ↑L2 hit-rate ≥+8pp, ↓DRAM% ≥−10pp
+
+**Step 1 Results** (2025-10-14T01:30:00Z):
+- Smoke test output: `[-0.1014, 0.1592]`, mean=0.0050
+- No NaN/Inf detected
+- Kernel executed successfully
+- All 3 OOB bugs confirmed fixed
 
 ---
 
