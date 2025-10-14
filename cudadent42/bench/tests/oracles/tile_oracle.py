@@ -182,6 +182,9 @@ def save_heatmap_diffs(ref, test, name, out_path):
     if test is None:
         return
     
+    # Ensure directory exists
+    out_path.mkdir(parents=True, exist_ok=True)
+    
     diff = test - ref
     np.save(out_path / f"{name}_diff.npy", diff)
     
