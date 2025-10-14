@@ -27,13 +27,15 @@
 #include <mma.h>
 
 // Compile-time tunables (set via -D flags)
-// Defaults optimized for L4 (48KB shared memory limit)
+// Loop 1 - Priority 1: Optimized for increased tensor core utilization
+// Configuration: Conservative (BLOCK_M=128, BLOCK_N=32, NUM_WARPS=8)
+// Expected: +5-15% speedup, TC util 57% → 70-80%
 #ifndef BLOCK_M
-#define BLOCK_M 64  // Reduced from 128 to fit in shared memory
+#define BLOCK_M 128  // Increased from 64 (larger Q tile for more TC work)
 #endif
 
 #ifndef BLOCK_N
-#define BLOCK_N 64
+#define BLOCK_N 32  // Reduced from 64 (to fit in 48KB SMEM with larger BLOCK_M)
 #endif
 
 #ifndef BLOCK_K
@@ -41,11 +43,11 @@
 #endif
 
 #ifndef NUM_WARPS
-#define NUM_WARPS 4
+#define NUM_WARPS 8  // Increased from 4 (more parallelism per block)
 #endif
 
 #ifndef STAGES
-#define STAGES 1  // Reduced from 2 to fit in shared memory (can increase later)
+#define STAGES 1  // Keep at 1 (fits in SMEM, can increase later)
 #endif
 
 #ifndef UNROLL
