@@ -27,13 +27,14 @@
 #include <mma.h>
 
 // Compile-time tunables (set via -D flags)
-// Loop 1 - Priority 1 (Iteration 3): Incremental optimization (isolate variables)
-// Configuration: BLOCK_M=80, BLOCK_N=64, NUM_WARPS=4
-// Expected: +5-10% speedup, TC util 57% → 62-68%
-// SMEM usage: 47,520 bytes < 48KB (fits safely)
-// Strategy: Only change BLOCK_M (keep NUM_WARPS=4 which is proven to work)
+// Loop 1 - Priority 1 (Iteration 4): Test NUM_WARPS=8 alone
+// Configuration: BLOCK_M=64, BLOCK_N=64, NUM_WARPS=8
+// Expected: +3-8% speedup from increased parallelism
+// SMEM usage: 38,400 bytes < 48KB (fits safely)
+// Strategy: Keep BLOCK_M=64 (required), increase NUM_WARPS only
+// Finding: BLOCK_M must stay at 64 (any other value causes misaligned address)
 #ifndef BLOCK_M
-#define BLOCK_M 80  // Increased from 64 (+25% Q tile, test BLOCK_M increase alone)
+#define BLOCK_M 64  // MUST stay at 64 (kernel has hardcoded dependency)
 #endif
 
 #ifndef BLOCK_N
@@ -45,7 +46,7 @@
 #endif
 
 #ifndef NUM_WARPS
-#define NUM_WARPS 4  // Keep at 4 (proven working baseline, avoid NUM_WARPS=8 issue)
+#define NUM_WARPS 8  // Increased from 4 (test parallelism increase alone)
 #endif
 
 #ifndef STAGES
