@@ -29,6 +29,30 @@ V3 kernel has "CUDA illegal memory access" at runtime. Likely causes:
 
 ## Diffs Applied
 
+### Timestamp: 2025-10-14T00:30:00Z - Step 1 Complete (ROOT CAUSE FOUND & FIXED)
+
+**Files Modified**:
+- `cudadent42/bench/kernels/fa_s512_v3.cu`
+- `cudadent42/bench/kernels/fa_s512_v3_bindings.cpp`
+
+**Root Cause Identified by compute-sanitizer**:
+- **Location**: `load_Q_to_registers` at line 121
+- **Bug**: Invalid configs with `BLOCK_M=32, NUM_WARPS=6`
+  - `rows_per_warp = 32 / 6 = 5` (integer division)
+  - Leaves 2 orphaned rows (32 % 6 = 2)
+  - Threads 160-191 (warp 5) attempt OOB writes to `Q_reg`
+  - `Q_reg` sized as `[5][64]`, but threads access indices 5 and 6
+
+**Fix Applied**:
+1. Config 1: `Traits_32_64_6_2_1_1` → `Traits_32_64_4_2_1_1` (WARPS: 6→4)
+2. Config 2: `Traits_32_32_6_2_1_1` → `Traits_32_32_4_2_1_1` (WARPS: 6→4)
+3. Config 3: `Traits_48_64_8_2_1_1` (unchanged, already valid: 48 % 8 == 0)
+4. Updated bindings to match new function names
+
+**Reason**: Ensure `BLOCK_M % NUM_WARPS == 0` for all configs to prevent OOB register array access
+
+---
+
 ### Timestamp: 2025-10-14T00:00:00Z - Step 0 Complete
 
 **Files Modified**:

@@ -9,14 +9,14 @@
 // Forward declarations for template instantiations
 // We'll pre-compile a few promising configs to avoid JIT explosion
 
-// Config 1: BLOCK_M=32, BLOCK_N=64, WARPS=6, STAGES=2, SWIZZLE=1, HALF2=1
-extern "C" cudaError_t launch_fa_s512_v3_32_64_6_2_1_1(
+// Config 1: BLOCK_M=32, BLOCK_N=64, WARPS=4, STAGES=2, SWIZZLE=1, HALF2=1
+extern "C" cudaError_t launch_fa_s512_v3_32_64_4_2_1_1(
     const half* Q, const half* K, const half* V, half* O,
     float softmax_scale, int B, int H, int S, bool is_causal, cudaStream_t stream
 );
 
-// Config 2: BLOCK_M=32, BLOCK_N=32, WARPS=6, STAGES=2, SWIZZLE=1, HALF2=1
-extern "C" cudaError_t launch_fa_s512_v3_32_32_6_2_1_1(
+// Config 2: BLOCK_M=32, BLOCK_N=32, WARPS=4, STAGES=2, SWIZZLE=1, HALF2=1
+extern "C" cudaError_t launch_fa_s512_v3_32_32_4_2_1_1(
     const half* Q, const half* K, const half* V, half* O,
     float softmax_scale, int B, int H, int S, bool is_causal, cudaStream_t stream
 );
@@ -59,13 +59,13 @@ torch::Tensor flash_attention_s512_v3_forward(
     cudaError_t err;
     switch (config_id) {
         case 1:
-            err = launch_fa_s512_v3_32_64_6_2_1_1(
+            err = launch_fa_s512_v3_32_64_4_2_1_1(
                 (half*)q.data_ptr(), (half*)k.data_ptr(), (half*)v.data_ptr(), (half*)o.data_ptr(),
                 softmax_scale, B, H, S, is_causal, stream
             );
             break;
         case 2:
-            err = launch_fa_s512_v3_32_32_6_2_1_1(
+            err = launch_fa_s512_v3_32_32_4_2_1_1(
                 (half*)q.data_ptr(), (half*)k.data_ptr(), (half*)v.data_ptr(), (half*)o.data_ptr(),
                 softmax_scale, B, H, S, is_causal, stream
             );
