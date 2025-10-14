@@ -5,6 +5,7 @@
 #include <torch/extension.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <cuda_fp16.h>
+#include "../runtime/tensor_contract.hpp"
 
 // Forward declarations for template instantiations
 // We'll pre-compile a few promising configs to avoid JIT explosion
@@ -35,10 +36,10 @@ torch::Tensor flash_attention_s512_v3_forward(
     bool is_causal,
     int config_id  // Select which template instantiation
 ) {
-    TORCH_CHECK(q.is_cuda() && k.is_cuda() && v.is_cuda(), "Inputs must be on CUDA");
-    TORCH_CHECK(q.dtype() == torch::kFloat16, "Only FP16 supported");
-    TORCH_CHECK(q.dim() == 4 && k.dim() == 4 && v.dim() == 4, "Inputs must be 4D (B, H, S, D)");
-    TORCH_CHECK(q.sizes() == k.sizes() && k.sizes() == v.sizes(), "Input shapes must match");
+    // ========================================================================
+    // CONTRACT VALIDATION: (B, H, S, D) contiguous layout
+    // ========================================================================
+    cudadent42::runtime::assert_qkv_contract(q, k, v);
     
     int B = q.size(0);
     int H = q.size(1);
