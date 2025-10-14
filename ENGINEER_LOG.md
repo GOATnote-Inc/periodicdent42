@@ -197,12 +197,25 @@ const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
 
 **Conclusion**: Memory layout fix **NOT sufficient**. Additional bugs present in both kernels.
 
-**Possible Remaining Bugs**:
-1. Online softmax accumulation logic (V3)
-2. Tensor Core fragment loading/storing (V2)
-3. Numerical precision issues (-use_fast_math still in V2)
-4. Thread synchronization or race conditions
-5. Shared memory bank conflicts causing data corruption
+**BREAKTHROUGH** (2025-10-14T05:30:00Z):
+
+### V2 Correctness ACHIEVED ✅
+
+**Root Cause Found**: Dimension order mismatch in V2 bindings!
+- Bindings expected: (B, S, H, D)
+- PyTorch actual: (B, H, S, D)
+- Fix: Swapped `q.size(1)` and `q.size(2)` extraction
+
+**V2 Test Results** (after bindings fix):
+- **14/14 tests passed** ✅
+- All shapes: (B=1-4, S=128-512, H=4-16, D=64)
+- Both causal and non-causal
+- Max abs errors: 0.0003-0.0005 (excellent FP16 precision)
+
+**V3 Status**:
+- 0/6 tests passed ❌
+- Still has large errors (0.46-2.4 absolute)
+- Different bug (likely online softmax or cp.async issues)
 
 ---
 
