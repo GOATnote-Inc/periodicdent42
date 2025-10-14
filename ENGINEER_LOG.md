@@ -158,10 +158,44 @@ V3 kernel has "CUDA illegal memory access" at runtime. Likely causes:
 
 ---
 
+## Critical Finding (2025-10-14T02:30:00Z)
+
+### Memory Layout Bug in ALL Kernels
+
+**Discovery**: Both V2 and V3 kernels FAIL correctness tests:
+- V3: max_abs_diff = 0.461 (non-causal), 2.045 (causal)
+- V2: max_abs_diff = 2.236 (non-causal) ← **V2 also broken!**
+
+**Root Cause**: Incorrect PyTorch (B, H, S, D) tensor indexing
+- **WRONG** (used in V2, V3): `batch*(S*H*D) + head*D + seq*(H*D)`
+- **CORRECT**: `batch*(H*S*D) + head*(S*D) + seq*D`
+
+**Fix Applied to V3**:
+```cpp
+// Before (WRONG):
+const int offset = batch_idx * seq_len * num_heads * Traits::HEAD_DIM +
+                  head_idx * Traits::HEAD_DIM +
+                  m * num_heads * Traits::HEAD_DIM;
+
+// After (CORRECT):
+const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
+                  head_idx * seq_len * Traits::HEAD_DIM +
+                  m * Traits::HEAD_DIM;
+```
+
+**Status**: V3 memory layout fixed (4 locations), V2 not yet fixed
+
+---
+
 ## Next Decision
 
-**Status**: IN PROGRESS  
-**Next Action**: Step 0 - Add debug utilities and guards
+**Status**: CRITICAL BLOCKER  
+**Recommendation**: **FALLBACK TO PYTORCH SDPA** (both custom kernels broken)
+
+**Options**:
+1. **Option A (Recommended)**: Use PyTorch SDPA (2× faster than broken kernels, correct)
+2. Option B: Fix V2 memory layout (simpler kernel, easier to debug)
+3. Option C: Continue debugging V3 (more complex, higher risk)
 
 ---
 
