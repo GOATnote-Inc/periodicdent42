@@ -90,6 +90,10 @@ class FA_S512_Tunable:
         module_name = f"fa_s512_{config_hash}"
         build_dir = self.cache_dir / module_name
         
+        # Ensure build directory exists (PyTorch bug workaround)
+        build_dir.mkdir(parents=True, exist_ok=True)
+        (build_dir / "lock").mkdir(exist_ok=True)
+        
         try:
             # Load or compile
             module = torch.utils.cpp_extension.load(
