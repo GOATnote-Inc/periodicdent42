@@ -130,7 +130,7 @@ def benchmark_sdpa_config(
             'bandwidth_gb_s': float(bandwidth_gb_s)
         },
         'memory': {
-            'peak_mb': float(mem_stats.peak_mb),
+            'peak_mb': float(mem_stats.peak_allocated_mb),
             'allocated_mb': float(mem_stats.allocated_mb),
             'reserved_mb': float(mem_stats.reserved_mb)
         },
