@@ -13,6 +13,7 @@ import os
 import sys
 import hashlib
 import subprocess
+import multiprocessing
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import numpy as np
@@ -50,6 +51,8 @@ class FA_S512_Tunable:
         """
         JIT compile kernel with given config
         
+        Uses Ninja for fast parallel builds and persistent cache.
+        
         Args:
             config: Dict with keys:
                 - BLOCK_M, BLOCK_N, BLOCK_K
@@ -69,7 +72,11 @@ class FA_S512_Tunable:
         if config_hash in self.loaded_modules:
             return self.loaded_modules[config_hash]
         
-        # Build flags
+        # Set environment for fast builds (expert CUDA optimization)
+        os.environ['TORCH_CUDA_ARCH_LIST'] = '8.9'  # L4 (Ada, SM89) only
+        os.environ['MAX_JOBS'] = str(multiprocessing.cpu_count())  # Parallel builds
+        
+        # Build flags optimized for L4
         nvcc_flags = [
             '-O3',
             '--use_fast_math',
@@ -78,8 +85,9 @@ class FA_S512_Tunable:
             '--expt-extended-lambda',
             '-Xcompiler=-fno-omit-frame-pointer',
             '-Xcompiler=-fno-common',
-            '-gencode=arch=compute_89,code=sm_89',
+            '-gencode=arch=compute_89,code=sm_89',  # L4 only
             '-std=c++17',
+            '--threads', str(multiprocessing.cpu_count()),  # Parallel NVCC
         ]
         
         # Add config as -D flags
