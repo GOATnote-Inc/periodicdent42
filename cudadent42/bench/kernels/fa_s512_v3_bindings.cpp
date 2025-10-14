@@ -4,6 +4,7 @@
 
 #include <torch/extension.h>
 #include <c10/cuda/CUDAGuard.h>
+#include <cuda_fp16.h>
 
 // Forward declarations for template instantiations
 // We'll pre-compile a few promising configs to avoid JIT explosion
