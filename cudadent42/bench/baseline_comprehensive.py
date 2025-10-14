@@ -14,8 +14,9 @@ Date: 2025-10-14
 import sys
 import time
 import json
+import subprocess
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -27,6 +28,34 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from cudadent42.bench.common.env_lock import lock_environment
 from cudadent42.bench.common.stats import bootstrap_ci
 from cudadent42.bench.common.memory_tracker import MemoryTracker
+
+
+def get_gpu_state() -> Optional[Dict[str, str]]:
+    """
+    Get current GPU state from nvidia-smi
+    
+    Returns:
+        Dictionary with GPU state or None if nvidia-smi fails
+    """
+    try:
+        result = subprocess.run([
+            'nvidia-smi',
+            '--query-gpu=power.draw,clocks.sm,clocks.mem,temperature.gpu',
+            '--format=csv,noheader,nounits'
+        ], capture_output=True, text=True, timeout=5)
+        
+        if result.returncode == 0:
+            power, clock_sm, clock_mem, temp = result.stdout.strip().split(', ')
+            return {
+                'power_draw_w': float(power),
+                'clock_sm_mhz': float(clock_sm),
+                'clock_mem_mhz': float(clock_mem),
+                'temperature_c': float(temp)
+            }
+    except Exception as e:
+        print(f"⚠️  Warning: Could not query GPU state: {e}")
+    
+    return None
 
 
 def benchmark_sdpa_config(
@@ -91,6 +120,14 @@ def benchmark_sdpa_config(
     ci_lower, ci_upper = bootstrap_ci(latencies, statistic=np.median, 
                                      confidence=0.95, n_bootstrap=10000, seed=42)
     
+    # Percentiles (tail latencies)
+    p50 = float(np.percentile(latencies, 50))
+    p95 = float(np.percentile(latencies, 95))
+    p99 = float(np.percentile(latencies, 99))
+    
+    # Coefficient of variation (measure of stability)
+    cv = std_ms / mean_ms if mean_ms > 0 else float('inf')
+    
     # Memory stats
     mem_stats = mem_tracker.get_stats()
     
@@ -104,7 +141,17 @@ def benchmark_sdpa_config(
     bytes_transferred = 4 * batch * heads * seq * dim * 2
     bandwidth_gb_s = bytes_transferred / (median_ms * 1e-3) / 1e9
     
-    return {
+    # GPU state
+    gpu_state = get_gpu_state()
+    
+    # Warn if high variance or temperature
+    warnings = []
+    if cv > 0.12:
+        warnings.append(f"High variance: CV={cv:.1%} (threshold: 12%)")
+    if gpu_state and gpu_state['temperature_c'] > 80:
+        warnings.append(f"High temperature: {gpu_state['temperature_c']:.0f}°C (threshold: 80°C)")
+    
+    result = {
         'config': {
             'batch': batch,
             'heads': heads,
@@ -119,8 +166,12 @@ def benchmark_sdpa_config(
             'median_ms': float(median_ms),
             'mean_ms': float(mean_ms),
             'std_ms': float(std_ms),
+            'cv': float(cv),
             'ci_95_lower': float(ci_lower),
             'ci_95_upper': float(ci_upper),
+            'p50': p50,
+            'p95': p95,
+            'p99': p99,
             'min_ms': float(np.min(latencies)),
             'max_ms': float(np.max(latencies)),
             'n_samples': len(latencies)
@@ -136,6 +187,16 @@ def benchmark_sdpa_config(
         },
         'raw_latencies': latencies.tolist()
     }
+    
+    # Add GPU state if available
+    if gpu_state:
+        result['gpu_state'] = gpu_state
+    
+    # Add warnings if any
+    if warnings:
+        result['warnings'] = warnings
+    
+    return result
 
 
 def run_comprehensive_baseline(
@@ -205,8 +266,22 @@ def run_comprehensive_baseline(
             
             print(f"  ✅ Median: {median_ms:.4f} ms "
                   f"(95% CI: [{ci['ci_95_lower']:.4f}, {ci['ci_95_upper']:.4f}])")
+            print(f"     P95: {ci['p95']:.4f} ms, P99: {ci['p99']:.4f} ms, CV: {ci['cv']:.1%}")
             print(f"     Throughput: {throughput:.1f} GFLOPS, "
                   f"Bandwidth: {bandwidth:.1f} GB/s")
+            
+            # Print warnings if any
+            if 'warnings' in result:
+                for warning in result['warnings']:
+                    print(f"     ⚠️  {warning}")
+            
+            # Print GPU state if available
+            if 'gpu_state' in result:
+                gpu = result['gpu_state']
+                print(f"     GPU: {gpu['temperature_c']:.0f}°C, "
+                      f"{gpu['clock_sm_mhz']:.0f} MHz SM, "
+                      f"{gpu['power_draw_w']:.0f}W")
+            
             print()
             
             # Save individual result

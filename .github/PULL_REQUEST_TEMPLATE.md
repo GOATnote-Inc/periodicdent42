@@ -39,6 +39,34 @@ PR Template for Ready-to-Merge Changes
 - [ ] Documentation updated (README, docstrings)
 - [ ] Performance within budget (time/cost caps)
 
+### ⚡ Performance Checks (if touching `csrc/`, `bench/`, `cudadent42/`)
+
+- [ ] Correctness fuzzing passes (`python cudadent42/bench/correctness_fuzz.py`)
+- [ ] No regression > 3% vs baseline
+- [ ] If claiming improvement: ≥10% speedup with non-overlapping 95% CIs
+- [ ] Nsight evidence attached (`.ncu-rep` or screenshot)
+
+---
+
+## ⚡ Performance Intent & Hypothesis
+
+<!-- Required if touching CUDA kernels or benchmarks -->
+
+**Target Shape(s):** <!-- e.g., B=32, H=8, S=512, D=64 -->
+
+**Hypothesis (Bottleneck):** <!-- What bottleneck does this PR address? -->
+
+**Nsight Evidence:** 
+<!-- Link to Nsight report or attach screenshot -->
+- Before: `artifacts/ncu/baseline_*.ncu-rep`
+- After: `artifacts/ncu/optimized_*.ncu-rep`
+
+**Result:**
+- Median Δ: <!-- e.g., +12.5% faster -->
+- CI Overlap: <!-- Yes/No -->
+- Cliff's δ: <!-- e.g., 0.42 (medium effect) -->
+- Verdict: <!-- ✅ Improvement / ⚠️ No significant difference / ❌ Regression -->
+
 ---
 
 ## 🧪 Test Plan
