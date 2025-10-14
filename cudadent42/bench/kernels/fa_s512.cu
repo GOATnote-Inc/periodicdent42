@@ -27,12 +27,13 @@
 #include <mma.h>
 
 // Compile-time tunables (set via -D flags)
-// Loop 1 - Priority 1 (Revised): Balanced optimization for TC utilization
-// Configuration: BLOCK_M=80, BLOCK_N=64, NUM_WARPS=8
-// Expected: +8-12% speedup, TC util 57% → 65-75%
+// Loop 1 - Priority 1 (Iteration 3): Incremental optimization (isolate variables)
+// Configuration: BLOCK_M=80, BLOCK_N=64, NUM_WARPS=4
+// Expected: +5-10% speedup, TC util 57% → 62-68%
 // SMEM usage: 47,520 bytes < 48KB (fits safely)
+// Strategy: Only change BLOCK_M (keep NUM_WARPS=4 which is proven to work)
 #ifndef BLOCK_M
-#define BLOCK_M 80  // Increased from 64 (25% larger Q tile, avoids BLOCK_N=32 alignment issues)
+#define BLOCK_M 80  // Increased from 64 (+25% Q tile, test BLOCK_M increase alone)
 #endif
 
 #ifndef BLOCK_N
@@ -44,7 +45,7 @@
 #endif
 
 #ifndef NUM_WARPS
-#define NUM_WARPS 8  // Increased from 4 (more parallelism per block)
+#define NUM_WARPS 4  // Keep at 4 (proven working baseline, avoid NUM_WARPS=8 issue)
 #endif
 
 #ifndef STAGES
