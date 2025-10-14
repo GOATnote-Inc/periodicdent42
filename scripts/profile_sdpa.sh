@@ -1,116 +1,122 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 #
 # Nsight Compute Profile Wrapper for PyTorch SDPA
 #
-# Profiles PyTorch SDPA with comprehensive metrics and saves to artifacts/ncu/
-#
 # Usage:
 #   S=512 B=32 H=8 D=64 bash scripts/profile_sdpa.sh
-#   bash scripts/profile_sdpa.sh  # Uses defaults
+#
+# Environment Variables:
+#   S - Sequence length (default: 512)
+#   B - Batch size (default: 32)
+#   H - Number of heads (default: 8)
+#   D - Head dimension (default: 64)
 #
 # Output:
-#   artifacts/ncu/sdpa_s512_b32_h8_d64.ncu-rep (binary report)
-#   artifacts/ncu/sdpa_s512_b32_h8_d64.txt (text summary)
+#   - .ncu-rep file (Nsight Compute binary)
+#   - summary.csv (Human-readable metrics)
 #
 # Author: GOATnote Autonomous Research Lab Initiative
 # Date: 2025-10-14
+#
 
-set -euo pipefail
-
-# Configuration (defaults)
+# Configuration (override via environment)
 S=${S:-512}
 B=${B:-32}
 H=${H:-8}
 D=${D:-64}
 
-# Paths
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROFILE_SCRIPT="$REPO_ROOT/cudadent42/bench/profile_sdpa_once.py"
-OUTPUT_DIR="$REPO_ROOT/artifacts/ncu"
-
-# Create output directory
+# Output directory
+OUTPUT_DIR="bench/artifacts/ncu"
 mkdir -p "$OUTPUT_DIR"
 
-# Output files
+# Output base name
 OUTPUT_BASE="sdpa_s${S}_b${B}_h${H}_d${D}"
-OUTPUT_REP="$OUTPUT_DIR/${OUTPUT_BASE}.ncu-rep"
-OUTPUT_TXT="$OUTPUT_DIR/${OUTPUT_BASE}.txt"
+OUTPUT_REP="${OUTPUT_DIR}/${OUTPUT_BASE}.ncu-rep"
+OUTPUT_CSV="${OUTPUT_DIR}/${OUTPUT_BASE}_summary.csv"
 
-# Check if ncu is available
+# Find ncu binary
+NCU_BIN="ncu"
 if ! command -v ncu &> /dev/null; then
-    echo "❌ Error: Nsight Compute (ncu) not found in PATH"
-    echo "   Install CUDA toolkit or add ncu to PATH"
-    exit 1
+    # Try common locations
+    if [ -f "/opt/nvidia/nsight-compute/2024.1.1/ncu" ]; then
+        NCU_BIN="/opt/nvidia/nsight-compute/2024.1.1/ncu"
+    elif [ -f "/usr/local/cuda/nsight-compute/ncu" ]; then
+        NCU_BIN="/usr/local/cuda/nsight-compute/ncu"
+    else
+        echo "❌ Error: ncu (Nsight Compute) not found"
+        echo "   Install from: https://developer.nvidia.com/nsight-compute"
+        echo "   Or on GPU: sudo apt-get install nsight-compute-2024.1.1"
+        exit 1
+    fi
 fi
 
-# Check if profile script exists
-if [ ! -f "$PROFILE_SCRIPT" ]; then
-    echo "❌ Error: Profile script not found: $PROFILE_SCRIPT"
-    exit 1
-fi
-
-echo "=============================================================="
-echo "Nsight Compute Profiling: PyTorch SDPA"
-echo "=============================================================="
-echo ""
+echo "🔬 Profiling PyTorch SDPA with Nsight Compute"
+echo "=============================================="
 echo "Configuration:"
-echo "  Batch size (B):     $B"
-echo "  Attention heads (H): $H"
-echo "  Sequence length (S): $S"
-echo "  Head dimension (D):  $D"
+echo "  Batch (B):    $B"
+echo "  Heads (H):    $H"
+echo "  Sequence (S): $S"
+echo "  Dimension (D): $D"
 echo ""
 echo "Output:"
-echo "  Binary report: $OUTPUT_REP"
-echo "  Text summary:  $OUTPUT_TXT"
+echo "  Report: $OUTPUT_REP"
+echo "  CSV:    $OUTPUT_CSV"
 echo ""
-echo "Running Nsight Compute..."
+echo "⏱️  This will take 2-3 minutes (38 passes per kernel)..."
 echo ""
 
-# Run Nsight Compute with full metric set
-ncu \
+# Run Nsight Compute profiling
+"$NCU_BIN" \
     --set full \
     --target-processes all \
-    --kernel-name-base mangled \
-    --launch-skip-before-match 0 \
-    --launch-count 1 \
+    --force-overwrite \
     -o "$OUTPUT_REP" \
-    python3 "$PROFILE_SCRIPT" --b "$B" --h "$H" --s "$S" --d "$D"
+    python3 bench/profile_sdpa_once.py --b "$B" --h "$H" --s "$S" --d "$D"
 
-echo ""
-echo "✅ Profile complete: $OUTPUT_REP"
-echo ""
-
-# Generate text summary
-echo "Generating text summary..."
-ncu --import "$OUTPUT_REP" --page raw --csv > "$OUTPUT_TXT" 2>&1 || true
-
-if [ -f "$OUTPUT_TXT" ]; then
-    echo "✅ Text summary: $OUTPUT_TXT"
+# Check if profile was created
+if [ ! -f "${OUTPUT_REP}.ncu-rep" ] && [ ! -f "$OUTPUT_REP" ]; then
     echo ""
-    
-    # Print key metrics
-    echo "Key Metrics:"
-    echo "============"
-    grep -E "(Duration|Throughput|sm__throughput|dram__throughput|l2__hit|smsp__pipe)" "$OUTPUT_TXT" | head -20 || true
+    echo "❌ Error: Profile not created"
+    exit 1
+fi
+
+# Determine actual profile path (ncu adds .ncu-rep extension)
+if [ -f "${OUTPUT_REP}.ncu-rep" ]; then
+    ACTUAL_REP="${OUTPUT_REP}.ncu-rep"
 else
-    echo "⚠️  Failed to generate text summary"
+    ACTUAL_REP="$OUTPUT_REP"
 fi
 
 echo ""
-echo "=============================================================="
-echo "Next Steps:"
-echo "=============================================================="
-echo ""
-echo "1. Open in Nsight Compute UI:"
-echo "   ncu-ui $OUTPUT_REP"
-echo ""
-echo "2. View text summary:"
-echo "   cat $OUTPUT_TXT"
-echo ""
-echo "3. Compare to baseline:"
-echo "   python3 bench/ci_compare.py \\"
-echo "     --baseline .ci/baseline_s${S}.json \\"
-echo "     --candidate artifacts/summary.json"
+echo "✅ Profile captured!"
 echo ""
 
+# Generate CSV summary
+echo "📊 Generating CSV summary..."
+"$NCU_BIN" \
+    --import "$ACTUAL_REP" \
+    --page summary \
+    --csv \
+    > "$OUTPUT_CSV" 2>/dev/null || true
+
+if [ -f "$OUTPUT_CSV" ]; then
+    echo "✅ CSV summary generated: $OUTPUT_CSV"
+    echo ""
+    echo "Preview (first 20 lines):"
+    head -20 "$OUTPUT_CSV" || cat "$OUTPUT_CSV"
+else
+    echo "⚠️  CSV summary generation failed (non-critical)"
+fi
+
+echo ""
+echo "=============================================="
+echo "✅ Profiling complete!"
+echo ""
+echo "View in GUI:"
+echo "  ncu-ui $ACTUAL_REP"
+echo ""
+echo "Extract specific metrics:"
+echo "  ncu --import $ACTUAL_REP --page raw --csv"
+echo ""
