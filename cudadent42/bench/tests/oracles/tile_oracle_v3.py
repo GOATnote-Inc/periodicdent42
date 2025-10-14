@@ -87,15 +87,13 @@ def test_v3_oracle(Q, K, V, is_causal=False, config_idx=0):
         # Build and load V3
         v3_module = build_v3_release()
         
-        # Select config
+        # Select config (config_id is 1-indexed in the bindings)
+        config_id = config_idx + 1  # Convert from 0-indexed to 1-indexed
         if config_idx == 0:
-            v3_forward = v3_module.forward_32_64_4_2_1_1
             config_name = "32_64_4_2_1_1 (BLOCK_M=32, BLOCK_N=64, WARPS=4)"
         elif config_idx == 1:
-            v3_forward = v3_module.forward_32_32_4_2_1_1
             config_name = "32_32_4_2_1_1 (BLOCK_M=32, BLOCK_N=32, WARPS=4)"
         elif config_idx == 2:
-            v3_forward = v3_module.forward_48_64_8_2_1_1
             config_name = "48_64_8_2_1_1 (BLOCK_M=48, BLOCK_N=64, WARPS=8)"
         else:
             raise ValueError(f"Invalid config_idx: {config_idx}")
@@ -103,8 +101,8 @@ def test_v3_oracle(Q, K, V, is_causal=False, config_idx=0):
         print(f"  Config: {config_name}")
         print(f"  Input: B={B}, H={H}, S={S}, D={D}, causal={is_causal}")
         
-        # Run V3
-        O_v3 = v3_forward(Q, K, V, softmax_scale, is_causal)
+        # Run V3 (forward takes: q, k, v, scale, is_causal, config_id)
+        O_v3 = v3_module.forward(Q, K, V, softmax_scale, is_causal, config_id)
         
         # Check for NaN/Inf
         has_nan = torch.isnan(O_v3).any().item()

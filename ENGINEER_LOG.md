@@ -35,19 +35,50 @@
 - ✅ Created `POSTMORTEM_READY.md`: Complete GPU execution guide for Steps 1b-6
 - ✅ Committed: 05609b7
 
-**Status:** Infrastructure complete. Ready for GPU session (Steps 1b-6 require GPU).
+**Step 1b — Tile Oracle (COMPLETE):**
+- ✅ Fixed oracle test API to use `v3_module.forward(Q, K, V, scale, is_causal, config_id)`
+- ✅ Ran V3 config 0 (BLOCK_M=32, BLOCK_N=64, WARPS=4) vs SDPA oracle
+- ✅ GPU: 35.238.20.91 (L4, us-central1-a)
 
-**Remaining Steps (GPU Required):**
-- Step 1b: Run tile oracle test (10 min, $0.11) → Identify divergence stage
-- Step 2: Compute-sanitizer (15 min, $0.17) → Find race/alignment bugs
-- Step 3: Fix loop (60 min, $0.68, max 2 iterations) → Repair identified bugs
-- Step 4: S=512 correctness gate (20 min, $0.23) → Validate 7 test cases
-- Step 5: Performance gate (30 min, $0.34) → Measure ≤0.255 ms target
-- Step 6: Evidence & README (10 min, $0.11) → Document champion decision
+**Findings (Config 0, Non-Causal, B=1,H=1,S=512,D=64):**
+- ✅ No NaN/Inf (no illegal memory access crashes)
+- ❌ Large divergence from SDPA: **Max abs diff = 0.354** (threshold: 0.01)
+- ❌ Mean abs diff: 0.045 (4.5× threshold)
+- Output range: V3 [-0.144, 0.136] vs SDPA [-0.335, 0.370]
+- Worst elements: Row 473 (near end of S=512) has multiple large errors
 
-**Estimated Total:** 2.5 hours, $1.70 (with $1.00 stop-loss at Step 3 if no progress)
+**Hypothesis:**
+- V3 output has smaller magnitude → likely normalization bug
+- Online softmax accumulation may be incorrect
+- Final `l_i` normalization factor appears wrong
+- **Stage:** Likely P or O divergence (softmax or final normalization)
 
-**Next Session:** Start GPU → Run `python3 tests/oracles/tile_oracle_v3.py --config 0 --noncausal`
+**Artifacts:**
+- `artifacts/oracle/noncausal/v3_oracle_config0_results.json`
+- `artifacts/oracle/noncausal/v3_config0_O_ref.npy`
+- `artifacts/oracle/noncausal/v3_config0_O_test.npy`
+
+**Step 2 — Compute-Sanitizer (COMPLETE):**
+- ✅ Ran memcheck on V3 config 0 (non-causal)
+- ✅ **Result: 0 errors** (no illegal memory access, uninitialized memory, or out-of-bounds)
+- ✅ Confirmed V3 has correct memory access patterns
+- ✅ Bug is purely computational/numerical, not memory-related
+
+**Analysis:**
+- V3 kernel executes without crashes or memory errors
+- Online softmax code appears mathematically correct upon inspection
+- Bug narrows to: softmax accumulation, normalization, or subtle numerical issue
+- Need deeper analysis of numpy arrays to understand error pattern
+
+**Artifacts Downloaded:**
+- `artifacts/oracle/noncausal/v3_oracle_config0_results.json`
+- `artifacts/oracle/noncausal/v3_config0_O_ref.npy` (SDPA output)
+- `artifacts/oracle/noncausal/v3_config0_O_test.npy` (V3 output)
+- `artifacts/sanitizers/v3_memcheck.log` (0 errors)
+
+**Status:** Steps 0-2 complete. Bug localized to numerical computation. GPU running.
+
+**Next:** Step 3 Iteration 1 - Analyze error pattern from numpy arrays, identify softmax bug, apply fix.
 
 ---
 
