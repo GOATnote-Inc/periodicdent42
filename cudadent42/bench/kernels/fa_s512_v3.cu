@@ -119,9 +119,9 @@ __device__ void load_Q_to_registers(
         const int m = m_block * Traits::BLOCK_M + row_start + local_row;
         if (m >= seq_len) continue;
         
-        const int offset = batch_idx * seq_len * num_heads * Traits::HEAD_DIM +
-                          head_idx * Traits::HEAD_DIM +
-                          m * num_heads * Traits::HEAD_DIM;
+        const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
+                          head_idx * seq_len * Traits::HEAD_DIM +
+                          m * Traits::HEAD_DIM;
         
         // Vectorized load if HALF2 enabled
         // FIX: Use local_row only (not row_start + local_row) since Q_reg is per-warp
@@ -160,9 +160,9 @@ __device__ void load_K_async(
         const int n = n_block * Traits::BLOCK_N + row;
         if (n >= seq_len) continue;
         
-        const int offset = batch_idx * seq_len * num_heads * Traits::HEAD_DIM +
-                          head_idx * Traits::HEAD_DIM +
-                          n * num_heads * Traits::HEAD_DIM;
+        const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
+                          head_idx * seq_len * Traits::HEAD_DIM +
+                          n * Traits::HEAD_DIM;
         
         // Use cp.async for 16-byte aligned loads
         for (int d = 0; d < Traits::HEAD_DIM; d += 8) {
@@ -206,9 +206,9 @@ __device__ void load_V_async(
         const int n = n_block * Traits::BLOCK_N + row;
         if (n >= seq_len) continue;
         
-        const int offset = batch_idx * seq_len * num_heads * Traits::HEAD_DIM +
-                          head_idx * Traits::HEAD_DIM +
-                          n * num_heads * Traits::HEAD_DIM;
+        const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
+                          head_idx * seq_len * Traits::HEAD_DIM +
+                          n * Traits::HEAD_DIM;
         
         for (int d = 0; d < Traits::HEAD_DIM; d += 8) {
             #ifdef DEBUG_V3
@@ -346,9 +346,9 @@ __device__ void write_O_to_gmem(
         const int m = m_block * Traits::BLOCK_M + row_start + local_row;
         if (m >= seq_len) continue;
         
-        const int offset = batch_idx * seq_len * num_heads * Traits::HEAD_DIM +
-                          head_idx * Traits::HEAD_DIM +
-                          m * num_heads * Traits::HEAD_DIM;
+        const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
+                          head_idx * seq_len * Traits::HEAD_DIM +
+                          m * Traits::HEAD_DIM;
         
         const float norm = 1.0f / l_i[local_row];
         
