@@ -127,7 +127,9 @@ def decide(csv, target_ms=0.255, n_boot=10000, seed=0):
     print(f"  ✓ CIs non-overlapping: {'✅' if ci_non_overlap else '❌'}")
     print(f"  ✓ g ≥ 0.8: {'✅' if g_sufficient else '❌'} ({g:.3f})")
     print(f"\n{'=' * 80}")
-    print(f"DECISION: {'✅ PROMOTE V2' if promote else f'❌ KEEP {result[\"decision\"][\"champion\"].upper()}'}")
+    champion_upper = result["decision"]["champion"].upper()
+    decision_str = "✅ PROMOTE V2" if promote else f"❌ KEEP {champion_upper}"
+    print(f"DECISION: {decision_str}")
     print(f"{'=' * 80}")
     print(f"\n{result['decision']['reason']}\n")
     
