@@ -27,15 +27,16 @@
 #include <mma.h>
 
 // Compile-time tunables (set via -D flags)
-// Loop 1 - Priority 1: Optimized for increased tensor core utilization
-// Configuration: Conservative (BLOCK_M=128, BLOCK_N=32, NUM_WARPS=8)
-// Expected: +5-15% speedup, TC util 57% → 70-80%
+// Loop 1 - Priority 1 (Revised): Balanced optimization for TC utilization
+// Configuration: BLOCK_M=80, BLOCK_N=64, NUM_WARPS=8
+// Expected: +8-12% speedup, TC util 57% → 65-75%
+// SMEM usage: 47,520 bytes < 48KB (fits safely)
 #ifndef BLOCK_M
-#define BLOCK_M 128  // Increased from 64 (larger Q tile for more TC work)
+#define BLOCK_M 80  // Increased from 64 (25% larger Q tile, avoids BLOCK_N=32 alignment issues)
 #endif
 
 #ifndef BLOCK_N
-#define BLOCK_N 32  // Reduced from 64 (to fit in 48KB SMEM with larger BLOCK_M)
+#define BLOCK_N 64  // Keep at 64 (standard size, no alignment issues)
 #endif
 
 #ifndef BLOCK_K
