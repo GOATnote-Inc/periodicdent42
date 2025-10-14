@@ -235,6 +235,14 @@ __device__ void load_V_async(
 // Then apply online softmax and accumulate O
 // ============================================================================
 
+#if defined(DEBUG_DUMP)
+// Debug dump buffers (allocated by host, passed as kernel args)
+// These will be set in the kernel signature when DEBUG_DUMP is enabled
+__device__ float* g_S_dump = nullptr;  // [BLOCK_M][BLOCK_N] from block(0,0)
+__device__ float* g_P_dump = nullptr;  // [BLOCK_M][BLOCK_N] from block(0,0)
+__device__ float* g_O_dump = nullptr;  // [BLOCK_M][HEAD_DIM] from block(0,0)
+#endif
+
 template<typename Traits>
 __device__ void compute_block(
     half Q_reg[Traits::BLOCK_M / Traits::NUM_WARPS][Traits::HEAD_DIM],
@@ -248,6 +256,10 @@ __device__ void compute_block(
     int m_block,
     int n_block,
     int seq_len
+    #if defined(DEBUG_DUMP)
+    , float* S_dump_tile  // [BLOCK_M][BLOCK_N]
+    , float* P_dump_tile  // [BLOCK_M][BLOCK_N]
+    #endif
 ) {
     const int warp_id = threadIdx.x / 32;
     const int rows_per_warp = Traits::BLOCK_M / Traits::NUM_WARPS;
@@ -279,6 +291,16 @@ __device__ void compute_block(
             S_row[n_idx] = acc * softmax_scale;
         }
         
+        #if defined(DEBUG_DUMP)
+        // Dump S for block(0,0) only, after QK computation
+        if (blockIdx.x == 0 && blockIdx.y == 0 && m_block == 0 && n_block == 0 && S_dump_tile) {
+            for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
+                S_dump_tile[(row_start + local_row) * Traits::BLOCK_N + n_idx] = S_row[n_idx];
+            }
+        }
+        __syncthreads();
+        #endif
+        
         // Online softmax update
         float m_old = m_i[local_row];
         float m_new = m_old;
@@ -306,6 +328,16 @@ __device__ void compute_block(
                 S_row[n_idx] = 0.0f;
             }
         }
+        
+        #if defined(DEBUG_DUMP)
+        // Dump P for block(0,0) only, after softmax (S_row now contains P values)
+        if (blockIdx.x == 0 && blockIdx.y == 0 && m_block == 0 && n_block == 0 && P_dump_tile) {
+            for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
+                P_dump_tile[(row_start + local_row) * Traits::BLOCK_N + n_idx] = S_row[n_idx];
+            }
+        }
+        __syncthreads();
+        #endif
         
         // Accumulate O += S @ V
         for (int d = 0; d < Traits::HEAD_DIM; d++) {

@@ -18,11 +18,22 @@
 - Max 2 bug-fix iterations at tile level; if not green, SDPA stays champion.
 
 **Step 0 — Guardrails (COMPLETE):**
-- ✅ README updated: SDPA set as production champion (commit pending)
+- ✅ README updated: SDPA set as production champion
 - ✅ `artifacts/` directories created: `oracle/`, `sanitizers/`, `correctness/`, `bench/`, `stats/`, `nsight/`
 - ✅ ENGINEER_LOG.md updated with post-mortem plan
+- ✅ Committed: a8376e2
 
-**Next:** Step 1 — Tiny tile oracle (B=1,H=1,S=32,D=64) to localize V3 numerical bug (S vs P vs O).
+**Step 1 — Tile Oracle (COMPLETE):**
+- ✅ Added DEBUG_DUMP hooks to V3 kernel (S, P dumps after QK, softmax)
+- ✅ Created `bench/tests/oracles/tile_oracle_v3.py`:
+  * Tests V3 on S=512 (V3's specialized size)
+  * Compares output to SDPA oracle
+  * Identifies NaN/Inf and reports first divergence
+  * Tests all 3 configs (32_64_4, 32_32_4, 48_64_8)
+  * Saves numpy arrays for deeper analysis
+- ✅ Tool detects: NaN presence, location, error patterns, top 5 worst elements
+
+**Next:** Step 2 — Run tile oracle test locally, then compute-sanitizer + determinism (10-15 min).
 
 ---
 
