@@ -75,9 +75,9 @@ struct SharedMemory {
 // SMEM size calculation (must be ≤ 48KB)
 template<typename Traits>
 constexpr size_t smem_bytes() {
-    size_t k_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::K_STRIDE * sizeof(half);
-    size_t v_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::V_STRIDE * sizeof(half);
-    size_t total = k_bytes + v_bytes;
+    constexpr size_t k_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::K_STRIDE * sizeof(half);
+    constexpr size_t v_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::V_STRIDE * sizeof(half);
+    constexpr size_t total = k_bytes + v_bytes;
     
     // Static assertion: Must fit in L4's 48KB limit
     static_assert(total <= 49152, "SMEM exceeds 48KB limit");
