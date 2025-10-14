@@ -91,7 +91,7 @@ constexpr size_t smem_bytes() {
 
 template<typename Traits>
 __device__ void load_Q_to_registers(
-    half Q_reg[Traits::BLOCK_M][Traits::HEAD_DIM],
+    half Q_reg[Traits::BLOCK_M / Traits::NUM_WARPS][Traits::HEAD_DIM],
     const half* __restrict__ Q_gmem,
     int batch_idx,
     int head_idx,
@@ -115,15 +115,16 @@ __device__ void load_Q_to_registers(
                           m * num_heads * Traits::HEAD_DIM;
         
         // Vectorized load if HALF2 enabled
+        // FIX: Use local_row only (not row_start + local_row) since Q_reg is per-warp
         if constexpr (Traits::HALF2) {
             for (int d = lane_id * 2; d < Traits::HEAD_DIM; d += 64) {
                 half2 val = *reinterpret_cast<const half2*>(Q_gmem + offset + d);
-                Q_reg[row_start + local_row][d] = val.x;
-                Q_reg[row_start + local_row][d + 1] = val.y;
+                Q_reg[local_row][d] = val.x;
+                Q_reg[local_row][d + 1] = val.y;
             }
         } else {
             for (int d = lane_id; d < Traits::HEAD_DIM; d += 32) {
-                Q_reg[row_start + local_row][d] = Q_gmem[offset + d];
+                Q_reg[local_row][d] = Q_gmem[offset + d];
             }
         }
     }
