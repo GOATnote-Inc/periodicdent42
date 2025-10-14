@@ -112,9 +112,12 @@ def run_single_test(
         mask = (abs_diff > ATOL) | (rel_diff > RTOL)
         if mask.any():
             flat_idx = mask.flatten().nonzero()[0].item()
+            unraveled = torch.unravel_index(torch.tensor(flat_idx), O_ref.shape)
+            multi_idx = tuple(int(x) for x in unraveled)
+            
             first_bad_idx = {
                 "flat": flat_idx,
-                "multi": tuple(torch.unravel_index(torch.tensor(flat_idx), O_ref.shape).tolist()),
+                "multi": multi_idx,
                 "ref_val": O_ref.flatten()[flat_idx].item(),
                 "test_val": O_test.flatten()[flat_idx].item(),
                 "abs_diff": abs_diff.flatten()[flat_idx].item(),
