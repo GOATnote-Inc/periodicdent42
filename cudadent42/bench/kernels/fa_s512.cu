@@ -109,10 +109,13 @@ __device__ __forceinline__ void cp_async_commit() {
 
 /**
  * Wait for cp.async group to complete
+ * 
+ * Template parameter N must be compile-time constant for "n" constraint
  */
-__device__ __forceinline__ void cp_async_wait_group(int n) {
+template<int N>
+__device__ __forceinline__ void cp_async_wait_group() {
 #if CP_ASYNC && __CUDA_ARCH__ >= 800
-    asm volatile("cp.async.wait_group %0;\n" :: "n"(n));
+    asm volatile("cp.async.wait_group %0;\n" :: "n"(N));
 #else
     __syncthreads();
 #endif
@@ -214,7 +217,7 @@ fa_s512_kernel(
         }
     }
     cp_async_commit();
-    cp_async_wait_group(0);
+    cp_async_wait_group<0>();
     __syncthreads();
     
     // === LOOP OVER K/V TILES ===
@@ -268,7 +271,7 @@ fa_s512_kernel(
         }
         
         cp_async_commit();
-        cp_async_wait_group(0);
+        cp_async_wait_group<0>();
         __syncthreads();
         
         // --- Compute S = Q @ K^T (attention scores) ---
@@ -377,9 +380,9 @@ fa_s512_kernel(
 }
 
 /**
- * Host launch function
+ * Host launch function (called from Python bindings)
  */
-extern "C" void launch_fa_s512(
+extern "C" void fa_s512_launch(
     const half* Q,
     const half* K,
     const half* V,
@@ -388,11 +391,13 @@ extern "C" void launch_fa_s512(
     int H,
     int S,
     int D,
+    float softmax_scale,
     cudaStream_t stream
 ) {
     dim3 grid(B * H, (S + BLOCK_M - 1) / BLOCK_M);
     dim3 block(NUM_THREADS);
     
+    // Note: softmax_scale is computed in bindings, passed here for extensibility
     fa_s512_kernel<512, 64><<<grid, block, 0, stream>>>(Q, K, V, O, B, H);
 }
 
