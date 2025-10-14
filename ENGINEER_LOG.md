@@ -219,10 +219,35 @@ const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
 
 ---
 
-## Next Decision
+## Step A Complete: V2 Benchmark Results (2025-10-14T06:00:00Z)
 
-**Status**: CRITICAL BLOCKER  
-**Recommendation**: **FALLBACK TO PYTORCH SDPA** (both custom kernels broken)
+### Performance Comparison (B=2, S=512, H=8, D=64, 100 iters)
+
+```
+Kernel | Mean (ms) | 95% CI         | Status
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SDPA   | 0.051     | [0.049, 0.053] | ✅ FASTEST
+V2     | 0.333     | [0.332, 0.333] | ❌ 6.5× SLOWER
+Target | 0.255     |                | Threshold
+```
+
+**Statistical Analysis**:
+- Speedup: 0.15× (V2 is 6.5× slower than SDPA)
+- Hedges' g: -43.016 (massive effect size, V2 slower)
+- CIs: Non-overlapping (statistically significant)
+
+**Decision**: ❌ **DO NOT PROMOTE V2** - Exceeds target by 30%
+
+**Artifacts**:
+- Benchmark CSV: `artifacts/bench/v2_vs_sdpa_bs2_s512_h8_d64.csv`
+- Decision JSON: `artifacts/stats/v2_decision.json`
+
+---
+
+## Final Recommendation
+
+**Status**: DECISION COMPLETE  
+**Champion**: **PyTorch SDPA** ✅
 
 **Options**:
 1. **Option A (Recommended)**: Use PyTorch SDPA (2× faster than broken kernels, correct)
