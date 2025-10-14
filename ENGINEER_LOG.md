@@ -29,6 +29,27 @@ V3 kernel has "CUDA illegal memory access" at runtime. Likely causes:
 
 ## Diffs Applied
 
+### Timestamp: 2025-10-14T01:15:00Z - Step 1 Additional Fix (THIRD OOB BUG)
+
+**Files Modified**:
+- `cudadent42/bench/kernels/fa_s512_v3.cu`
+
+**Third OOB Bug Found & Fixed**:
+- Same pattern as previous bugs: function signatures mismatched array sizes
+- `compute_block` signature: `O_acc[BLOCK_M][HEAD_DIM]`, `m_i[BLOCK_M]`, `l_i[BLOCK_M]`
+- Actual arrays (in kernel): `[BLOCK_M/NUM_WARPS][...]` (per-warp)
+- Code used `[row_start + local_row]` where `row_start = warp_id * rows_per_warp`
+- For warp 3: `row_start = 24`, accessing array[24] but size is only [8]
+
+**Fix Applied**:
+1. Updated `compute_block` signature to use per-warp arrays
+2. Changed all indexing from `[row_start + local_row]` to `[local_row]`
+3. Updated `write_O_to_gmem` signature and indexing similarly
+
+**Reason**: Eliminate GMEM read OOB errors by ensuring all function signatures match actual per-warp array sizes
+
+---
+
 ### Timestamp: 2025-10-14T01:00:00Z - Step 0 Complete (16-BYTE ALIGNMENT FIX)
 
 **Files Modified**:

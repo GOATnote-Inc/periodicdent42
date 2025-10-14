@@ -237,11 +237,11 @@ __device__ void load_V_async(
 
 template<typename Traits>
 __device__ void compute_block(
-    half Q_reg[Traits::BLOCK_M][Traits::HEAD_DIM],
+    half Q_reg[Traits::BLOCK_M / Traits::NUM_WARPS][Traits::HEAD_DIM],
     SharedMemory<Traits>* smem,
-    float O_acc[Traits::BLOCK_M][Traits::HEAD_DIM],
-    float m_i[Traits::BLOCK_M],
-    float l_i[Traits::BLOCK_M],
+    float O_acc[Traits::BLOCK_M / Traits::NUM_WARPS][Traits::HEAD_DIM],
+    float m_i[Traits::BLOCK_M / Traits::NUM_WARPS],
+    float l_i[Traits::BLOCK_M / Traits::NUM_WARPS],
     int stage,
     float softmax_scale,
     bool is_causal,
@@ -273,14 +273,14 @@ __device__ void compute_block(
             // Dot product Q_row · K_row
             float acc = 0.0f;
             for (int d = 0; d < Traits::HEAD_DIM; d++) {
-                acc += __half2float(Q_reg[row_start + local_row][d]) * 
+                acc += __half2float(Q_reg[local_row][d]) * 
                        __half2float(smem->K[stage][n_idx][d]);
             }
             S_row[n_idx] = acc * softmax_scale;
         }
         
         // Online softmax update
-        float m_old = m_i[row_start + local_row];
+        float m_old = m_i[local_row];
         float m_new = m_old;
         
         // Find max
@@ -293,11 +293,11 @@ __device__ void compute_block(
         
         // Apply correction to existing O accumulator
         for (int d = 0; d < Traits::HEAD_DIM; d++) {
-            O_acc[row_start + local_row][d] *= correction;
+            O_acc[local_row][d] *= correction;
         }
         
         // Compute exp(S - m_new) and new sum
-        float l_new = l_i[row_start + local_row] * correction;
+        float l_new = l_i[local_row] * correction;
         for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
             if (S_row[n_idx] > -INFINITY) {
                 S_row[n_idx] = expf(S_row[n_idx] - m_new);
@@ -313,12 +313,12 @@ __device__ void compute_block(
             for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
                 acc += S_row[n_idx] * __half2float(smem->V[stage][n_idx][d]);
             }
-            O_acc[row_start + local_row][d] += acc;
+            O_acc[local_row][d] += acc;
         }
         
         // Update running stats
-        m_i[row_start + local_row] = m_new;
-        l_i[row_start + local_row] = l_new;
+        m_i[local_row] = m_new;
+        l_i[local_row] = l_new;
     }
 }
 
@@ -329,8 +329,8 @@ __device__ void compute_block(
 template<typename Traits>
 __device__ void write_O_to_gmem(
     half* __restrict__ O_gmem,
-    float O_acc[Traits::BLOCK_M][Traits::HEAD_DIM],
-    float l_i[Traits::BLOCK_M],
+    float O_acc[Traits::BLOCK_M / Traits::NUM_WARPS][Traits::HEAD_DIM],
+    float l_i[Traits::BLOCK_M / Traits::NUM_WARPS],
     int batch_idx,
     int head_idx,
     int m_block,
@@ -350,19 +350,19 @@ __device__ void write_O_to_gmem(
                           head_idx * Traits::HEAD_DIM +
                           m * num_heads * Traits::HEAD_DIM;
         
-        const float norm = 1.0f / l_i[row_start + local_row];
+        const float norm = 1.0f / l_i[local_row];
         
         // Vectorized write if HALF2 enabled
         if constexpr (Traits::HALF2) {
             for (int d = lane_id * 2; d < Traits::HEAD_DIM; d += 64) {
                 half2 val;
-                val.x = __float2half(O_acc[row_start + local_row][d] * norm);
-                val.y = __float2half(O_acc[row_start + local_row][d + 1] * norm);
+                val.x = __float2half(O_acc[local_row][d] * norm);
+                val.y = __float2half(O_acc[local_row][d + 1] * norm);
                 *reinterpret_cast<half2*>(O_gmem + offset + d) = val;
             }
         } else {
             for (int d = lane_id; d < Traits::HEAD_DIM; d += 32) {
-                O_gmem[offset + d] = __float2half(O_acc[row_start + local_row][d] * norm);
+                O_gmem[offset + d] = __float2half(O_acc[local_row][d] * norm);
             }
         }
     }
