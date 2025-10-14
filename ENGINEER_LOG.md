@@ -29,6 +29,33 @@ V3 kernel has "CUDA illegal memory access" at runtime. Likely causes:
 
 ## Diffs Applied
 
+### Timestamp: 2025-10-14T01:00:00Z - Step 0 Complete (16-BYTE ALIGNMENT FIX)
+
+**Files Modified**:
+- `cudadent42/bench/kernels/detail/smem_swizzle.hpp`
+- `cudadent42/bench/kernels/fa_s512_v3.cu`
+
+**Alignment Fix Applied**:
+1. Added 16-byte alignment utilities to `smem_swizzle.hpp`:
+   - `elems_for_16B<T>()` - Returns elements per 16 bytes
+   - `pad_to_16B_elems<T>(stride)` - Computes padding for alignment
+   - Static assertion: `half` is 2 bytes → 8 elements per 16 bytes
+
+2. Updated `KernelTraits` in `fa_s512_v3.cu`:
+   - Compute `PAD_K` and `PAD_V` for 16-byte alignment
+   - `K_STRIDE = HEAD_DIM + PAD_K` (64 + 0 = 64, already aligned)
+   - `V_STRIDE = HEAD_DIM + PAD_V` (64 + 0 = 64, already aligned)
+   - Added compile-time assertions for stride alignment
+   - Added `BLOCK_M % NUM_WARPS == 0` assertion
+
+3. Updated `SharedMemory` struct:
+   - Added `__align__(16)` attribute to ensure base address alignment
+   - Updated comments to clarify 16-byte alignment requirement
+
+**Reason**: Eliminate cp.async alignment assertions by ensuring all SMEM bases and row strides are 16-byte aligned
+
+---
+
 ### Timestamp: 2025-10-14T00:30:00Z - Step 1 Complete (ROOT CAUSE FOUND & FIXED)
 
 **Files Modified**:

@@ -54,9 +54,18 @@ struct KernelTraits {
     static constexpr int WMMA_N = 16;
     static constexpr int WMMA_K = 16;
     
-    // Derived
-    static constexpr int K_STRIDE = SWIZZLE ? detail::padded_stride<HEAD_DIM>() : HEAD_DIM;
-    static constexpr int V_STRIDE = SWIZZLE ? detail::padded_stride<HEAD_DIM>() : HEAD_DIM;
+    // Derived: Ensure 16-byte alignment for cp.async
+    // HEAD_DIM=64 → 64*2=128 bytes (already 16-aligned)
+    // Add padding to ensure row stride is 16-byte aligned
+    static constexpr int PAD_K = detail::pad_to_16B_elems<half>(HEAD_DIM);
+    static constexpr int PAD_V = detail::pad_to_16B_elems<half>(HEAD_DIM);
+    static constexpr int K_STRIDE = HEAD_DIM + PAD_K;
+    static constexpr int V_STRIDE = HEAD_DIM + PAD_V;
+    
+    // Compile-time guarantees
+    static_assert((K_STRIDE * sizeof(half)) % 16 == 0, "K row stride must be 16B-aligned");
+    static_assert((V_STRIDE * sizeof(half)) % 16 == 0, "V row stride must be 16B-aligned");
+    static_assert(BLOCK_M % NUM_WARPS == 0, "BLOCK_M must be divisible by NUM_WARPS");
 };
 
 // ============================================================================
@@ -64,11 +73,11 @@ struct KernelTraits {
 // ============================================================================
 
 template<typename Traits>
-struct SharedMemory {
-    // Stage 0, 1 for K tiles
+struct __align__(16) SharedMemory {
+    // Stage 0, 1 for K tiles (16-byte aligned base)
     half K[Traits::STAGES][Traits::BLOCK_N][Traits::K_STRIDE];
     
-    // Stage 0, 1 for V tiles
+    // Stage 0, 1 for V tiles (16-byte aligned base)
     half V[Traits::STAGES][Traits::BLOCK_N][Traits::V_STRIDE];
 };
 

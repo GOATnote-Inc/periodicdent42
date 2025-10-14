@@ -8,8 +8,31 @@
 #pragma once
 
 #include <cstdint>
+#include <cuda_fp16.h>
 
 namespace detail {
+
+// ============================================================================
+// 16-Byte Alignment Utilities (for cp.async)
+// ============================================================================
+
+// cp.async requires 16-byte alignment for source and destination
+// These helpers ensure row strides are multiples of 16 bytes
+
+template <typename T>
+constexpr int elems_for_16B() { 
+    return 16 / sizeof(T); 
+}
+
+template <typename T>
+constexpr int pad_to_16B_elems(int stride_elems) {
+    const int q = elems_for_16B<T>();
+    const int r = stride_elems % q;
+    return (r == 0) ? 0 : (q - r);
+}
+
+// Sanity: for half (2 B), 16 B == 8 elems
+static_assert(elems_for_16B<half>() == 8, "half must be 2 bytes");
 
 // ============================================================================
 // Bank Conflict Analysis
