@@ -23,7 +23,7 @@
 - ✅ ENGINEER_LOG.md updated with post-mortem plan
 - ✅ Committed: a8376e2
 
-**Step 1 — Tile Oracle (COMPLETE):**
+**Step 1 — Tile Oracle Infrastructure (COMPLETE):**
 - ✅ Added DEBUG_DUMP hooks to V3 kernel (S, P dumps after QK, softmax)
 - ✅ Created `bench/tests/oracles/tile_oracle_v3.py`:
   * Tests V3 on S=512 (V3's specialized size)
@@ -32,8 +32,22 @@
   * Tests all 3 configs (32_64_4, 32_32_4, 48_64_8)
   * Saves numpy arrays for deeper analysis
 - ✅ Tool detects: NaN presence, location, error patterns, top 5 worst elements
+- ✅ Created `POSTMORTEM_READY.md`: Complete GPU execution guide for Steps 1b-6
+- ✅ Committed: 05609b7
 
-**Next:** Step 2 — Run tile oracle test locally, then compute-sanitizer + determinism (10-15 min).
+**Status:** Infrastructure complete. Ready for GPU session (Steps 1b-6 require GPU).
+
+**Remaining Steps (GPU Required):**
+- Step 1b: Run tile oracle test (10 min, $0.11) → Identify divergence stage
+- Step 2: Compute-sanitizer (15 min, $0.17) → Find race/alignment bugs
+- Step 3: Fix loop (60 min, $0.68, max 2 iterations) → Repair identified bugs
+- Step 4: S=512 correctness gate (20 min, $0.23) → Validate 7 test cases
+- Step 5: Performance gate (30 min, $0.34) → Measure ≤0.255 ms target
+- Step 6: Evidence & README (10 min, $0.11) → Document champion decision
+
+**Estimated Total:** 2.5 hours, $1.70 (with $1.00 stop-loss at Step 3 if no progress)
+
+**Next Session:** Start GPU → Run `python3 tests/oracles/tile_oracle_v3.py --config 0 --noncausal`
 
 ---
 
