@@ -183,7 +183,26 @@ const int offset = batch_idx * num_heads * seq_len * Traits::HEAD_DIM +
                   m * Traits::HEAD_DIM;
 ```
 
-**Status**: V3 memory layout fixed (4 locations), V2 not yet fixed
+**Status**: V3 memory layout fixed (4 locations), V2 fixed (4 locations)
+
+### Step 2 Complete: Correctness Tests Run
+
+**Test Results** (2025-10-14T04:00:00Z):
+- V2: **0/14 tests passed** ❌
+- V3: **0/6 tests passed** ❌
+
+**Sample Errors**:
+- V2 B1_S128_H4_D64: max_abs=0.049 (threshold: 0.01)
+- V3 B2_S512_H8_D64: max_abs=0.461 (noncausal), 2.045 (causal)
+
+**Conclusion**: Memory layout fix **NOT sufficient**. Additional bugs present in both kernels.
+
+**Possible Remaining Bugs**:
+1. Online softmax accumulation logic (V3)
+2. Tensor Core fragment loading/storing (V2)
+3. Numerical precision issues (-use_fast_math still in V2)
+4. Thread synchronization or race conditions
+5. Shared memory bank conflicts causing data corruption
 
 ---
 
