@@ -299,7 +299,8 @@ __device__ void convert_S_float_to_half(SharedMemory* smem) {
 
 __device__ void compute_SV_wmma(
     SharedMemory* smem,
-    float* O_shared
+    float* O_shared,
+    float (*temp_O)[HEAD_DIM]  // Temporary buffer for wmma store
 ) {
     const int warp_id = threadIdx.x / WARP_SIZE;
     const int lane_id = threadIdx.x % WARP_SIZE;
@@ -345,37 +346,36 @@ __device__ void compute_SV_wmma(
         }
     }
     
-    // Accumulate results to O_shared (FP32)
-    // Each warp handles its region: m_block × (n_start to n_start+2)
-    // Manually extract wmma fragment elements and add to O_shared
+    // Store accumulator to shared memory, then add to O_shared
+    // temp_O is passed as parameter (allocated in main kernel)
+    
+    // Initialize temp_O for this warp's region
+    if (threadIdx.x < 32) {  // Only one warp initializes
+        for (int row = m_block * WMMA_M; row < (m_block + 1) * WMMA_M; row++) {
+            for (int col = n_start * WMMA_N; col < (n_start + 2) * WMMA_N; col++) {
+                temp_O[row][col] = 0.0f;
+            }
+        }
+    }
+    __syncthreads();
+    
+    // Store wmma accumulator fragments to temp_O
     #pragma unroll
     for (int n_idx = 0; n_idx < 2; n_idx++) {
         int n_block = n_start + n_idx;
-        
-        // wmma accumulator fragment contains 16×16 = 256 FP32 values
-        // distributed across 32 threads (8 values per thread)
-        // Fragment layout: row-major, each thread owns 8 consecutive elements
-        
-        // Simplified approach: use atomic adds to O_shared
-        // Each thread processes its fragment elements
-        for (int elem_idx = 0; elem_idx < acc_frag[n_idx].num_elements; elem_idx++) {
-            // Map fragment element to output position
-            // For m16n16k16: 16 rows × 16 cols = 256 elements / 32 threads = 8 per thread
-            // Each thread handles elements in a specific pattern
-            
-            // Simplified layout assumption (may need adjustment):
-            // Each thread handles 4 rows, 2 cols
-            int thread_row_offset = (lane_id / 8) * 4 + (elem_idx / 2);
-            int thread_col_offset = (lane_id % 8) * 2 + (elem_idx % 2);
-            
-            int global_row = m_block * WMMA_M + thread_row_offset;
-            int global_col = n_block * WMMA_N + thread_col_offset;
-            
-            if (global_row < TILE_M && global_col < HEAD_DIM) {
-                int out_idx = global_row * HEAD_DIM + global_col;
-                atomicAdd(&O_shared[out_idx], acc_frag[n_idx].x[elem_idx]);
-            }
-        }
+        wmma::store_matrix_sync(
+            &temp_O[m_block * WMMA_M][n_block * WMMA_N],
+            acc_frag[n_idx],
+            HEAD_DIM,  // Leading dimension
+            wmma::mem_row_major);
+    }
+    __syncthreads();
+    
+    // Add temp_O to O_shared (all threads participate)
+    for (int idx = threadIdx.x; idx < TILE_M * HEAD_DIM; idx += NUM_THREADS) {
+        int row = idx / HEAD_DIM;
+        int col = idx % HEAD_DIM;
+        O_shared[row * HEAD_DIM + col] += temp_O[row][col];
     }
 }
 
@@ -400,6 +400,7 @@ __global__ void flash_attention_inverted_kernel(
     
     __shared__ SharedMemory smem;
     __shared__ float O_shared[TILE_M * HEAD_DIM];
+    __shared__ float temp_O[TILE_M][HEAD_DIM];  // Temporary for wmma store
     __shared__ float row_max[TILE_M];
     __shared__ float row_sum[TILE_M];
     __shared__ float row_correction[TILE_M];
@@ -464,7 +465,7 @@ __global__ void flash_attention_inverted_kernel(
         convert_S_float_to_half(&smem);
         
         // Compute S @ V with Tensor Cores and accumulate (loads from S_half)
-        compute_SV_wmma(&smem, O_shared);
+        compute_SV_wmma(&smem, O_shared, temp_O);
         __syncthreads();
     }
     
