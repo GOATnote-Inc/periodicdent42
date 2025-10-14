@@ -47,7 +47,10 @@ struct SharedMemory {
     half Q[TILE_M][TILE_K + SMEM_PAD];
     half K[TILE_N][TILE_K + SMEM_PAD];
     half V[TILE_N][TILE_K + SMEM_PAD];
-    half S[TILE_M][TILE_N + SMEM_PAD];
+    union {
+        float S_float[TILE_M][TILE_N + SMEM_PAD];  // For wmma QK accumulation & softmax
+        half S_half[TILE_M][TILE_N + SMEM_PAD];    // For wmma SV input (reuses same memory)
+    };
 };
 
 // ============================================================================
@@ -203,9 +206,9 @@ __device__ void compute_QK_wmma(SharedMemory* smem) {
         wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
     }
     
-    // Store result to shared memory S
+    // Store result to shared memory S_float
     wmma::store_matrix_sync(
-        &smem->S[m_block * WMMA_M][n_block * WMMA_N],
+        &smem->S_float[m_block * WMMA_M][n_block * WMMA_N],
         acc_frag,
         TILE_N + SMEM_PAD,
         wmma::mem_row_major);
@@ -236,10 +239,10 @@ __device__ void apply_softmax(
             int global_col = n_block * TILE_N + col;
             
             if (is_causal && global_col > global_row) {
-                smem->S[row][col] = float_to_half(-INFINITY);
+                smem->S_float[row][col] = -INFINITY;
             }
             
-            float val = half_to_float(smem->S[row][col]);
+            float val = smem->S_float[row][col];
             max_val = fmaxf(max_val, val);
         }
         
@@ -259,13 +262,13 @@ __device__ void apply_softmax(
         // Step 4: Compute exp(S - m_new) and sum
         float sum_exp = 0.0f;
         for (int col = 0; col < TILE_N; col++) {
-            float val = half_to_float(smem->S[row][col]);
+            float val = smem->S_float[row][col];
             if (val > -INFINITY) {
                 float exp_val = expf(val - m_new);
-                smem->S[row][col] = float_to_half(exp_val);
+                smem->S_float[row][col] = exp_val;
                 sum_exp += exp_val;
             } else {
-                smem->S[row][col] = float_to_half(0.0f);
+                smem->S_float[row][col] = 0.0f;
             }
         }
         
@@ -273,6 +276,21 @@ __device__ void apply_softmax(
         row_sum[row] = row_sum[row] * correction + sum_exp;
         row_max[row] = m_new;
     }
+}
+
+// ============================================================================
+// CONVERT S_float TO S_half FOR WMMA INPUT
+// ============================================================================
+
+__device__ void convert_S_float_to_half(SharedMemory* smem) {
+    const int tid = threadIdx.x;
+    // Each thread converts multiple elements
+    for (int idx = tid; idx < TILE_M * TILE_N; idx += NUM_THREADS) {
+        int row = idx / TILE_N;
+        int col = idx % TILE_N;
+        smem->S_half[row][col] = __float2half(smem->S_float[row][col]);
+    }
+    __syncthreads();
 }
 
 // ============================================================================
@@ -307,9 +325,9 @@ __device__ void compute_SV_wmma(
     // S: (TILE_M × TILE_N), V: (TILE_N × HEAD_DIM) → O: (TILE_M × HEAD_DIM)
     #pragma unroll
     for (int k_block = 0; k_block < TILE_N / WMMA_K; k_block++) {
-        // Load S tile (16×16)
+        // Load S tile (16×16) from S_half
         wmma::load_matrix_sync(a_frag, 
-            &smem->S[m_block * WMMA_M][k_block * WMMA_K],
+            &smem->S_half[m_block * WMMA_M][k_block * WMMA_K],
             TILE_N + SMEM_PAD);
         
         // Process 2 N-blocks per warp
@@ -414,22 +432,21 @@ __global__ void flash_attention_inverted_kernel(
         load_V_tile(&smem, V, batch_idx, head_idx, n_block, seq_len, num_heads);
         __syncthreads();
         
-        // Compute Q @ K^T with Tensor Cores
+        // Compute Q @ K^T with Tensor Cores (stores to S_float)
         compute_QK_wmma(&smem);
         __syncthreads();
         
-        // Scale attention scores
+        // Scale attention scores (now operating on S_float)
         if (softmax_scale != 1.0f) {
             for (int i = tid; i < TILE_M * TILE_N; i += NUM_THREADS) {
                 int row = i / TILE_N;
                 int col = i % TILE_N;
-                float val = half_to_float(smem.S[row][col]);
-                smem.S[row][col] = float_to_half(val * softmax_scale);
+                smem.S_float[row][col] *= softmax_scale;
             }
             __syncthreads();
         }
         
-        // Apply softmax
+        // Apply softmax (operates on S_float)
         apply_softmax(&smem, row_max, row_sum, row_correction, is_causal, m_block, n_block);
         __syncthreads();
         
@@ -443,7 +460,10 @@ __global__ void flash_attention_inverted_kernel(
         }
         __syncthreads();
         
-        // Compute S @ V with Tensor Cores and accumulate
+        // Convert S_float to S_half for wmma input
+        convert_S_float_to_half(&smem);
+        
+        // Compute S @ V with Tensor Cores and accumulate (loads from S_half)
         compute_SV_wmma(&smem, O_shared);
         __syncthreads();
     }
