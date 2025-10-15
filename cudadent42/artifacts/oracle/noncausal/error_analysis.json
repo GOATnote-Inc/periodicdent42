@@ -1,0 +1,30 @@
+{
+  "max_abs_diff": 0.3542526066303253,
+  "mean_abs_diff": 0.044821031391620636,
+  "magnitude_ratio": {
+    "mean": 0.6748876571655273,
+    "std": 0.08457587659358978,
+    "min": 0.34420421719551086,
+    "max": 0.9172050952911377
+  },
+  "spatial_pattern": {
+    "first_quarter": 0.14433780312538147,
+    "second_quarter": 0.1491391807794571,
+    "third_quarter": 0.14085659384727478,
+    "fourth_quarter": 0.1441369652748108
+  },
+  "worst_rows": [
+    473,
+    472,
+    15,
+    248,
+    216,
+    279,
+    213,
+    78,
+    497,
+    252
+  ],
+  "systematic_scaling": true,
+  "error_grows_toward_end": false
+}

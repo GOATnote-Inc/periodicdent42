@@ -76,9 +76,25 @@
 - `artifacts/oracle/noncausal/v3_config0_O_test.npy` (V3 output)
 - `artifacts/sanitizers/v3_memcheck.log` (0 errors)
 
-**Status:** Steps 0-2 complete. Bug localized to numerical computation. GPU running.
+**Step 3 Iteration 1 — Bug Fix (IN PROGRESS):**
+- ✅ Analyzed numpy arrays: **Systematic 0.675× scaling** (all rows)
+- ✅ Root cause: `l_i` accumulator is ~1.48× too large → over-normalization
+- ✅ Error pattern: Uniform across sequence (not growing toward end)
+- ⚠️ Hypothesis: Incomplete tile handling or garbage SMEM data added to l_i
 
-**Next:** Step 3 Iteration 1 - Analyze error pattern from numpy arrays, identify softmax bug, apply fix.
+**Fix Applied:**
+- Added bounds check `if (n >= seq_len)` in `compute_block` before QK computation
+- Sets `S_row[n_idx] = -INFINITY` for out-of-bounds elements
+- Prevents garbage SMEM data from being included in softmax sum
+
+**Reasoning:**
+Even though S=512 fits evenly into BLOCK_N=64, SMEM locations beyond seq_len
+may contain garbage if not properly masked. This could inflate l_i in edge cases.
+
+**Files Modified:**
+- `cudadent42/bench/kernels/fa_s512_v3.cu` (lines 279-283)
+
+**Next:** Upload fix to GPU → rebuild → run oracle test → check if 0.675× scaling is fixed.
 
 ---
 

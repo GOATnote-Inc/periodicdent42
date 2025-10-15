@@ -276,6 +276,12 @@ __device__ void compute_block(
         for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
             const int n = n_block * Traits::BLOCK_N + n_idx;
             
+            // Skip if beyond sequence length (for incomplete tiles)
+            if (n >= seq_len) {
+                S_row[n_idx] = -INFINITY;
+                continue;
+            }
+            
             // Apply causal mask
             if (is_causal && n > m) {
                 S_row[n_idx] = -INFINITY;
