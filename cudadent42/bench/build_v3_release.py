@@ -8,39 +8,38 @@ import torch.utils.cpp_extension
 from pathlib import Path
 import sys
 
-def build_v3_release():
-    """Build V3 with release optimizations"""
+def build_v3_release(debug: bool = False):
+    """Build V3 with release optimizations (or debug if flag set)"""
     
     kernel_dir = Path(__file__).parent / "kernels"
     kernel_cu = kernel_dir / "fa_s512_v3.cu"
     bindings_cpp = kernel_dir / "fa_s512_v3_bindings.cpp"
     
+    mode_str = "DEBUG MODE" if debug else "RELEASE MODE"
     print("=" * 80)
-    print("🔧 Building V3 (RELEASE MODE)")
+    print(f"🔧 Building V3 ({mode_str})")
     print("=" * 80)
     print(f"Kernel: {kernel_cu}")
     print(f"Bindings: {bindings_cpp}")
     print()
     
-    # Release build flags
-    release_flags = [
+    # Base flags (always included)
+    extra_cuda_cflags = [
         "-O3",                 # Maximum optimization
-        # NOTE: Removed -use_fast_math to test if it causes numerical errors
-        # "-use_fast_math",      # Fast math
-        "-DNDEBUG",            # Disable assertions
-        "-UDEBUG_V3",          # Disable DEBUG_V3
+        "-use_fast_math",      # Fast math
         "-lineinfo",           # Keep line info for profiling
+        "-Xptxas", "-v",       # Verbose ptxas (shows regs/thread)
         "-std=c++17",
-        "-arch=sm_89",         # L4
-        "--expt-relaxed-constexpr",
-        "--ptxas-options=-v",  # Verbose ptxas (shows regs/thread)
-        "-ftz=false",          # Don't flush denormals to zero
-        "-prec-div=true",      # Precise division
-        "-prec-sqrt=true",     # Precise sqrt
+        "-gencode=arch=compute_89,code=sm_89",  # L4
+        "-DUSE_WMMA",          # enable WMMA path
+        "-DDEBUG_V3",          # enable asserts for evidence
     ]
     
-    print("Release flags:")
-    for flag in release_flags:
+    if debug:
+        extra_cuda_cflags += ["-G"]  # Debug symbols
+    
+    print("Build flags:")
+    for flag in extra_cuda_cflags:
         print(f"  {flag}")
     print()
     
@@ -48,9 +47,10 @@ def build_v3_release():
     module = torch.utils.cpp_extension.load(
         name="flash_attention_s512_v3_release",
         sources=[str(bindings_cpp), str(kernel_cu)],
-        extra_cuda_cflags=release_flags,
-        verbose=True,
+        extra_cuda_cflags=extra_cuda_cflags,
+        extra_cflags=["-std=c++17"],
         with_cuda=True,
+        verbose=True,
     )
     
     print()
