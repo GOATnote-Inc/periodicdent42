@@ -32,11 +32,12 @@ def build_v3_release(debug: bool = False):
         "-std=c++17",
         "-gencode=arch=compute_89,code=sm_89",  # L4
         "-DUSE_WMMA",          # enable WMMA path
-        "-DDEBUG_V3",          # enable asserts for evidence
     ]
     
     if debug:
-        extra_cuda_cflags += ["-G"]  # Debug symbols
+        extra_cuda_cflags += ["-G", "-DDEBUG_V3"]  # Debug symbols + asserts
+    else:
+        extra_cuda_cflags += ["-DNDEBUG"]  # Disable asserts in release
     
     print("Build flags:")
     for flag in extra_cuda_cflags:

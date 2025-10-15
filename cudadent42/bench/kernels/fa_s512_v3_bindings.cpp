@@ -107,6 +107,10 @@ torch::Tensor flash_attention_s512_v3_forward(
     
     TORCH_CHECK(err == cudaSuccess, "Kernel launch failed: " + std::string(cudaGetErrorString(err)));
     
+    // Synchronize and check for runtime errors
+    err = cudaStreamSynchronize(stream);
+    TORCH_CHECK(err == cudaSuccess, "Kernel runtime failed: " + std::string(cudaGetErrorString(err)));
+    
     return o;
 }
 
