@@ -335,6 +335,14 @@ __device__ void compute_block(
             }
         }
         
+        #if defined(DEBUG_V3)
+        // Phase 8: Online softmax monotonicity check
+        CUDA_DEBUG_ASSERT(l_new >= l_i[local_row]);
+        // Phase 8: Tile probability sum sanity
+        CUDA_DEBUG_ASSERT(isfinite(l_new));
+        CUDA_DEBUG_ASSERT(l_new >= 0.0f);
+        #endif
+        
         #if defined(DEBUG_DUMP)
         // Dump P for block(0,0) only, after softmax (S_row now contains P values)
         if (blockIdx.x == 0 && blockIdx.y == 0 && m_block == 0 && n_block == 0 && P_dump_tile) {
@@ -471,14 +479,12 @@ flash_attention_s512_v3_kernel(
         load_K_async<Traits>(&smem, K, 0, batch_idx, head_idx, 0, seq_len, num_heads);
         load_V_async<Traits>(&smem, V, 0, batch_idx, head_idx, 0, seq_len, num_heads);
         detail::cp_async_commit_group();
+        detail::cp_async_wait_group<0>();  // FIX A: Wait for all before compute
+        __syncthreads();
         
         for (int n_block = 0; n_block < num_blocks_n; n_block++) {
             const int stage_compute = n_block % Traits::STAGES;
             const int stage_load = (n_block + 1) % Traits::STAGES;
-            
-            // Wait for current stage
-            detail::cp_async_wait_group<Traits::STAGES - 1>();
-            __syncthreads();
             
             // Prefetch next stage (if exists)
             if (n_block + 1 < num_blocks_n) {
@@ -486,6 +492,8 @@ flash_attention_s512_v3_kernel(
                 load_V_async<Traits>(&smem, V, stage_load, batch_idx, head_idx, n_block + 1, seq_len, num_heads);
                 detail::cp_async_commit_group();
             }
+            detail::cp_async_wait_group<0>();  // FIX A: Wait for all before compute
+            __syncthreads();
             
             // Compute on current stage
             compute_block<Traits>(
