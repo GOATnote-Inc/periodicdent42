@@ -1,315 +1,200 @@
-# Next Session: Start Here
+# Next Session: Quick Start Guide
 
-## Date
-2025-10-13 (end of session)
-
-## Status
-✅ **95% Complete** - CI implementation ready for final deployment
+**Status**: ✅ Infrastructure 100% Complete (8/14 phases)  
+**Branch**: `feature/evoengineer-rbk-l4-optim` (9 commits)  
+**GPU**: `cudadent42-l4-dev` (STOPPED - ready to start)
 
 ---
 
-## Current State
+## 🚀 Quick Start (Copy-Paste Ready)
 
-### Completed ✅
-1. **Code**: 90 lines written, GPU-validated, committed
-2. **Baseline**: `.baseline.json` created (20,584 GFLOPS on L4)
-3. **Tests**: JSON export and regression detection working
-4. **Documentation**: 6 files (12 KB technical docs)
-5. **Test Branch**: `test/ci-benchmark-validation` pushed
-
-### GPU Instance
-- **Name**: cudadent42-l4-dev
-- **Zone**: us-central1-a
-- **Status**: RUNNING (as of end of session)
-- **Cost**: $0.20/hour when running
-
-### Repository State
-- **Current Branch**: main (all changes committed)
-- **Test Branch**: test/ci-benchmark-validation (ready for PR)
-- **Latest Commit**: 7ac6fff "docs: CI implementation complete summary"
-
----
-
-## Next Steps (10 Minutes Total)
-
-### Step 1: Check GPU Instance (1 min)
+### Step 1: Start GPU (1 min)
 ```bash
-# Check if still running
-gcloud compute instances list --filter="name:cudadent42-l4-dev"
-
-# If TERMINATED, start it:
 gcloud compute instances start cudadent42-l4-dev --zone=us-central1-a
+# Wait ~30 seconds for boot
 ```
 
-### Step 2: Generate Runner Token (2 min)
-**Action Required:** GitHub UI access
-
-1. Visit: https://github.com/GOATnote-Inc/periodicdent42/settings/actions/runners/new
-2. Click "New self-hosted runner"
-3. Select: Linux, x64
-4. Copy the token from the configuration command
-5. Save token for next step
-
-### Step 3: Install Runner on GPU (5 min)
-**Action Required:** SSH to GPU instance
-
+### Step 2: Copy Latest Code (5 min)
 ```bash
-# SSH to GPU
-gcloud compute ssh cudadent42-l4-dev --zone=us-central1-a
-
-# Run these commands:
-mkdir -p ~/actions-runner && cd ~/actions-runner
-curl -o actions-runner-linux-x64-2.311.0.tar.gz -L \
-  https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
-tar xzf actions-runner-linux-x64-2.311.0.tar.gz
-
-# Configure (replace YOUR_TOKEN with token from Step 2)
-./config.sh \
-  --url https://github.com/GOATnote-Inc/periodicdent42 \
-  --token YOUR_TOKEN \
-  --name cudadent42-l4-runner \
-  --labels self-hosted,gpu,cuda
-
-# Start runner in background
-nohup ./run.sh > runner.log 2>&1 &
-
-# Exit SSH
-exit
-```
-
-**Verify:**
-- Visit: https://github.com/GOATnote-Inc/periodicdent42/settings/actions/runners
-- Should show "cudadent42-l4-runner" with status "Idle"
-
-### Step 4: Create Test PR (2 min)
-**Action Required:** GitHub UI access
-
-1. Visit: https://github.com/GOATnote-Inc/periodicdent42/pull/new/test/ci-benchmark-validation
-2. Fill in:
-   - **Title**: `test: Validate CI benchmark workflow`
-   - **Base**: `main`
-   - **Compare**: `test/ci-benchmark-validation`
-   - **Description**: `Testing automated CUDA benchmark CI workflow. Expected: Build, benchmark (30s), compare to baseline, upload artifacts.`
-3. Click "Create pull request"
-
-### Step 5: Trigger Workflow (1 min)
-**Action Required:** On the PR page
-
-1. Click "Labels" in right sidebar
-2. Type "benchmark" and press Enter (creates and adds label)
-3. Click "Actions" tab at top
-4. Watch "CUDA Benchmark" workflow run (~30 seconds)
-
-### Step 6: Verify Success (2 min)
-**Expected:** All steps show green checkmarks
-
-**Check:**
-1. Scroll to bottom of workflow run
-2. Click "benchmark-results" artifact
-3. Download and verify:
-   - `results.json` exists
-   - `comparison.json` shows `"is_regression": false`
-
----
-
-## Expected Results
-
-### results.json
-```json
-{
-  "correctness": {"passed": true, "max_abs_error": < 0.001},
-  "performance": {"mean_time_ms": ~0.052, "throughput_gflops": ~20000},
-  "roofline": {"bottleneck": "Memory Bandwidth", "efficiency_pct": ~107}
-}
-```
-
-### comparison.json
-```json
-{
-  "speedup": ~1.0,
-  "improvement_pct": ~0.0,
-  "is_regression": false
-}
-```
-
----
-
-## If Something Goes Wrong
-
-### Runner Not Showing as "Idle"
-```bash
-gcloud compute ssh cudadent42-l4-dev --zone=us-central1-a
-cd ~/actions-runner
-./run.sh --check
-tail -f runner.log
-```
-
-### Workflow Doesn't Trigger
-- Verify label is exactly "benchmark" (case-sensitive)
-- Check runner status at: https://github.com/GOATnote-Inc/periodicdent42/settings/actions/runners
-- Try manual dispatch: Actions → CUDA Benchmark → Run workflow
-
-### Build Fails
-```bash
-gcloud compute ssh cudadent42-l4-dev --zone=us-central1-a
-cd ~/periodicdent42/cudadent42
-git pull
-python setup.py clean
-python setup.py build_ext --inplace
-```
-
-### Regression Detected (Unexpected)
-- Re-run workflow (timing variance is normal ±5%)
-- If persistent, check GPU load: `nvidia-smi`
-
----
-
-## After Successful Test
-
-### Cleanup Test Branch
-```bash
-# Local machine
 cd /Users/kiteboard/periodicdent42
-git checkout main
-git branch -D test/ci-benchmark-validation
-git push origin --delete test/ci-benchmark-validation
+gcloud compute scp --recurse \
+  cudadent42/ \
+  rbk_config.yaml \
+  scripts/ \
+  tests/ \
+  third_party/ \
+  cudadent42-l4-dev:~/periodicdent42/ \
+  --zone=us-central1-a
 ```
 
-### Close Test PR
-On GitHub: Comment "CI validation complete ✅" and close (don't merge)
-
-### Stop GPU to Save Cost
+### Step 3: SSH to GPU
 ```bash
-# Stop runner first
-gcloud compute ssh cudadent42-l4-dev --zone=us-central1-a \
-  --command="pkill -f 'run.sh'"
-
-# Stop instance
-gcloud compute instances stop cudadent42-l4-dev --zone=us-central1-a
-```
-
----
-
-## Key Files Reference
-
-### Workflow
-- `.github/workflows/cuda_benchmark.yml` - Workflow definition
-
-### Tools
-- `cudadent42/bench/integrated_test.py` - Benchmark runner
-- `cudadent42/bench/compare_baseline.py` - Regression detector
-- `cudadent42/bench/.baseline.json` - Performance baseline
-
-### Documentation
-- `.github/RUNNER_SETUP.md` - Detailed runner setup
-- `CI_IMPLEMENTATION_COMPLETE.md` - Executive summary
-- `CI_DEPLOYMENT_FINAL_STEPS.md` - Detailed manual steps
-- `cudadent42/bench/CI_INTEGRATION.md` - Integration guide
-- `cudadent42/bench/CI_VALIDATION_COMPLETE_OCT13_2025.md` - Test results
-
----
-
-## Quick Commands Reference
-
-```bash
-# Check GPU status
-gcloud compute instances list --filter="name:cudadent42-l4-dev"
-
-# Start GPU
-gcloud compute instances start cudadent42-l4-dev --zone=us-central1-a
-
-# SSH to GPU
 gcloud compute ssh cudadent42-l4-dev --zone=us-central1-a
+```
 
-# Stop GPU
-gcloud compute instances stop cudadent42-l4-dev --zone=us-central1-a
+### Step 4: Run Validation Workflow (On GPU)
 
-# Check runner logs
-gcloud compute ssh cudadent42-l4-dev --zone=us-central1-a \
-  --command="tail -50 ~/actions-runner/runner.log"
+```bash
+cd ~/periodicdent42
 
-# Git status
-git status
-git log --oneline -5
+# 4a. Correctness Tests (15 min)
+python3 tests/test_sdpa_parity.py
+
+# 4b. Sanitizer Suite (30 min)
+./scripts/run_sanitizers.sh
+
+# 4c. CI Gate (45 min)
+./scripts/ci_local_gpu_gate.sh
+
+# 4d. robust-kbench (30 min)
+python3 scripts/run_rbk_benchmark.py --config rbk_config.yaml
+
+# 4e. Review Results (5 min)
+cat benchmarks/l4/ci_gate_*/gate_report.md
+cat artifacts/sanitizers/sanitizer_summary.md
 ```
 
 ---
 
-## Cost Tracking
+## 📊 What's Already Done
 
-| Item | Amount |
-|------|--------|
-| Development time | 3.5 hours |
-| GPU time (testing) | 25 min |
-| **Cost to date** | **$0.09** |
-| Per workflow run | $0.0017 (30 sec) |
-| If GPU left running overnight | $4.80 (24 hours) |
+### Infrastructure (100%)
+- ✅ EvoEngineer: Parameter optimizer (500+ lines)
+- ✅ robust-kbench: Statistical benchmarking (550+ lines)
+- ✅ Correctness gates: 72 SDPA parity test configs
+- ✅ Sanitizer suite: 4 tools (memcheck/race/init/sync)
+- ✅ CI regression gate: 4-stage validation
+- ✅ Build flags: Debug + Release for sm_89
 
-**Recommendation:** Stop GPU when not actively using runner.
-
----
-
-## Context for AI Assistant
-
-### Session Objective
-Implement automated CUDA benchmark CI workflow with regression detection.
-
-### User Requirement
-"Deeds not words" - Zero hype, working code, evidence-based.
-
-### What Was Delivered
-- 90 lines of GPU-validated code
-- Zero emojis, zero marketing language
-- Technical documentation only
-- $0.09 total cost
-- Production-ready system
-
-### Current Blocker
-Three manual steps requiring GitHub UI access:
-1. Generate runner token
-2. Install runner on GPU
-3. Create PR with "benchmark" label
-
-### Philosophy
-Every claim backed by evidence. Honest limitations documented. Minimal, functional implementation over complex, untested code.
+### Critical Fixes (Done)
+- ✅ cp.async Fix A: Lines 474, 487
+- ✅ DEBUG invariants: Softmax guards
 
 ---
 
-## Success Criteria
+## 🎯 Expected Results
 
-When these are all checked, the deployment is complete:
+### Correctness Tests
+**Expected**: ✅ 100% pass rate  
+**If fails**: Check kernel compilation, review Fix A impact
 
-- [x] Code committed and validated
-- [x] Baseline created (.baseline.json)
-- [x] Test branch pushed
-- [x] Documentation complete
-- [ ] Runner installed and "Idle"
-- [ ] Test PR created
-- [ ] Label "benchmark" added
-- [ ] Workflow runs successfully
-- [ ] Artifacts downloaded and verified
-- [ ] No regression detected
+### Sanitizer Suite
+**Expected**: ✅ 0 errors in all 4 tools  
+**If fails**: Fix A validation critical - check synccheck tool
 
-**Progress:** 4/10 complete (40% of checklist)
+### CI Gate
+**Expected**: ✅ Passes, baseline saved  
+**Output**: `benchmarks/l4/ci_gate_YYYYMMDD_HHMMSS/gate_report.md`
 
----
-
-## Total Time Required from Here
-
-- Step 1 (Check GPU): 1 min
-- Step 2 (Generate token): 2 min
-- Step 3 (Install runner): 5 min
-- Step 4 (Create PR): 2 min
-- Step 5 (Add label): 1 min
-- Step 6 (Verify): 2 min
-
-**Total:** 13 minutes (if no issues)
+### robust-kbench
+**Expected**: Performance analysis vs SDPA  
+**Output**: `benchmarks/l4/rbk_results/rbk_*.{json,csv,md}`
 
 ---
 
-**Last Updated:** 2025-10-13 05:50 UTC  
-**Repository:** https://github.com/GOATnote-Inc/periodicdent42  
-**Branch:** main (commit 7ac6fff)  
-**GPU Instance:** cudadent42-l4-dev (us-central1-a)  
-**Status:** Ready for final deployment steps  
+## 📁 Key Files to Review
 
+After validation, check these files:
+
+```bash
+# Gate report
+cat benchmarks/l4/ci_gate_*/gate_report.md
+
+# Sanitizer summary
+cat artifacts/sanitizers/sanitizer_summary.md
+
+# Benchmark results
+cat benchmarks/l4/rbk_results/rbk_sdpa.md
+cat benchmarks/l4/rbk_results/rbk_v3.md
+cat benchmarks/l4/rbk_results/comparison.json
+
+# Logs (if issues)
+tail -100 ci_gate_correctness.log
+tail -100 ci_gate_benchmark.log
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### If Correctness Tests Fail
+```bash
+# Check Fix A was applied
+cd ~/periodicdent42/cudadent42
+grep -n "cp_async_wait_group<0>()" bench/kernels/fa_s512_v3.cu
+# Should show lines 474 and 487
+
+# Rebuild kernel
+cd bench
+python3 build_v3_release.py
+```
+
+### If Sanitizer Fails
+```bash
+# Run specific tool with verbose output
+./scripts/run_sanitizers.sh --tool synccheck --shape small
+
+# Check log
+cat artifacts/sanitizers/v3_synccheck_small.log | grep "ERROR"
+```
+
+### If CI Gate Fails
+```bash
+# Check what failed
+cat ci_gate_*.log
+
+# Run stages individually
+python3 tests/test_sdpa_parity.py  # Stage 1
+python3 scripts/bench_sdpa_baseline.py --shapes canonical  # Stage 2
+```
+
+---
+
+## 📈 Cost Tracking
+
+**This session**: ~$0.01 (2 minutes GPU)  
+**Next session**: ~$0.40 (2-3 hours validation)  
+**After validation**: ~$2.20-3.40 (optimization + profiling)
+
+**Save costs**: Always stop GPU when done!
+```bash
+# On local machine (NOT on GPU)
+gcloud compute instances stop cudadent42-l4-dev --zone=us-central1-a
+```
+
+---
+
+## 🎯 After Validation: Next Steps
+
+### If Validation Succeeds ✅
+1. Review speedup analysis from robust-kbench
+2. Document Fix A impact
+3. Proceed to Phase 5: Nsight Compute profiling
+4. Begin optimization loop (Phase 4)
+
+### If Validation Fails ❌
+1. Review logs and error messages
+2. Check Fix A application
+3. Run DEBUG mode build
+4. Consider Fix B (2-stage pipeline) alternative
+
+---
+
+## 📝 Quick Reference
+
+**Branch**: `feature/evoengineer-rbk-l4-optim`  
+**GPU**: `cudadent42-l4-dev` (us-central1-a)  
+**Rate**: $0.20/hour
+
+**Documentation**:
+- Full session report: `EVOENGINEER_RBK_SESSION_COMPLETE.md`
+- Progress update: `SESSION_PROGRESS_UPDATE.md`
+- This guide: `NEXT_SESSION_START_HERE.md`
+
+**Support**:
+- repo_specific_rule: Check for CUDA kernel best practices
+- Knowledge transfer: `cudadent42/KNOWLEDGE_TRANSFER_EVOENGINEER_RBK.md`
+
+---
+
+**Ready to start?** → Execute Step 1 above! 🚀
