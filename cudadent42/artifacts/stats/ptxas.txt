@@ -1,1 +1,26 @@
-scripts/ci/ptxas_snapshot.sh: line 6: nvcc: command not found
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z30flash_attention_s512_v3_kernelI12KernelTraitsILi16ELi64ELi64ELi4ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib' for 'sm_89'
+ptxas info    : Function properties for _Z30flash_attention_s512_v3_kernelI12KernelTraitsILi16ELi64ELi64ELi4ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib
+    800 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 111 registers, used 1 barriers, 800 bytes cumulative stack size, 36992 bytes smem, 401 bytes cmem[0]
+ptxas info    : Compile time = 203.799 ms
+ptxas info    : Compiling entry function '_Z30flash_attention_s512_v3_kernelI12KernelTraitsILi32ELi64ELi64ELi4ELi1ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib' for 'sm_89'
+ptxas info    : Function properties for _Z30flash_attention_s512_v3_kernelI12KernelTraitsILi32ELi64ELi64ELi4ELi1ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib
+    1344 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 127 registers, used 1 barriers, 1344 bytes cumulative stack size, 24704 bytes smem, 401 bytes cmem[0]
+ptxas info    : Compile time = 187.521 ms
+ptxas info    : Compiling entry function '_Z30flash_attention_s512_v3_kernelI12KernelTraitsILi48ELi64ELi64ELi8ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib' for 'sm_89'
+ptxas info    : Function properties for _Z30flash_attention_s512_v3_kernelI12KernelTraitsILi48ELi64ELi64ELi8ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib
+    1072 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 95 registers, used 1 barriers, 1072 bytes cumulative stack size, 45184 bytes smem, 401 bytes cmem[0]
+ptxas info    : Compile time = 202.771 ms
+ptxas info    : Compiling entry function '_Z30flash_attention_s512_v3_kernelI12KernelTraitsILi32ELi32ELi64ELi4ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib' for 'sm_89'
+ptxas info    : Function properties for _Z30flash_attention_s512_v3_kernelI12KernelTraitsILi32ELi32ELi64ELi4ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib
+    1216 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 69 registers, used 1 barriers, 1216 bytes cumulative stack size, 24704 bytes smem, 401 bytes cmem[0]
+ptxas info    : Compile time = 152.083 ms
+ptxas info    : Compiling entry function '_Z30flash_attention_s512_v3_kernelI12KernelTraitsILi32ELi64ELi64ELi4ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib' for 'sm_89'
+ptxas info    : Function properties for _Z30flash_attention_s512_v3_kernelI12KernelTraitsILi32ELi64ELi64ELi4ELi2ELb1ELb1EEEvPK6__halfS4_S4_PS2_fiiib
+    1344 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 111 registers, used 1 barriers, 1344 bytes cumulative stack size, 41088 bytes smem, 401 bytes cmem[0]
+ptxas info    : Compile time = 211.444 ms
