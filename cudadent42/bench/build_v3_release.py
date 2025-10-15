@@ -7,6 +7,7 @@ import torch
 import torch.utils.cpp_extension
 from pathlib import Path
 import sys
+import os
 
 def build_v3_release(debug: bool = False):
     """Build V3 with release optimizations (or debug if flag set)"""
@@ -31,8 +32,11 @@ def build_v3_release(debug: bool = False):
         "-Xptxas", "-v",       # Verbose ptxas (shows regs/thread)
         "-std=c++17",
         "-gencode=arch=compute_89,code=sm_89",  # L4
-        "-DUSE_WMMA",          # enable WMMA path
     ]
+    
+    # WMMA toggle (default ON). Set USE_WMMA=0 to disable.
+    if os.environ.get("USE_WMMA", "1") != "0":
+        extra_cuda_cflags.append("-DUSE_WMMA")
     
     if debug:
         extra_cuda_cflags += ["-G", "-DDEBUG_V3"]  # Debug symbols + asserts
