@@ -594,11 +594,13 @@ flash_attention_s512_v3_kernel(
     float l_i[Traits::BLOCK_M / Traits::NUM_WARPS];
     
     // Debug: Print grid config once to verify fix
+#ifdef DEBUG_V3
     if (block_linear == 0 && threadIdx.x == 0) {
         printf("[V3 DEBUG] Grid=(%d,%d,%d) Block=(%d,%d,%d) total_blocks=%d\\n",
                gridDim.x, gridDim.y, gridDim.z, blockDim.x, blockDim.y, blockDim.z,
                total_blocks);
     }
+#endif
     
     // Decode this block's work item (no loop - one block does one work item!)
     const int work_id = block_linear;
