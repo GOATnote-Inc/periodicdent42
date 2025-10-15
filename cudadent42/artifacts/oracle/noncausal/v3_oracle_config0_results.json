@@ -1,0 +1,36 @@
+{
+  "shape": {
+    "B": 1,
+    "H": 1,
+    "S": 512,
+    "D": 64
+  },
+  "is_causal": false,
+  "config_idx": 0,
+  "oracle": {
+    "O_range": [
+      -0.33473142981529236,
+      0.36974668502807617
+    ],
+    "O_mean": 0.0016221351688727736,
+    "O_std": 0.07537634670734406
+  },
+  "v3": {
+    "comparison": {
+      "max_abs_diff": 0.3542526066303253,
+      "mean_abs_diff": 0.044821031391620636,
+      "max_rel_diff": 10273.3505859375,
+      "mean_rel_diff": 3.3666982650756836,
+      "worst_idx": [
+        473,
+        24
+      ],
+      "ref_val": 0.3361556828022003,
+      "test_val": -0.018096923828125,
+      "passed": false
+    },
+    "has_nan": false,
+    "has_inf": false,
+    "config": "32_64_4_2_1_1 (BLOCK_M=32, BLOCK_N=64, WARPS=4)"
+  }
+}
