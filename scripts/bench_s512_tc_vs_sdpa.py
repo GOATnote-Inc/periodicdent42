@@ -6,12 +6,8 @@ import inspect
 torch.backends.cuda.matmul.allow_tf32=False
 
 def bench(fn,Q,K,V,s,c,w=5,n=50):
-  # Reduced warmup and iterations to avoid queue overflow
-  for _ in range(w):
-    fn(Q,K,V,s,c)
+  for _ in range(w): fn(Q,K,V,s,c)
   torch.cuda.synchronize()
-  
-  # Benchmark  
   ts=[]
   for _ in range(n):
     t=time.perf_counter()

@@ -361,12 +361,14 @@ __device__ void compute_block(
         const int m = m_block * Traits::BLOCK_M + row_start + local_row;
         if (m >= seq_len) continue;
         
-        // Compute attention scores S = Q @ K^T for this row (always initialize)
+        // Compute attention scores S = Q @ K^T for this row
         float S_row[Traits::BLOCK_N];
+#if defined(ENABLE_SROW_INIT)
         #pragma unroll
         for (int n_idx = 0; n_idx < Traits::BLOCK_N; ++n_idx) {
             S_row[n_idx] = -INFINITY;
         }
+#endif
         
 #if defined(USE_WMMA)
         // WMMA path: use Tensor Cores when dims are aligned (for proof)

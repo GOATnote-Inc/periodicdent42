@@ -1,0 +1,18 @@
+name: guard-no-gpu-stop
+on: [push, pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if any workflow or script stops GPU instances
+        run: |
+          set -euo pipefail
+          bad=$(grep -RInE "gcloud +compute +instances +stop|az +vm +deallocate|aws +ec2 +stop-instances" . || true)
+          if [ -n "$bad" ]; then
+            echo "ERROR: Found GPU stop/deallocate commands in repo:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "OK: no GPU stop/deallocate commands detected"
+
