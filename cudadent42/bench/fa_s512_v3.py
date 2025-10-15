@@ -81,7 +81,7 @@ def flash_attention_s512_v3_forward(
     B, H, S, D = Q.shape
     assert S == 512, "This kernel is specialized for S=512"
     assert D == 64, "Only HEAD_DIM=64 supported"
-    assert config_id in [1, 2, 3], f"config_id must be 1, 2, or 3 (got {config_id})"
+    assert config_id in [1, 2, 3, 4, 5], f"config_id must be 1-5 (got {config_id})"
     
     # Default softmax scale
     if softmax_scale is None:
