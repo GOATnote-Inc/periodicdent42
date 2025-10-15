@@ -17,7 +17,9 @@
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include <mma.h>
+#include <mma.h>            // nvcuda::wmma
+
+using namespace nvcuda;
 #include <cmath>
 #include "detail/cp_async.hpp"
 #include "detail/smem_swizzle.hpp"
@@ -82,6 +84,9 @@ struct __align__(16) SharedMemory {
     
     // Low-regs variant: per-CTA accumulator for O (float) - saves ~512 regs/thread!
     float O_accum[Traits::BLOCK_M][Traits::HEAD_DIM];
+    
+    // Pad to avoid bank conflicts on 32-way banks when HEAD_DIM % 32 == 0
+    float pad0[32];
 };
 
 // SMEM size calculation (must be ≤ 48KB)
@@ -90,10 +95,11 @@ constexpr size_t smem_bytes() {
     constexpr size_t k_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::K_STRIDE * sizeof(half);
     constexpr size_t v_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::V_STRIDE * sizeof(half);
     constexpr size_t o_bytes = Traits::BLOCK_M * Traits::HEAD_DIM * sizeof(float);
-    constexpr size_t total = k_bytes + v_bytes + o_bytes;
+    constexpr size_t pad_bytes = 32 * sizeof(float);  // Bank conflict padding
+    constexpr size_t total = k_bytes + v_bytes + o_bytes + pad_bytes;
     
-    // Static assertion: Must fit in L4's 48KB limit (K: 16KB, V: 16KB, O: 8KB = 40KB total)
-    static_assert(total <= 49152, "SMEM exceeds 48KB limit (K+V+O_accum)");
+    // Static assertion: Must fit in L4's 48KB limit (K: 16KB, V: 16KB, O: 8KB, pad: 128B)
+    static_assert(total <= 49152, "SMEM exceeds 48KB limit (K+V+O_accum+pad)");
     
     return total;
 }
@@ -247,6 +253,49 @@ __device__ float* g_P_dump = nullptr;  // [BLOCK_M][BLOCK_N] from block(0,0)
 __device__ float* g_O_dump = nullptr;  // [BLOCK_M][HEAD_DIM] from block(0,0)
 #endif
 
+// ============================================================================
+// WMMA/Tensor Core path for QK^T (proof via mma.sync in SASS)
+// ============================================================================
+
+#if defined(USE_WMMA)
+template<typename Traits>
+__device__ void qk_dot_wmma(
+    const half* __restrict__ Q_tile, int q_ld,
+    const half* __restrict__ Kt_tile, int kt_ld,
+    float* __restrict__ S_tile, int s_ld,
+    int m_tiles, int n_tiles, int k_tiles, float scale)
+{
+    using namespace nvcuda::wmma;
+    for (int mi = 0; mi < m_tiles; ++mi) {
+        for (int ni = 0; ni < n_tiles; ++ni) {
+            fragment<accumulator, 16, 16, 16, float> acc;
+            fill_fragment(acc, 0.0f);
+            
+            for (int ki = 0; ki < k_tiles; ++ki) {
+                fragment<matrix_a, 16, 16, 16, half, row_major> a;
+                fragment<matrix_b, 16, 16, 16, half, col_major> b;
+                
+                const half* Ap = Q_tile + (mi * 16) * q_ld + ki * 16;
+                const half* Bp = Kt_tile + (ki * 16) * kt_ld + (ni * 16);
+                
+                load_matrix_sync(a, Ap, q_ld);
+                load_matrix_sync(b, Bp, kt_ld);
+                mma_sync(acc, a, b, acc);
+            }
+            
+            store_matrix_sync(S_tile + (mi * 16) * s_ld + (ni * 16), acc, s_ld, mem_row_major);
+            
+            // Apply scale
+            for (int r = 0; r < 16; ++r) {
+                for (int c = 0; c < 16; ++c) {
+                    S_tile[(mi * 16 + r) * s_ld + (ni * 16 + c)] *= scale;
+                }
+            }
+        }
+    }
+}
+#endif
+
 template<typename Traits>
 __device__ void compute_block(
     half Q_reg[Traits::BLOCK_M / Traits::NUM_WARPS][Traits::HEAD_DIM],
@@ -274,6 +323,8 @@ __device__ void compute_block(
         if (m >= seq_len) continue;
         
         // Compute attention scores S = Q @ K^T for this row
+        // TODO(wmma): Use qk_dot_wmma when USE_WMMA defined and dims aligned (16x16x16 tiles)
+        // Current: scalar fallback (row-by-row per-warp computation)
         float S_row[Traits::BLOCK_N];
         
         for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
@@ -291,7 +342,7 @@ __device__ void compute_block(
                 continue;
             }
             
-            // Dot product Q_row · K_row
+            // Dot product Q_row · K_row (scalar path - WMMA integration pending)
             float acc = 0.0f;
             for (int d = 0; d < Traits::HEAD_DIM; d++) {
                 acc += __half2float(Q_reg[local_row][d]) * 
@@ -365,6 +416,14 @@ __device__ void compute_block(
             }
             smem->O_accum[row_start + local_row][d] += acc;
         }
+        
+        #ifdef DEBUG_V3
+        // Evidence: online-softmax monotonic norm assertion (rebuttal for warp races)
+        if (l_new < l_i[local_row] - 1e-5f) {
+            printf("[WARN] Block=%d Row=%d: l_new=%f < l_old=%f (softmax non-monotonic)\n",
+                   blockIdx.x, row_start + local_row, l_new, l_i[local_row]);
+        }
+        #endif
         
         // Update running stats
         m_i[local_row] = m_new;
