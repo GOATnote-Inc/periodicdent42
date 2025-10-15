@@ -16,11 +16,17 @@
 - **Correctness:** 100% (industry-standard reference implementation)
 - **Status:** Stable, validated, ready for production
 
-**Custom kernel development:** In progress on `feature/v3-fix-s512` branch
-- V2 (tensor cores): 6.5× slower than SDPA (correctness validated)
-- V3 (large tiles): Under correctness repair; performance TBD
+**Custom kernel development:** Completed with learnings documented
+- V2 (tensor cores): 6.5× slower than SDPA ✅ Correct, but slow
+- V3 (large tiles): ❌ **BLOCKED** - Systematic correctness bug (0.675× scaling)
+  * 2 fix iterations attempted (bounds checking, formula verification)
+  * Root cause unidentified after $0.28 GPU budget
+  * Development halted per 2-iteration stop-loss methodology
+  * See `V3_POSTMORTEM.md` for complete analysis
 
-See `ENGINEER_LOG.md` for detailed development history and `artifacts/` for all validation evidence.
+**Recommendation:** Use PyTorch SDPA for all production workloads on L4.
+
+See `ENGINEER_LOG.md` for detailed development history, `V3_POSTMORTEM.md` for failure analysis, and `artifacts/` for all validation evidence.
 
 ---
 

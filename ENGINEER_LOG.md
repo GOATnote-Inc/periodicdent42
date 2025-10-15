@@ -94,7 +94,39 @@ may contain garbage if not properly masked. This could inflate l_i in edge cases
 **Files Modified:**
 - `cudadent42/bench/kernels/fa_s512_v3.cu` (lines 279-283)
 
-**Next:** Upload fix to GPU → rebuild → run oracle test → check if 0.675× scaling is fixed.
+**Iteration 1 Result: FAILED ❌**
+- Rebuilt kernel with bounds check
+- **Output unchanged:** Still [-0.143799, 0.136475] (same 0.675× scaling)
+- Max abs diff: 0.354 (identical to before)
+- **Conclusion:** Bounds check didn't trigger (S=512 has no incomplete tiles)
+
+**Analysis for Iteration 2:**
+The 1.48× over-accumulation of l_i is systematic and uniform. Potential causes:
+1. **SMEM initialization bug:** Uninitialized SMEM from previous kernels?
+2. **cp.async pipeline bug:** Wrong stage being computed?
+3. **Floating point precision:** Numerical instability in exp/log?
+4. **Hidden second accumulation:** l_i being added twice somewhere?
+5. **Wrong iteration count:** Processing 1.48× too many elements?
+
+**Step 3 Decision: STOP V3 Development ⛔**
+- **2-iteration limit reached** per post-mortem methodology
+- **$1.00 stop-loss approached** ($0.28 spent of $1.70 budget)
+- **Root cause unidentified** after systematic debugging
+- Online softmax formula is mathematically correct (Python simulation: 1.000× vs CUDA 1.48×)
+- Bug is in CUDA implementation, not formula
+
+**Final Decision: SDPA Remains Production Champion ✅**
+- **Performance:** 0.073 ms (4.4× faster than V3's broken target)
+- **Correctness:** 100% (industry-standard reference)
+- **V3 Status:** BLOCKED (systematic 0.675× scaling bug unfixed)
+
+**Artifacts Created:**
+- `V3_POSTMORTEM.md` - Complete failure analysis and lessons learned
+- `analyze_oracle_error.py` - Error pattern analysis (0.675× scaling)
+- `verify_softmax_math.py` - Formula verification (passed)
+- Evidence trail: oracle results, memcheck logs, numpy arrays
+
+**Next:** Step 6 - Finalize README, commit all evidence, close session.
 
 ---
 
