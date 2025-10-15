@@ -1,0 +1,1 @@
+scripts/ci/ptxas_snapshot.sh: line 6: nvcc: command not found
