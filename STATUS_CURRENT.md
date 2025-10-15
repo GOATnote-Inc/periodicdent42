@@ -2,8 +2,10 @@
 
 ## Snapshot (auto-updated by humans)
 - Branch: `feature/evidence_wmma_tc`
+- Commit: `9ec6399` (2025-10-15)
 - Build: **Release** (no DEBUG_V3, `-DNDEBUG`, `-DUSE_WMMA`)
 - GPU: NVIDIA L4 (sm_89)
+- Validation Suite: `scripts/run_gpu_validation.sh` (6-stage)
 
 ## Evidence (committed)
 - Sanitizer: `cudadent42/artifacts/sanitizers/compute-sanitizer.log` → **0 errors**
@@ -19,13 +21,17 @@ RuntimeError: CUDA error: unspecified launch failure
 - Not WMMA-specific (reproduced with no-WMMA)
 - Suspected cause: S_row init loop or sync pattern during warmup
 
-## Repro Commands
+## Quick Start (GPU)
 ```bash
-rm -rf ~/.cache/torch_extensions/* /tmp/torch_extensions/* || true
+# One-shot validation suite (6 stages)
+./scripts/run_gpu_validation.sh
+
+# Or manual:
+rm -rf ~/.cache/torch_extensions/* /tmp/torch_extensions/*
 python3 -c "from build_v3_release import build_v3_release; build_v3_release(False)"
-pytest -q tests/test_sdpa_parity.py || true
-python3 scripts/bench_s512_tc_vs_sdpa.py || true
-python3 scripts/summarize_s512_bench.py || true
+python3 scripts/bench_s512_tc_vs_sdpa.py
+python3 scripts/bench_s512_tc_vs_sdpa.py --streams  # stream variant
+python3 scripts/summarize_s512_bench.py
 ```
 
 ## Next Actions (ordered)
