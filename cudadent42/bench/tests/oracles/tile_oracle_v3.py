@@ -11,7 +11,7 @@ def main():
     B,H,S,D=2,8,512,64
     torch.manual_seed(42)
     Q=torch.randn(B,H,S,D,device="cuda",dtype=torch.float16)
-    O=f(Q,Q,Q,1.0/(D**0.5),is_causal,a.config)
+    O=f(Q,Q,Q,1.0/(D**0.5),is_causal,1)  # config_id=1 (32x64, STAGES=2)
     assert torch.isfinite(O).all(), "non-finite output"
     print("OK")
 if __name__=="__main__": main()

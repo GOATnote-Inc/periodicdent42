@@ -11,11 +11,12 @@ def bench(fn,Q,K,V,s,c,w=5,n=50,streams=False):
   torch.cuda.synchronize()
   ts=[]
   for _ in range(n):
-    st = Stream() if streams else None
-    if st: 
-      with torch.cuda.stream(st): fn(Q,K,V,s,c)
+    if streams:
+      st = Stream()
+      with torch.cuda.stream(st):
+        fn(Q,K,V,s,c)
       st.synchronize()
-    else:
+    else:  # one global stream; NO per-iter sync here
       fn(Q,K,V,s,c)
     t=time.perf_counter()
     torch.cuda.synchronize()
@@ -46,7 +47,7 @@ def main():
   s=1.0/(D**0.5)
   sdpa=lambda q,k,v,sc,ca: F.scaled_dot_product_attention(q,k,v,is_causal=ca,scale=sc)
   res={}
-  res["sdpa"]  = dict(zip(("p50_ms","p90_ms"), bench(sdpa,Q,K,V,s,False,streams=a.streams)))
+  res["sdpa"]  = dict(zip(("p50_ms","p90_ms"), bench(sdpa,Q,K,V,s,False,streams=False)))
   res["v3"]    = dict(zip(("p50_ms","p90_ms"), bench(v3,Q,K,V,s,False,streams=a.streams)))
   if tc is not None:
     res["tc"]  = dict(zip(("p50_ms","p90_ms"), bench(tc,Q,K,V,s,False,streams=a.streams)))
