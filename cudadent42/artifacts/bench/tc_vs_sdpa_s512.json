@@ -1,22 +1,10 @@
-================================================================================
-🔧 Building V3 (RELEASE MODE)
-================================================================================
-Kernel: /home/kiteboard/periodicdent42/cudadent42/bench/kernels/fa_s512_v3.cu
-Bindings: /home/kiteboard/periodicdent42/cudadent42/bench/kernels/fa_s512_v3_bindings.cpp
-
-Build flags:
-  -O3
-  -use_fast_math
-  -lineinfo
-  -Xptxas
-  -v
-  -std=c++17
-  -gencode=arch=compute_89,code=sm_89
-  -DUSE_WMMA
-  -DDEBUG_V3
-
-ninja: no work to do.
-[V3 DEBUG] Grid=(256,1,1) Block=(128,1,1) total_blocks=256\n
-================================================================================
-✅ V3 release build complete
-================================================================================
+{
+  "sdpa": {
+    "p50_ms": 0.02221499994448095,
+    "p90_ms": 0.022528300041813054
+  },
+  "v3": {
+    "p50_ms": 0.03793099972426717,
+    "p90_ms": 0.04421240014380601
+  }
+}
