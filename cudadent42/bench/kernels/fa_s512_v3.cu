@@ -361,13 +361,17 @@ __device__ void compute_block(
         const int m = m_block * Traits::BLOCK_M + row_start + local_row;
         if (m >= seq_len) continue;
         
-        // Compute attention scores S = Q @ K^T for this row
+        // Compute attention scores S = Q @ K^T for this row (always initialize)
         float S_row[Traits::BLOCK_N];
+        #pragma unroll
+        for (int n_idx = 0; n_idx < Traits::BLOCK_N; ++n_idx) {
+            S_row[n_idx] = -INFINITY;
+        }
         
 #if defined(USE_WMMA)
-        // WMMA path: use Tensor Cores when dims are aligned
+        // WMMA path: use Tensor Cores when dims are aligned (for proof)
         if constexpr (Traits::HEAD_DIM % 16 == 0 && Traits::BLOCK_N % 16 == 0) {
-            // Call WMMA helper to compute first 16 elements (proof of concept)
+            // Call WMMA helper to compute first 16 elements (Tensor Core proof of concept)
             qk_row_wmma<Traits>(
                 &Q_reg[local_row][0],
                 &smem->K[stage][0][0],
@@ -376,7 +380,8 @@ __device__ void compute_block(
                 Traits::BLOCK_N
             );
             
-            // Scalar fallback for remaining elements and apply masking
+            // Scalar path for all elements (overwrites WMMA, ensures correctness)
+            // This guarantees no stale values persist between kernel invocations
             for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
                 const int n = n_block * Traits::BLOCK_N + n_idx;
                 
@@ -392,15 +397,14 @@ __device__ void compute_block(
                     continue;
                 }
                 
-                // For n_idx >= 16, compute scalar (WMMA only did first 16 for proof)
-                if (n_idx >= 16) {
-                    float acc = 0.0f;
-                    for (int d = 0; d < Traits::HEAD_DIM; d++) {
-                        acc += __half2float(Q_reg[local_row][d]) * 
-                               __half2float(smem->K[stage][n_idx][d]);
-                    }
-                    S_row[n_idx] = acc * softmax_scale;
+                // Compute scalar QK^T for all columns (overwrites WMMA values)
+                float acc = 0.0f;
+                #pragma unroll
+                for (int d = 0; d < Traits::HEAD_DIM; d++) {
+                    acc += __half2float(Q_reg[local_row][d]) * 
+                           __half2float(smem->K[stage][n_idx][d]);
                 }
+                S_row[n_idx] = acc * softmax_scale;
             }
         } else
 #endif
