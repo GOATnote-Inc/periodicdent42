@@ -16,11 +16,18 @@ After discovering **ALL existing kernels were broken**, built working FlashAtten
 - **Issue**: Single-threaded reductions created serialization bottleneck
 - **Learning**: Block tiling needs parallel reductions, not serial
 
-### 3. Phase 3: Improved Structure (Current Best)
+### 3. Phase 3: Improved Structure
 - **Result**: 1634 μs (1.76× speedup) ✅
 - **Correctness**: ✅ PASS (max_diff=0.001953)
 - **Improvements**: BLOCK_M=32, better warp utilization, 4 warps/block
 - **Grid**: 16 blocks (vs 512 in baseline)
+
+### 4. EvoEngineer Sweep Complete ✅
+- **24 variants tested** across 2 generations (automated exploration)
+- **Result**: 1099.78 μs (2.61× speedup vs minimal) ✅
+- **Correctness**: ✅ All 24 variants PASS (max_diff=0.001953)
+- **Optimizations Applied**: Warp reductions + vectorized loads (confirmed in PTX)
+- **Root Cause Found**: Synchronization bottleneck (40 `__syncthreads()`/block = 55% runtime)
 
 ## 📊 Performance Progression
 
@@ -28,8 +35,9 @@ After discovering **ALL existing kernels were broken**, built working FlashAtten
 |--------|-----------|---------|-------------|--------|
 | **Baseline (minimal)** | 2870 | 1.00× | ✅ | Starting point |
 | **Phase 1 (tiling)** | 3652 | 0.79× | ✅ | Regression (serialization) |
-| **Phase 3 (structure)** | **1634** | **1.76×** | ✅ | **Current best** |
-| **PyTorch SDPA** | 47 | 61× | ✅ | Target |
+| **Phase 3 (structure)** | 1634 | 1.76× | ✅ | Manual optimization |
+| **Phase 3 (EvoEng)** | **1099.78** | **2.61×** | ✅ | **Current best** (24 variants) |
+| **PyTorch SDPA** | 47 | 61× | ✅ | Target (23.4× gap remains) |
 
 ## 🎓 Engineering Lessons
 
@@ -78,15 +86,32 @@ After discovering **ALL existing kernels were broken**, built working FlashAtten
 
 ## 📈 Next Steps
 
-### Immediate (1-2 hours)
-1. Fix parallel reductions in Phase 3 (warp-level)
-2. Add vectorized loads (uint4)
-3. Target: 500-800 μs
+### ✅ COMPLETED: EvoEngineer Infrastructure
+- Automated sweep of 24 variants (2 generations)
+- Confirmed optimizations are applied (PTX analysis)
+- Identified root cause: synchronization bottleneck
+- **Files**: `EVOENG_SWEEP_RESULTS.md`, `ROOT_CAUSE_ANALYSIS.md`
 
-### Short-term (4-6 hours)
-1. Implement real WMMA (Tensor Cores)
-2. Validate on Nsight Compute
-3. Target: 50-100 μs
+### Phase 4: Remove Synchronization Bottleneck (1-2 hours) 🔴
+1. **Restructure inner loop**: 5 syncs → 2 syncs per KV tile
+2. **Warp-synchronous programming**: No cross-warp communication
+3. **Target**: 600-700 μs (1.8× speedup)
+
+### Phase 5: Implement WMMA/Tensor Cores (4-6 hours) 🔴
+1. Replace scalar Q@K^T with WMMA (16x16x16)
+2. Replace scalar P@V with WMMA
+3. FP16 accumulation for Ada (2× throughput)
+4. **Target**: 300-400 μs (1.75× speedup)
+
+### Phase 6: XOR Swizzling + BLOCK_M=64 (2-3 hours) 🟡
+1. Fix SMEM overflow for BLOCK_M=64
+2. Implement XOR swizzling (bank conflicts)
+3. **Target**: 230-320 μs (1.25× speedup)
+
+### Phase 7: Advanced Optimizations (4-6 hours) 🟢
+1. Software pipelining
+2. L2 cache persistence API
+3. **Target**: 100-150 μs (2× speedup)
 
 ### Success Criteria
 - ✅ Correctness: torch.allclose(atol=1e-3)
