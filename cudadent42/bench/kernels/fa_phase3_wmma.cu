@@ -104,6 +104,34 @@ __global__ void flash_attention_phase3_kernel(
         
         // Load K and V tiles
         for (int row = warp_id; row < kv_size; row += (THREADS / 32)) {
+#if defined(VEC_WIDTH) && (VEC_WIDTH >= 4)
+            // VECTORIZED LOADS (Priority 1 optimization)
+            // Use uint4 for 8×FP16 = 16 bytes per load
+            for (int d = lane_id * 8; d + 8 <= HEAD_DIM; d += 32 * 8) {
+                const int kv_idx = kv_start + row;
+                const int k_offset = batch_idx * num_heads * seq_len * HEAD_DIM +
+                                    head_idx * seq_len * HEAD_DIM +
+                                    kv_idx * HEAD_DIM + d;
+                
+                // Load 8 FP16 values (16 bytes) in one instruction
+                uint4 k_vec = *reinterpret_cast<const uint4*>(&K[k_offset]);
+                uint4 v_vec = *reinterpret_cast<const uint4*>(&V[k_offset]);
+                
+                // Store to shared memory
+                *reinterpret_cast<uint4*>(&K_tile[row][d]) = k_vec;
+                *reinterpret_cast<uint4*>(&V_tile[row][d]) = v_vec;
+            }
+            // Handle remainder (if HEAD_DIM not divisible by 8)
+            for (int d = lane_id + (HEAD_DIM / 8) * 8; d < HEAD_DIM; d += 32) {
+                const int kv_idx = kv_start + row;
+                const int k_offset = batch_idx * num_heads * seq_len * HEAD_DIM +
+                                    head_idx * seq_len * HEAD_DIM +
+                                    kv_idx * HEAD_DIM + d;
+                K_tile[row][d] = K[k_offset];
+                V_tile[row][d] = V[k_offset];
+            }
+#else
+            // SCALAR LOADS (fallback - proven correct)
             for (int d = lane_id; d < HEAD_DIM; d += 32) {
                 const int kv_idx = kv_start + row;
                 const int k_offset = batch_idx * num_heads * seq_len * HEAD_DIM +
@@ -112,6 +140,7 @@ __global__ void flash_attention_phase3_kernel(
                 K_tile[row][d] = K[k_offset];
                 V_tile[row][d] = V[k_offset];
             }
+#endif
         }
         __syncthreads();
         
@@ -134,6 +163,22 @@ __global__ void flash_attention_phase3_kernel(
             
             // Find max
             __shared__ float m_new_shared[THREADS / 32];
+            
+#if defined(REDUCE_STR) && (REDUCE_STR[0] == 'w')
+            // WARP-LEVEL REDUCTION (Priority 1 optimization)
+            float m_new = m_i[local_row];
+            for (int col = lane_id; col < kv_size; col += 32) {
+                m_new = fmaxf(m_new, S_tile[row][col]);
+            }
+            // Warp reduce
+            for (int offset = 16; offset > 0; offset /= 2) {
+                m_new = fmaxf(m_new, __shfl_down_sync(0xffffffff, m_new, offset));
+            }
+            if (lane_id == 0) {
+                m_new_shared[warp_id] = m_new;
+            }
+#else
+            // SERIAL REDUCTION (fallback - proven correct)
             if (lane_id == 0) {
                 float m_new = m_i[local_row];
                 for (int col = 0; col < kv_size; col++) {
@@ -141,6 +186,7 @@ __global__ void flash_attention_phase3_kernel(
                 }
                 m_new_shared[warp_id] = m_new;
             }
+#endif
             __syncthreads();
             float m_new = m_new_shared[warp_id];
             
@@ -154,6 +200,22 @@ __global__ void flash_attention_phase3_kernel(
             
             // Compute new l_i
             __shared__ float l_new_shared[THREADS / 32];
+            
+#if defined(REDUCE_STR) && (REDUCE_STR[0] == 'w')
+            // WARP-LEVEL REDUCTION (Priority 1 optimization)
+            float l_new = (lane_id == 0) ? (l_i[local_row] * correction) : 0.0f;
+            for (int col = lane_id; col < kv_size; col += 32) {
+                l_new += expf(S_tile[row][col] - m_new);
+            }
+            // Warp reduce (sum)
+            for (int offset = 16; offset > 0; offset /= 2) {
+                l_new += __shfl_down_sync(0xffffffff, l_new, offset);
+            }
+            if (lane_id == 0) {
+                l_new_shared[warp_id] = l_new;
+            }
+#else
+            // SERIAL REDUCTION (fallback - proven correct)
             if (lane_id == 0) {
                 float l_new = l_i[local_row] * correction;
                 for (int col = 0; col < kv_size; col++) {
@@ -161,6 +223,7 @@ __global__ void flash_attention_phase3_kernel(
                 }
                 l_new_shared[warp_id] = l_new;
             }
+#endif
             __syncthreads();
             float l_new = l_new_shared[warp_id];
             
