@@ -36,7 +36,7 @@ def build_phase3_variant():
     ]
     
     # Read tunable parameters from environment
-    tunable_params = ['BLOCK_M', 'NUM_WARPS', 'VEC_WIDTH', 'SMEM_STAGE', 'USE_WMMA']
+    tunable_params = ['BLOCK_M', 'NUM_WARPS', 'VEC_WIDTH', 'SMEM_STAGE', 'USE_WMMA', 'SYNC_POLICY', 'SWIZZLE_XOR']
     
     print("Build parameters:")
     for param in tunable_params:

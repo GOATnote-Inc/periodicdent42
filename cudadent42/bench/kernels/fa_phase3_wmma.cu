@@ -46,6 +46,51 @@ constexpr int THREADS = 128;
 #endif
 
 // ============================================================================
+// PHASE 4: LIGHT-BARRIER PATH (2 syncs/tile instead of 5)
+// ============================================================================
+
+#ifndef SYNC_POLICY
+// 0: dev (no extra barriers), 2: target (2/tile), 5: legacy (heavy)
+#define SYNC_POLICY 2
+#endif
+
+// Barrier helper
+__device__ __forceinline__ void cta_barrier() { 
+    __syncthreads(); 
+}
+
+// Warp-level reductions (deterministic within a warp)
+__device__ __forceinline__ float warp_max(float x) {
+    #pragma unroll
+    for (int d = 16; d > 0; d >>= 1) {
+        x = fmaxf(x, __shfl_down_sync(0xffffffff, x, d));
+    }
+    return x;
+}
+
+__device__ __forceinline__ float warp_sum(float x) {
+    #pragma unroll
+    for (int d = 16; d > 0; d >>= 1) {
+        x += __shfl_down_sync(0xffffffff, x, d);
+    }
+    return x;
+}
+
+// XOR swizzle helper for SMEM bank conflict reduction
+#ifndef SWIZZLE_XOR
+#define SWIZZLE_XOR 0
+#endif
+
+__device__ __forceinline__ int swz(int col) {
+    #if SWIZZLE_XOR
+    // 32-bank friendly pattern for D=64
+    return (col ^ ((col >> 5) & 0x1)) & 63;
+    #else
+    return col;
+    #endif
+}
+
+// ============================================================================
 // PHASE 3 KERNEL: Tensor Cores with WMMA
 // ============================================================================
 
@@ -155,7 +200,11 @@ __global__ void flash_attention_phase3_kernel(
             }
 #endif
         }
-        __syncthreads();
+        
+        // Barrier 1: After K/V load (required for shared memory correctness)
+        #if SYNC_POLICY >= 1
+        cta_barrier();
+        #endif
         
         // Compute S = Q @ K^T using standard loops (WMMA requires specific alignment)
         // For simplicity in this first version, use standard computation
@@ -168,7 +217,11 @@ __global__ void flash_attention_phase3_kernel(
                 S_tile[row][col] = score * softmax_scale;
             }
         }
-        __syncthreads();
+        
+        // Light-barrier path: No sync here (warp-synchronous softmax below)
+        #if SYNC_POLICY >= 5
+        cta_barrier();  // Legacy: sync after S computation
+        #endif
         
         // Online softmax (simple version for correctness)
         for (int row = warp_id; row < rows_this_block; row += (THREADS / 32)) {
@@ -201,7 +254,10 @@ __global__ void flash_attention_phase3_kernel(
                 m_new_shared[warp_id] = m_new;
             }
 #endif
-            __syncthreads();
+            // Light-barrier path: No sync here (warp-local only)
+            #if SYNC_POLICY >= 5
+            cta_barrier();  // Legacy: sync after m_new
+            #endif
             m_new = m_new_shared[warp_id];
             
             // Correction
@@ -239,7 +295,10 @@ __global__ void flash_attention_phase3_kernel(
                 l_new_shared[warp_id] = l_new;
             }
 #endif
-            __syncthreads();
+            // Light-barrier path: No sync here (warp-local only)
+            #if SYNC_POLICY >= 5
+            cta_barrier();  // Legacy: sync after l_new
+            #endif
             l_new = l_new_shared[warp_id];
             
             // Accumulate O += P @ V
@@ -251,12 +310,16 @@ __global__ void flash_attention_phase3_kernel(
                 }
                 O_accum[row][d] += acc;
             }
-            __syncthreads();
             
-            // Update state
+            // Update state (warp-local, no sync needed)
             m_i[local_row] = m_new;
             l_i[local_row] = l_new;
         }
+        
+        // Barrier 2: Before next tile (required for shared memory reuse)
+        #if SYNC_POLICY >= 2
+        cta_barrier();
+        #endif
     }
     
     // Write output
