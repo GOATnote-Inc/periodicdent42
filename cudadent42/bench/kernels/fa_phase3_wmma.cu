@@ -254,9 +254,9 @@ __global__ void flash_attention_phase3_kernel(
                 m_new_shared[warp_id] = m_new;
             }
 #endif
-            // Light-barrier path: No sync here (warp-local only)
-            #if SYNC_POLICY >= 5
-            cta_barrier();  // Legacy: sync after m_new
+            // Need sync: shared memory write/read dependency
+            #if SYNC_POLICY >= 2
+            cta_barrier();  // Required: m_new_shared is shared across warps
             #endif
             m_new = m_new_shared[warp_id];
             
@@ -295,9 +295,9 @@ __global__ void flash_attention_phase3_kernel(
                 l_new_shared[warp_id] = l_new;
             }
 #endif
-            // Light-barrier path: No sync here (warp-local only)
-            #if SYNC_POLICY >= 5
-            cta_barrier();  // Legacy: sync after l_new
+            // Need sync: shared memory write/read dependency
+            #if SYNC_POLICY >= 2
+            cta_barrier();  // Required: l_new_shared is shared across warps
             #endif
             l_new = l_new_shared[warp_id];
             
