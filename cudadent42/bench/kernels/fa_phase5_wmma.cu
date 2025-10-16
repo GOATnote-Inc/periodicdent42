@@ -35,7 +35,7 @@
 
 #if USE_WMMA
 #include <mma.h>
-using namespace nv::wmma;
+using namespace nvcuda::wmma;
 #endif
 
 constexpr int HEAD_DIM = 64;
@@ -113,13 +113,13 @@ __device__ __forceinline__ int swz(int col) {
 // WMMA Fragment Types for Ada (sm_89)
 // For Q@K^T: Q (MxK) @ K^T (KxN) = S (MxN)
 // Q: row_major, K: col_major (for K^T)
-using QFragment = fragment<matrix_a, 16, 16, 16, half, row_major>;
-using KFragment = fragment<matrix_b, 16, 16, 16, half, col_major>;
+using QFragment = fragment<matrix_a, 16, 16, 16, __half, row_major>;
+using KFragment = fragment<matrix_b, 16, 16, 16, __half, col_major>;
 
 // For P@V: P (MxK) @ V (KxN) = O (MxN)
 // P: row_major (scores after softmax), V: row_major
-using PFragment = fragment<matrix_a, 16, 16, 16, half, row_major>;
-using VFragment = fragment<matrix_b, 16, 16, 16, half, row_major>;
+using PFragment = fragment<matrix_a, 16, 16, 16, __half, row_major>;
+using VFragment = fragment<matrix_b, 16, 16, 16, __half, row_major>;
 
 // Accumulator fragments
 // FP32 for numerical stability during reduction
@@ -127,7 +127,7 @@ using AccumFragment = fragment<accumulator, 16, 16, 16, float>;
 
 // FP16 accumulation for Ada (2× throughput) - use for final O accumulation
 #ifdef USE_FP16_ACCUM
-using OAccumFragment = fragment<accumulator, 16, 16, 16, half>;
+using OAccumFragment = fragment<accumulator, 16, 16, 16, __half>;
 #else
 using OAccumFragment = fragment<accumulator, 16, 16, 16, float>;
 #endif

@@ -3,11 +3,11 @@
 #include <mma.h>
 #include <stdio.h>
 
-using namespace nv::wmma;
+using namespace nvcuda::wmma;
 
 __global__ void test_wmma_kernel() {
-    fragment<matrix_a, 16, 16, 16, half, row_major> a_frag;
-    fragment<matrix_b, 16, 16, 16, half, row_major> b_frag;
+    fragment<matrix_a, 16, 16, 16, __half, row_major> a_frag;
+    fragment<matrix_b, 16, 16, 16, __half, row_major> b_frag;
     fragment<accumulator, 16, 16, 16, float> c_frag;
     
     fill_fragment(c_frag, 0.0f);
