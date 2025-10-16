@@ -25,12 +25,25 @@
 // Will add when we actually implement WMMA matrix multiplies
 
 constexpr int HEAD_DIM = 64;
+
+// Tunable parameters (can be overridden via -D flags)
+#ifndef BLOCK_M
 constexpr int BLOCK_M = 32;      // Query rows per block
+#endif
+#ifndef NUM_WARPS
+constexpr int NUM_WARPS_DEFAULT = 4;
+#endif
+
 constexpr int BLOCK_N = 64;      // KV tile size
 constexpr int WMMA_M = 16;
 constexpr int WMMA_N = 16;
 constexpr int WMMA_K = 16;
+
+#ifdef NUM_WARPS
+constexpr int THREADS = NUM_WARPS * 32;
+#else
 constexpr int THREADS = 128;
+#endif
 
 // ============================================================================
 // PHASE 3 KERNEL: Tensor Cores with WMMA
@@ -163,10 +176,11 @@ __global__ void flash_attention_phase3_kernel(
             
             // Find max
             __shared__ float m_new_shared[THREADS / 32];
+            float m_new;
             
 #if defined(REDUCE_WARP) && (REDUCE_WARP == 1)
             // WARP-LEVEL REDUCTION (Priority 1 optimization)
-            float m_new = m_i[local_row];
+            m_new = m_i[local_row];
             for (int col = lane_id; col < kv_size; col += 32) {
                 m_new = fmaxf(m_new, S_tile[row][col]);
             }
@@ -180,7 +194,7 @@ __global__ void flash_attention_phase3_kernel(
 #else
             // SERIAL REDUCTION (fallback - proven correct)
             if (lane_id == 0) {
-                float m_new = m_i[local_row];
+                m_new = m_i[local_row];
                 for (int col = 0; col < kv_size; col++) {
                     m_new = fmaxf(m_new, S_tile[row][col]);
                 }
@@ -188,7 +202,7 @@ __global__ void flash_attention_phase3_kernel(
             }
 #endif
             __syncthreads();
-            float m_new = m_new_shared[warp_id];
+            m_new = m_new_shared[warp_id];
             
             // Correction
             float correction = expf(m_i[local_row] - m_new);
@@ -200,10 +214,11 @@ __global__ void flash_attention_phase3_kernel(
             
             // Compute new l_i
             __shared__ float l_new_shared[THREADS / 32];
+            float l_new;
             
 #if defined(REDUCE_WARP) && (REDUCE_WARP == 1)
             // WARP-LEVEL REDUCTION (Priority 1 optimization)
-            float l_new = (lane_id == 0) ? (l_i[local_row] * correction) : 0.0f;
+            l_new = (lane_id == 0) ? (l_i[local_row] * correction) : 0.0f;
             for (int col = lane_id; col < kv_size; col += 32) {
                 l_new += expf(S_tile[row][col] - m_new);
             }
@@ -217,7 +232,7 @@ __global__ void flash_attention_phase3_kernel(
 #else
             // SERIAL REDUCTION (fallback - proven correct)
             if (lane_id == 0) {
-                float l_new = l_i[local_row] * correction;
+                l_new = l_i[local_row] * correction;
                 for (int col = 0; col < kv_size; col++) {
                     l_new += expf(S_tile[row][col] - m_new);
                 }
@@ -225,7 +240,7 @@ __global__ void flash_attention_phase3_kernel(
             }
 #endif
             __syncthreads();
-            float l_new = l_new_shared[warp_id];
+            l_new = l_new_shared[warp_id];
             
             // Accumulate O += P @ V
             for (int d = lane_id; d < HEAD_DIM; d += 32) {
