@@ -83,10 +83,35 @@ class EvoSweep:
         candidates_per_gen = self.config['budget']['candidates_per_gen']
         
         if gen == 0:
-            # Generation 0: Grid sample with priority on warp reductions
+            # Generation 0: Seed from microbench Top-K if available
             candidates = []
             
-            # Priority 1: Warp reductions with different tile sizes
+            # Try to seed from microbench results
+            seed_from_micro = os.environ.get("EVO_SEED_FROM_MICRO", "1") == "1"
+            micro_best_path = self.evidence_dir / "micro_best.json"
+            
+            if seed_from_micro and micro_best_path.exists():
+                try:
+                    with open(micro_best_path) as f:
+                        micro_data = json.load(f)
+                    
+                    # Add top microbench configs as seeds
+                    for r in micro_data.get("topk", [])[:6]:  # Take top 6
+                        # Expand for both NUM_WARPS options
+                        for num_warps in search_space.get('NUM_WARPS', [4, 8]):
+                            candidates.append({
+                                'BLOCK_M': r['bm'],
+                                'NUM_WARPS': num_warps,
+                                'VEC_WIDTH': r['vec'],
+                                'SMEM_STAGE': r['stages'],
+                                'USE_WMMA': 0,
+                                'REDUCE': 'warp'
+                            })
+                    print(f"  ℹ️  Seeded {len(candidates)} candidates from microbench")
+                except Exception as e:
+                    print(f"  ⚠️  Failed to load microbench seeds: {e}")
+            
+            # Fill remaining with grid sample (priority on warp reductions)
             for block_m, num_warps, vec_width in itertools.product(
                 search_space['BLOCK_M'],
                 search_space['NUM_WARPS'],
