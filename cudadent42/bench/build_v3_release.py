@@ -37,6 +37,22 @@ def build_v3_release(debug: bool = False):
     # WMMA toggle (default ON). Set USE_WMMA=0 to disable.
     if os.environ.get("USE_WMMA", "1") != "0":
         extra_cuda_cflags.append("-DUSE_WMMA")
+        
+        # WMMA tile configuration (Phase 3 jump)
+        tile_m = os.environ.get("TILE_M", "128")
+        tile_n = os.environ.get("TILE_N", "64")
+        tile_k = os.environ.get("TILE_K", "32")
+        stages = os.environ.get("STAGES", "2")
+        accum_f32 = os.environ.get("ACCUM_F32", "1")
+        
+        extra_cuda_cflags += [
+            f"-DTILE_M={tile_m}",
+            f"-DTILE_N={tile_n}",
+            f"-DTILE_K={tile_k}",
+            f"-DSTAGES={stages}",
+            f"-DACCUM_F32={accum_f32}",
+        ]
+        print(f"WMMA config: M={tile_m}, N={tile_n}, K={tile_k}, STAGES={stages}, FP32_ACCUM={accum_f32}")
     
     if debug:
         extra_cuda_cflags += ["-G", "-DDEBUG_V3"]  # Debug symbols + asserts
