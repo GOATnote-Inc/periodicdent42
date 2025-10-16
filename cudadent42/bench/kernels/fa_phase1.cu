@@ -14,6 +14,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <float.h>
+#include <stdio.h>
 
 constexpr int HEAD_DIM = 64;
 constexpr int BLOCK_M = 16;      // Query rows per block (optimization!)
