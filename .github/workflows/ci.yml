@@ -7,6 +7,10 @@ jobs:
     # NOTE: This workflow requires a self-hosted GPU runner or GHA GPU instance
     # Standard GitHub Actions runners do not have CUDA/GPU support
     # To enable: Add self-hosted L4 runner with CUDA 12.2+ installed
+    # Skip for organization/docs PRs (no code changes)
+    if: |
+      !contains(github.event.pull_request.title, 'Repo Ops') &&
+      !contains(github.event.pull_request.title, 'docs:')
     
     steps:
       - uses: actions/checkout@v4
