@@ -1,0 +1,64 @@
+# Build artifacts
+dist/
+build/
+.build/
+target/
+out/
+*.egg-info
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+ENV/
+env/
+
+# Data and large assets
+data/**
+datasets/**
+checkpoints/**
+artifacts/**
+artifact/**
+artifacts_full/**
+artifacts_local/**
+**/*.csv
+**/*.parquet
+**/*.pt
+**/*.pth
+**/*.onnx
+**/*.ipynb
+results/**
+results_v*/**
+
+# External code (submodules)
+ext/flash-attention-2/**
+third_party/**
+
+# Secrets
+.env*
+*.pem
+*.key
+*.p12
+cloud-sql-proxy
+cloud-sql-proxy.log
+
+# Large binaries
+**/*.mp4
+**/*.zip
+**/*.tar
+**/*.gz
+
+# Compiled CUDA
+*.cubin
+*.ptx
+*.fatbin
+
+# Logs
+*.log
+logs/**
+**/*.txt
+
