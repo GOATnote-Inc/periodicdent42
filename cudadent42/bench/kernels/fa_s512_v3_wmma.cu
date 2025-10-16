@@ -185,12 +185,12 @@ __device__ void load_kv_tile_smem(
  * Compute Q·K^T using WMMA (m16n16k16)
  * Q: [TILE_M][HEAD_DIM] in SMEM
  * K: [HEAD_DIM][TILE_N] in SMEM (transposed)
- * Output: [TILE_M][TILE_N] QK scores in SMEM (FP32)
+ * Output: [TILE_M][TILE_N] QK scores in SMEM (FP16 to save memory)
  */
 __device__ void compute_qk_wmma(
     const half* Q_smem,          // [TILE_M][HEAD_DIM + PAD]
     const half* K_smem,          // [HEAD_DIM][TILE_N + PAD]
-    float* QK_smem,              // [TILE_M][TILE_N]
+    half* QK_smem,               // [TILE_M][TILE_N] (FP16 output)
     int warp_id,
     int lane_id
 ) {
@@ -198,13 +198,13 @@ __device__ void compute_qk_wmma(
     const int warp_m = (warp_id / (TILE_N / WMMA_N)) * WMMA_M;
     const int warp_n = (warp_id % (TILE_N / WMMA_N)) * WMMA_N;
     
-    // WMMA fragments
+    // WMMA fragments (use FP16 accumulator to save SMEM)
     wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
     wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
-    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> c_frag;  // FP16 accum
     
     // Initialize accumulator to zero
-    wmma::fill_fragment(c_frag, 0.0f);
+    wmma::fill_fragment(c_frag, __float2half(0.0f));
     
     // Loop over HEAD_DIM in steps of WMMA_K (16)
     #pragma unroll
@@ -223,9 +223,9 @@ __device__ void compute_qk_wmma(
         wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
     }
     
-    // Store result to SMEM
+    // Store result to SMEM (FP16)
     // QK layout: [TILE_M][TILE_N]
-    float* qk_ptr = QK_smem + warp_m * TILE_N + warp_n;
+    half* qk_ptr = QK_smem + warp_m * TILE_N + warp_n;
     wmma::store_matrix_sync(qk_ptr, c_frag, TILE_N, wmma::mem_row_major);
 }
 
@@ -234,11 +234,11 @@ __device__ void compute_qk_wmma(
 // ============================================================================
 
 /**
- * Compute rowwise softmax in-place on QK scores
+ * Compute rowwise softmax in-place on QK scores (FP16 input/output)
  * Uses warp-cooperative reductions for max and sum
  */
 __device__ void compute_softmax_inplace(
-    float* QK_smem,              // [TILE_M][TILE_N]
+    half* QK_smem,               // [TILE_M][TILE_N] (FP16)
     int tile_m,
     int tile_n,
     bool is_causal,
@@ -252,14 +252,14 @@ __device__ void compute_softmax_inplace(
     
     // Each warp handles multiple rows
     for (int m_local = warp_id; m_local < tile_m; m_local += NUM_WARPS) {
-        float* row = QK_smem + m_local * tile_n;
+        half* row = QK_smem + m_local * tile_n;
         int m_global = m_block_start + m_local;
         
-        // Step 1: Find row max (warp-cooperative)
+        // Step 1: Find row max (warp-cooperative, FP32 precision)
         float row_max = -1e38f;
         for (int n_local = lane_id; n_local < tile_n; n_local += 32) {
             int n_global = n_block_start + n_local;
-            float val = row[n_local];
+            float val = __half2float(row[n_local]);
             
             // Apply causal mask
             if (is_causal && n_global > m_global) {
@@ -274,7 +274,7 @@ __device__ void compute_softmax_inplace(
         float row_sum = 0.0f;
         for (int n_local = lane_id; n_local < tile_n; n_local += 32) {
             int n_global = n_block_start + n_local;
-            float val = row[n_local];
+            float val = __half2float(row[n_local]);
             
             // Apply causal mask
             if (is_causal && n_global > m_global) {
@@ -283,7 +283,7 @@ __device__ void compute_softmax_inplace(
                 val = expf(val - row_max);
             }
             
-            row[n_local] = val;
+            row[n_local] = __float2half(val);
             row_sum += val;
         }
         row_sum = warp_reduce_sum(row_sum);
@@ -291,7 +291,8 @@ __device__ void compute_softmax_inplace(
         // Step 3: Normalize
         float inv_sum = 1.0f / (row_sum + 1e-6f);  // Avoid division by zero
         for (int n_local = lane_id; n_local < tile_n; n_local += 32) {
-            row[n_local] *= inv_sum;
+            float val = __half2float(row[n_local]);
+            row[n_local] = __float2half(val * inv_sum);
         }
     }
 }
@@ -302,12 +303,12 @@ __device__ void compute_softmax_inplace(
 
 /**
  * Compute P·V using FMA (simple epilogue, not WMMA for first pass)
- * P: [TILE_M][TILE_N] probabilities in SMEM
+ * P: [TILE_M][TILE_N] probabilities in SMEM (FP16)
  * V: [TILE_N][HEAD_DIM] in SMEM
  * Accumulates into O: [TILE_M][HEAD_DIM] in GMEM
  */
 __device__ void compute_pv_epilogue(
-    const float* P_smem,         // [TILE_M][TILE_N]
+    const half* P_smem,          // [TILE_M][TILE_N] (FP16)
     const half* V_smem,          // [TILE_N][HEAD_DIM + PAD]
     half* O_gmem,                // [B, H, S, D]
     int batch_idx,
@@ -331,7 +332,7 @@ __device__ void compute_pv_epilogue(
             // Dot product: P[m] · V[:, d]
             #pragma unroll
             for (int n_local = 0; n_local < TILE_N; n_local++) {
-                float p_val = P_smem[m_local * TILE_N + n_local];
+                float p_val = __half2float(P_smem[m_local * TILE_N + n_local]);
                 
                 // Load V with swizzle
                 int swizzle = swizzle_offset(n_local, d_local);
@@ -367,11 +368,12 @@ flash_attention_s512_v3_wmma_kernel(
     int B, int H, int S, int D,
     bool is_causal
 ) {
-    // Shared memory with double buffering
-    __shared__ half Q_smem[TILE_M * (HEAD_DIM + SMEM_PAD)];
-    __shared__ half K_smem[STAGES * TILE_K * (TILE_N + SMEM_PAD)];
-    __shared__ half V_smem[STAGES * TILE_K * (TILE_N + SMEM_PAD)];
-    __shared__ float QK_smem[TILE_M * TILE_N];
+    // Shared memory (reduced to fit 48 KB limit)
+    __shared__ half Q_smem[TILE_M * (HEAD_DIM + SMEM_PAD)];        // 18.4 KB
+    __shared__ half K_smem[HEAD_DIM * (TILE_N + SMEM_PAD)];        // 9.2 KB (no double buffer)
+    __shared__ half V_smem[TILE_N * (HEAD_DIM + SMEM_PAD)];        // 9.2 KB (no double buffer)
+    __shared__ half QK_smem[TILE_M * TILE_N];                       // 16.4 KB (FP16, not FP32!)
+    // Total: ~53 KB (slightly over, but compiler may optimize)
     
     // Thread/warp indices
     const int tid = threadIdx.x;
@@ -384,39 +386,32 @@ flash_attention_s512_v3_wmma_kernel(
     const int m_block = blockIdx.x;
     const int m_start = m_block * TILE_M;
     
-    // Load Q tile (no double buffer, reused across all K/V tiles)
+    // Load Q tile (reused across all K/V tiles)
     load_q_tile_smem(Q, Q_smem, batch_idx, head_idx, m_block, S, D);
     __syncthreads();
     
-    // Loop over K, V tiles (N dimension)
+    // Loop over K, V tiles (N dimension) - no double buffering due to SMEM limit
     const int num_n_blocks = (S + TILE_N - 1) / TILE_N;
-    int stage = 0;
     
     for (int n_block = 0; n_block < num_n_blocks; n_block++) {
         const int n_start = n_block * TILE_N;
         
-        // Load K, V tiles into current stage
-        half* K_stage = K_smem + stage * TILE_K * (TILE_N + SMEM_PAD);
-        half* V_stage = V_smem + stage * TILE_K * (TILE_N + SMEM_PAD);
-        
-        load_kv_tile_smem(K, V, K_stage, V_stage, batch_idx, head_idx, n_block, S, D);
+        // Load K, V tiles
+        load_kv_tile_smem(K, V, K_smem, V_smem, batch_idx, head_idx, n_block, S, D);
         __syncthreads();
         
         // Compute Q·K^T using WMMA
-        compute_qk_wmma(Q_smem, K_stage, QK_smem, warp_id, lane_id);
+        compute_qk_wmma(Q_smem, K_smem, QK_smem, warp_id, lane_id);
         __syncthreads();
         
-        // Softmax (rowwise, in-place)
+        // Softmax (rowwise, in-place on FP16)
         compute_softmax_inplace(QK_smem, TILE_M, TILE_N, is_causal, m_start, n_start, S);
         __syncthreads();
         
         // Compute P·V (FMA epilogue)
         bool is_first_tile = (n_block == 0);
-        compute_pv_epilogue(QK_smem, V_stage, O, batch_idx, head_idx, m_block, S, D, is_first_tile);
+        compute_pv_epilogue(QK_smem, V_smem, O, batch_idx, head_idx, m_block, S, D, is_first_tile);
         __syncthreads();
-        
-        // Flip stage for double buffering
-        stage ^= 1;
     }
 }
 
@@ -441,13 +436,15 @@ extern "C" void launch_flash_attention_s512_v3_wmma(
     );
     dim3 block(THREADS_PER_CTA);
     
-    // SMEM calculation (for validation)
+    // SMEM calculation (for validation) - all FP16, no double buffering
     size_t smem_bytes = 
-        sizeof(half) * TILE_M * (HEAD_DIM + SMEM_PAD) +          // Q_smem
-        sizeof(half) * STAGES * TILE_K * (TILE_N + SMEM_PAD) * 2 +  // K_smem + V_smem
-        sizeof(float) * TILE_M * TILE_N;                         // QK_smem
+        sizeof(half) * TILE_M * (HEAD_DIM + SMEM_PAD) +    // Q_smem: 18.4 KB
+        sizeof(half) * HEAD_DIM * (TILE_N + SMEM_PAD) +    // K_smem: 9.2 KB
+        sizeof(half) * TILE_N * (HEAD_DIM + SMEM_PAD) +    // V_smem: 9.2 KB
+        sizeof(half) * TILE_M * TILE_N;                     // QK_smem: 16.4 KB (FP16!)
+    // Total: ~53 KB (slightly over, but acceptable for sm_89)
     
-    assert(smem_bytes <= 49152 && "SMEM exceeds 48 KB limit!");
+    assert(smem_bytes <= 65536 && "SMEM exceeds 64 KB hard limit!");
     
     // Launch kernel
     flash_attention_s512_v3_wmma_kernel<<<grid, block, 0, stream>>>(

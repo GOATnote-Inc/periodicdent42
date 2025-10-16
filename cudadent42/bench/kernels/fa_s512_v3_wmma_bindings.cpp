@@ -67,8 +67,8 @@ torch::Tensor flash_attention_s512_v3_wmma_forward(
     const half* V_ptr = reinterpret_cast<const half*>(V.data_ptr<at::Half>());
     half* O_ptr = reinterpret_cast<half*>(O.data_ptr<at::Half>());
     
-    // Get CUDA stream
-    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    // Get CUDA stream (c10::cuda for PyTorch 2.x compatibility)
+    cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
     
     // Launch kernel
     launch_flash_attention_s512_v3_wmma(
