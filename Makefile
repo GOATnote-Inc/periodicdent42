@@ -1,7 +1,30 @@
-.PHONY: help repro evidence train collect-mock mock epistemic-ci clean data-pull data-push data-check data-init validate ci-local ci-gates test-provenance aggregate-evidence report-html baseline detect notify flaky-scan qa
+.PHONY: help setup lint typecheck test format bench bench-correctness profile clean
 
+# --- Configuration ---
+PYTHON := python3
+PYTEST := pytest
+RUFF := ruff
+MYPY := mypy
+BLACK := black
+
+# GPU detection
+GPU_AVAILABLE := $(shell command -v nvidia-smi > /dev/null 2>&1 && echo 1 || echo 0)
+
+# --- Help ---
 help:
 	@echo "GOATnote Autonomous R&D Intelligence Layer - Makefile"
+	@echo ""
+	@echo "=== Quick Start (Developer) ==="
+	@echo "  make setup              Install all dependencies"
+	@echo "  make lint               Run ruff linter"
+	@echo "  make typecheck          Run mypy type checker"
+	@echo "  make test               Run pytest (CPU-only, < 60s)"
+	@echo "  make format             Format code with ruff + black"
+	@echo ""
+	@echo "=== CUDA/GPU Workflows (requires L4 GPU) ==="
+	@echo "  make bench              Quick benchmark (S=512, D=64)"
+	@echo "  make bench-correctness  Validate kernels vs PyTorch SDPA"
+	@echo "  make profile            Nsight Compute profiling"
 	@echo ""
 	@echo "=== CI/CD & Quality Gates ==="
 	@echo "  validate      - Run dataset contracts + quality gates"
@@ -36,6 +59,82 @@ help:
 	@echo ""
 	@echo "=== Housekeeping ==="
 	@echo "  clean         - Remove build artifacts"
+
+# --- Setup ---
+setup:
+	@echo "==> Installing Python dependencies..."
+	pip install -U pip setuptools wheel
+	pip install -e ".[dev,htc,bete]"
+	@if [ "$(GPU_AVAILABLE)" = "1" ]; then \
+		echo "==> GPU detected, installing CUDA build tools..."; \
+		pip install ninja; \
+		bash scripts/setup_ninja_build.sh || true; \
+	fi
+	@echo "✅ Setup complete"
+
+# --- Linting & Type Checking ---
+lint:
+	@echo "==> Running ruff..."
+	$(RUFF) check app/ scripts/ tests/ services/
+
+typecheck:
+	@echo "==> Running mypy..."
+	$(MYPY) app/src/api/ app/src/reasoning/ app/src/services/
+
+format:
+	@echo "==> Formatting with ruff + black..."
+	$(RUFF) check --fix app/ scripts/ tests/ services/
+	$(BLACK) app/ scripts/ tests/ services/
+
+# --- Testing ---
+test:
+	@echo "==> Running pytest (CPU-only tests)..."
+	$(PYTEST) tests/ -v --tb=short --cov=app/src --cov-report=term-missing \
+		-m "not gpu and not slow"
+
+# --- CUDA/GPU Workflows ---
+bench:
+	@if [ "$(GPU_AVAILABLE)" != "1" ]; then \
+		echo "❌ GPU not available (nvidia-smi not found)"; \
+		exit 1; \
+	fi
+	@echo "==> Running quick benchmark (S=512, D=64)..."
+	@mkdir -p artifacts/bench
+	cd cudadent42/bench && $(PYTHON) quick_benchmark.py
+	@echo "✅ Results saved to artifacts/bench/latest.json"
+
+bench-correctness:
+	@if [ "$(GPU_AVAILABLE)" != "1" ]; then \
+		echo "❌ GPU not available"; \
+		exit 1; \
+	fi
+	@echo "==> Validating kernel correctness vs PyTorch SDPA..."
+	cd cudadent42/bench && $(PYTHON) quick_correctness.py
+
+profile:
+	@if [ "$(GPU_AVAILABLE)" != "1" ]; then \
+		echo "❌ GPU not available"; \
+		exit 1; \
+	fi
+	@echo "==> Running Nsight Compute profiling..."
+	@mkdir -p artifacts/profile
+	bash scripts/profile_nsight_compute.sh
+	@echo "✅ Profile saved to artifacts/profile/"
+
+# --- Cleanup ---
+clean:
+	@echo "==> Cleaning build artifacts..."
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	rm -rf build/ dist/ .pytest_cache/ .mypy_cache/ .ruff_cache/
+	rm -rf artifact/ result out1 out2
+	rm -f /tmp/hash1.txt /tmp/hash2.txt
+	@echo "✅ Clean complete"
+
+# =========================================
+# === EXISTING TARGETS (PRESERVED) ===
+# =========================================
 
 repro:
 	@echo "=== Hermetic Build Verification ==="
@@ -154,15 +253,6 @@ data-check:
 	fi
 	@echo "✅ Data checksums valid"
 
-clean:
-	@echo "=== Cleaning Artifacts ==="
-	@rm -rf artifact/ result out1 out2
-	@rm -f /tmp/hash1.txt /tmp/hash2.txt
-	@echo "⚠️  Preserved data/ and models/ (use 'git clean -fdx' to remove all)"
-	@echo "✅ Cleaned build artifacts"
-
-# === NEW CI/CD TARGETS ===
-
 validate:
 	@echo "=== Running Dataset Validation + Quality Gates ==="
 	@python3 scripts/validate_datasets.py
@@ -230,8 +320,6 @@ ci-local: clean
 	@echo "  - coverage.json + htmlcov/"
 	@echo ""
 
-# === REGRESSION DETECTION TARGETS ===
-
 baseline:
 	@echo "=== Updating Rolling Baseline ==="
 	@python3 scripts/baseline_update.py
@@ -259,8 +347,6 @@ qa: baseline detect flaky-scan
 	@echo "  - evidence/regressions/flaky_tests.json"
 	@echo ""
 
-# === PHASE 4: DIAGNOSTICS & NARRATIVES ===
-
 dashboard: baseline
 	@echo "=== Generating Diagnostics Dashboard ==="
 	@python3 scripts/detect_regression.py || echo "⚠️  Regressions detected (continuing)"
@@ -274,8 +360,6 @@ dashboard: baseline
 	@echo "  - evidence/summary/trends.{json,md}"
 	@echo "  - evidence/audit/audit_trail.md"
 	@echo ""
-
-# === DISCOVERY KERNEL: KGI + DTP + TRUST ===
 
 discovery: baseline
 	@echo "=== Discovery Kernel Execution ==="
@@ -292,7 +376,6 @@ discovery: baseline
 validate-dtp:
 	@echo "=== Validating latest DTP record ==="
 	@python3 -c "import json, pathlib; dtp=json.load(open(sorted(pathlib.Path('evidence/dtp').rglob('*.json'))[-1])); print(f'✅ DTP {dtp[\"hypothesis_id\"]} valid')"
-# === PROVENANCE & HARDENING ===
 
 provenance: baseline
 	@echo "=== Cryptographic Provenance Pipeline ==="
@@ -310,4 +393,3 @@ claims:
 	@echo "=== Verifying Performance Claims ==="
 	@python3 scripts/claims_guard.py
 	@echo ""
-
