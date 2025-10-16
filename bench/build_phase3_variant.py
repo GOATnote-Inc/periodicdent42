@@ -45,11 +45,13 @@ def build_phase3_variant():
             extra_cuda_cflags.append(f"-D{param}={value}")
             print(f"  {param}={value}")
     
-    # Handle REDUCE as a string macro
+    # Handle REDUCE as an integer macro
     reduce_strategy = os.environ.get('REDUCE')
     if reduce_strategy:
-        extra_cuda_cflags.append(f'-DREDUCE_STR=\\"{reduce_strategy}\\"')
-        print(f"  REDUCE=\"{reduce_strategy}\"")
+        # Convert to integer: warp=1, serial=0
+        reduce_val = 1 if reduce_strategy == 'warp' else 0
+        extra_cuda_cflags.append(f'-DREDUCE_WARP={reduce_val}')
+        print(f"  REDUCE=\"{reduce_strategy}\" (REDUCE_WARP={reduce_val})")
     
     # Compile
     try:

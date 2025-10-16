@@ -164,7 +164,7 @@ __global__ void flash_attention_phase3_kernel(
             // Find max
             __shared__ float m_new_shared[THREADS / 32];
             
-#if defined(REDUCE_STR) && (REDUCE_STR[0] == 'w')
+#if defined(REDUCE_WARP) && (REDUCE_WARP == 1)
             // WARP-LEVEL REDUCTION (Priority 1 optimization)
             float m_new = m_i[local_row];
             for (int col = lane_id; col < kv_size; col += 32) {
@@ -201,7 +201,7 @@ __global__ void flash_attention_phase3_kernel(
             // Compute new l_i
             __shared__ float l_new_shared[THREADS / 32];
             
-#if defined(REDUCE_STR) && (REDUCE_STR[0] == 'w')
+#if defined(REDUCE_WARP) && (REDUCE_WARP == 1)
             // WARP-LEVEL REDUCTION (Priority 1 optimization)
             float l_new = (lane_id == 0) ? (l_i[local_row] * correction) : 0.0f;
             for (int col = lane_id; col < kv_size; col += 32) {
