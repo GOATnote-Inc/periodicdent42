@@ -381,9 +381,9 @@ __global__ void flash_attention_phase5_kernel(
                 // Only compute if within bounds
                 if (m_start < rows_this_block && n_start < kv_size) {
                     wmma_qk_transpose(
-                        (const half*)Q_tile[0], 
-                        (const half*)K_tile[0], 
-                        (float*)S_tile[0], 
+                        &Q_tile[0][0], 
+                        &K_tile[0][0], 
+                        &S_tile[0][0], 
                         m_start, 
                         n_start, 
                         softmax_scale
