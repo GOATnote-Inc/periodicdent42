@@ -13,9 +13,9 @@ import os
 def build_phase3_variant():
     """Build Phase 3 with environment-driven parameter overrides"""
     
-    # Get absolute paths
-    bench_dir = Path(__file__).parent.absolute()
-    kernel_dir = bench_dir / "kernels"
+    # Get absolute paths - kernels are in cudadent42/bench/kernels/
+    repo_root = Path(__file__).parent.parent.absolute()
+    kernel_dir = repo_root / "cudadent42" / "bench" / "kernels"
     kernel_cu = kernel_dir / "fa_phase3_wmma.cu"
     bindings_cpp = kernel_dir / "fa_phase3_wmma_bindings.cpp"
     
