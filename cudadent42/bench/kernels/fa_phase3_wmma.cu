@@ -19,11 +19,10 @@
 
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#include <mma.h>
 #include <float.h>
 #include <stdio.h>
-
-using namespace nv::wmma;
+// Note: WMMA includes removed - not using Tensor Cores yet in this version
+// Will add when we actually implement WMMA matrix multiplies
 
 constexpr int HEAD_DIM = 64;
 constexpr int BLOCK_M = 32;      // Query rows per block
