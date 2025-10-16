@@ -57,8 +57,12 @@ cloud-sql-proxy.log
 *.ptx
 *.fatbin
 
-# Logs
+# Logs and large text outputs
 *.log
 logs/**
-**/*.txt
+# Exclude large data files but keep benchmark outputs
+data/**/*.txt
+results/**/*.txt
+evidence/**/*.txt
+# Keep artifacts/bench/*.txt (benchmark results)
 

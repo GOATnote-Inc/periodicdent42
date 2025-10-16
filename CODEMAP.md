@@ -97,8 +97,9 @@ periodicdent42/
 
 ## 🔗 Quick Links
 - [README.md](README.md) - Project overview, setup instructions
+- [KERNEL_FOCUS.md](KERNEL_FOCUS.md) - 🎯 **START HERE** for kernel optimization work
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Dev guidelines
-- [V3_CLEAN_SLATE_ROADMAP.md](V3_CLEAN_SLATE_ROADMAP.md) - CUDA kernel optimization plan
+- [Session Logs](docs/archive/session_logs/) - Historical optimization attempts & lessons learned
 - [CI/CD](.github/workflows/) - Automated testing & deployment
 
 ---
