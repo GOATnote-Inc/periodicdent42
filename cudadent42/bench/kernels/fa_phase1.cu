@@ -111,22 +111,17 @@ __global__ void flash_attention_phase1_kernel(
         
         // Online softmax update (per row)
         for (int row = 0; row < rows_this_block; row++) {
-            // Find new max (thread-local, then reduce)
-            float m_new = m_i[row];
-            for (int col = tid; col < kv_size; col += THREADS) {
-                m_new = fmaxf(m_new, S_tile[row][col]);
-            }
-            
-            // Warp reduce for max
-            for (int offset = 16; offset > 0; offset /= 2) {
-                m_new = fmaxf(m_new, __shfl_down_sync(0xffffffff, m_new, offset));
-            }
-            
-            // Broadcast max within block
+            // Find new max (simple approach: single thread)
             __shared__ float m_new_shared;
-            if (lane_id == 0) m_new_shared = m_new;
+            if (tid == 0) {
+                float m_new = m_i[row];
+                for (int col = 0; col < kv_size; col++) {
+                    m_new = fmaxf(m_new, S_tile[row][col]);
+                }
+                m_new_shared = m_new;
+            }
             __syncthreads();
-            m_new = m_new_shared;
+            float m_new = m_new_shared;
             
             // Correction factor
             float correction = expf(m_i[row] - m_new);
@@ -136,25 +131,17 @@ __global__ void flash_attention_phase1_kernel(
                 O_accum[row][d] *= correction;
             }
             
-            // Compute new l_i
-            float l_new = l_i[row] * correction;
-            float sum_exp = 0.0f;
-            for (int col = tid; col < kv_size; col += THREADS) {
-                sum_exp += expf(S_tile[row][col] - m_new);
+            // Compute new l_i (simple approach: single thread)
+            __shared__ float l_new_shared;
+            if (tid == 0) {
+                float l_new = l_i[row] * correction;
+                for (int col = 0; col < kv_size; col++) {
+                    l_new += expf(S_tile[row][col] - m_new);
+                }
+                l_new_shared = l_new;
             }
-            
-            // Warp reduce for sum
-            for (int offset = 16; offset > 0; offset /= 2) {
-                sum_exp += __shfl_down_sync(0xffffffff, sum_exp, offset);
-            }
-            
-            // Broadcast sum
-            __shared__ float sum_shared;
-            if (lane_id == 0) sum_shared = sum_exp;
             __syncthreads();
-            sum_exp = sum_shared;
-            
-            l_new += sum_exp;
+            float l_new = l_new_shared;
             
             __syncthreads();
             
