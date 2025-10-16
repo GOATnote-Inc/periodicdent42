@@ -349,8 +349,54 @@ __global__ void flash_attention_phase5_kernel(
         cta_barrier();
         #endif
         
-        // Compute S = Q @ K^T using standard loops (WMMA requires specific alignment)
-        // For simplicity in this first version, use standard computation
+        // Compute S = Q @ K^T 
+        #if USE_WMMA
+        // ================================================================
+        // WMMA PATH: Tensor Core acceleration for Q@K^T
+        // ================================================================
+        // BLOCK_M=32, BLOCK_N=64 → 2×4 = 8 tiles of 16×16
+        // 4 warps → each warp computes 2 tiles sequentially
+        //
+        // Target: 500 μs (scalar) → 100 μs (5× speedup)
+        // ================================================================
+        
+        // Each warp computes 2 tiles of the output
+        // Warp layout:
+        //   Warp 0: tiles (0,0), (0,16)
+        //   Warp 1: tiles (0,32), (0,48)
+        //   Warp 2: tiles (16,0), (16,16)
+        //   Warp 3: tiles (16,32), (16,48)
+        
+        if (warp_id < 4) {
+            const int m_base = (warp_id / 2) * 16;  // 0 or 16
+            const int n_base = (warp_id % 2) * 32;  // 0 or 32
+            
+            // Compute 2 tiles for this warp
+            for (int n_offset = 0; n_offset < 2; n_offset++) {
+                const int m_start = m_base;
+                const int n_start = n_base + (n_offset * 16);
+                
+                // Only compute if within bounds
+                if (m_start < rows_this_block && n_start < kv_size) {
+                    wmma_qk_transpose(
+                        (const half*)Q_tile[0], 
+                        (const half*)K_tile[0], 
+                        (float*)S_tile[0], 
+                        m_start, 
+                        n_start, 
+                        softmax_scale
+                    );
+                }
+            }
+        }
+        
+        // Sync after all warps finish Q@K^T computation
+        cta_barrier();
+        
+        #else
+        // ================================================================
+        // SCALAR PATH: Proven-correct fallback
+        // ================================================================
         for (int row = tid; row < rows_this_block; row += THREADS) {
             for (int col = 0; col < kv_size; col++) {
                 float score = 0.0f;
@@ -360,6 +406,7 @@ __global__ void flash_attention_phase5_kernel(
                 S_tile[row][col] = score * softmax_scale;
             }
         }
+        #endif
         
         // Light-barrier path: No sync here (warp-synchronous softmax below)
         #if SYNC_POLICY >= 5
