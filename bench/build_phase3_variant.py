@@ -13,9 +13,17 @@ import os
 def build_phase3_variant():
     """Build Phase 3 with environment-driven parameter overrides"""
     
-    kernel_dir = Path(__file__).parent / "kernels"
+    # Get absolute paths
+    bench_dir = Path(__file__).parent.absolute()
+    kernel_dir = bench_dir / "kernels"
     kernel_cu = kernel_dir / "fa_phase3_wmma.cu"
     bindings_cpp = kernel_dir / "fa_phase3_wmma_bindings.cpp"
+    
+    # Verify files exist
+    if not kernel_cu.exists():
+        raise FileNotFoundError(f"Kernel file not found: {kernel_cu}")
+    if not bindings_cpp.exists():
+        raise FileNotFoundError(f"Bindings file not found: {bindings_cpp}")
     
     # Base CUDA flags
     extra_cuda_cflags = [
