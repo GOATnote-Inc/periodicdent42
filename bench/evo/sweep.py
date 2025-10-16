@@ -25,11 +25,14 @@ import torch
 class EvoSweep:
     """Minimal EvoEngineer loop for FlashAttention optimization"""
     
-    def __init__(self, config_path: str = "evo.yaml"):
+    def __init__(self, config_path: str = None):
+        self.root = Path(__file__).parent.parent.parent
+        
+        if config_path is None:
+            config_path = self.root / "evo.yaml"
+        
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
-        
-        self.root = Path(__file__).parent.parent.parent
         self.evidence_dir = self.root / "evidence"
         self.evidence_dir.mkdir(exist_ok=True)
         
