@@ -27,10 +27,16 @@
 #include <cuda_runtime.h>
 #include <float.h>
 #include <stdio.h>
-#include <mma.h>
 
-// WMMA namespace
+// Only include WMMA headers if USE_WMMA is enabled
+#ifndef USE_WMMA
+#define USE_WMMA 0  // Default: scalar fallback
+#endif
+
+#if USE_WMMA
+#include <mma.h>
 using namespace nv::wmma;
+#endif
 
 constexpr int HEAD_DIM = 64;
 
@@ -101,10 +107,6 @@ __device__ __forceinline__ int swz(int col) {
 // ============================================================================
 // PHASE 5: WMMA (Tensor Core) Infrastructure
 // ============================================================================
-
-#ifndef USE_WMMA
-#define USE_WMMA 0  // Default: scalar fallback (proven correct)
-#endif
 
 #if USE_WMMA
 

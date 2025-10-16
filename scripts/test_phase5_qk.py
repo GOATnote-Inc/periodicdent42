@@ -29,7 +29,7 @@ def test_phase5(use_wmma: int):
     
     if build_phase5_variant() != 0:
         print(f"❌ Build failed for USE_WMMA={use_wmma}")
-        return False
+        return False, 0.0
     
     # Import compiled module
     import fa_phase5
