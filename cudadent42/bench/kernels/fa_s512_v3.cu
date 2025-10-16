@@ -82,8 +82,8 @@ struct __align__(16) SharedMemory {
     // Stage 0, 1 for V tiles (16-byte aligned base)
     half V[Traits::STAGES][Traits::BLOCK_N][Traits::V_STRIDE];
     
-    // Low-regs variant: per-CTA accumulator for O (float) - saves ~512 regs/thread!
-    float O_accum[Traits::BLOCK_M][Traits::HEAD_DIM];
+    // Low-regs variant: per-CTA accumulator for O (half) - saves ~512 regs/thread + 4KB SMEM!
+    half O_accum[Traits::BLOCK_M][Traits::HEAD_DIM];
     
     // Pad to avoid bank conflicts on 32-way banks when HEAD_DIM % 32 == 0
     float pad0[32];
@@ -94,7 +94,7 @@ template<typename Traits>
 constexpr size_t smem_bytes() {
     constexpr size_t k_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::K_STRIDE * sizeof(half);
     constexpr size_t v_bytes = Traits::STAGES * Traits::BLOCK_N * Traits::V_STRIDE * sizeof(half);
-    constexpr size_t o_bytes = Traits::BLOCK_M * Traits::HEAD_DIM * sizeof(float);
+    constexpr size_t o_bytes = Traits::BLOCK_M * Traits::HEAD_DIM * sizeof(half);  // ITER1: float→half
     constexpr size_t pad_bytes = 32 * sizeof(float);  // Bank conflict padding
     constexpr size_t total = k_bytes + v_bytes + o_bytes + pad_bytes;
     
@@ -455,7 +455,7 @@ __device__ void compute_block(
         
         // Apply correction to existing O accumulator in SMEM (our D-lane ownership, no atomics needed)
         for (int d = lane_id; d < Traits::HEAD_DIM; d += 32) {
-            smem->O_accum[row_start + local_row][d] *= correction;
+            smem->O_accum[row_start + local_row][d] = __float2half(__half2float(smem->O_accum[row_start + local_row][d]) * correction);
         }
         
         // Compute exp(S - m_new) and new sum
@@ -494,7 +494,7 @@ __device__ void compute_block(
             for (int n_idx = 0; n_idx < Traits::BLOCK_N; n_idx++) {
                 acc += S_row[n_idx] * __half2float(smem->V[stage][n_idx][d]);
             }
-            smem->O_accum[row_start + local_row][d] += acc;
+            smem->O_accum[row_start + local_row][d] = __float2half(__half2float(smem->O_accum[row_start + local_row][d]) + acc);
         }
         
         #ifdef DEBUG_V3
@@ -544,13 +544,13 @@ __device__ void write_O_to_gmem(
         if constexpr (Traits::HALF2) {
             for (int d = lane_id * 2; d < Traits::HEAD_DIM; d += 64) {
                 half2 val;
-                val.x = __float2half(smem->O_accum[row_start + local_row][d] * norm);
-                val.y = __float2half(smem->O_accum[row_start + local_row][d + 1] * norm);
+                val.x = __float2half(__half2float(smem->O_accum[row_start + local_row][d]) * norm);
+                val.y = __float2half(__half2float(smem->O_accum[row_start + local_row][d + 1]) * norm);
                 *reinterpret_cast<half2*>(O_gmem + offset + d) = val;
             }
         } else {
             for (int d = lane_id; d < Traits::HEAD_DIM; d += 32) {
-                O_gmem[offset + d] = __float2half(smem->O_accum[row_start + local_row][d] * norm);
+                O_gmem[offset + d] = __float2half(__half2float(smem->O_accum[row_start + local_row][d]) * norm);
             }
         }
     }
@@ -624,7 +624,7 @@ flash_attention_s512_v3_kernel(
     for (int i = 0; i < rows_per_warp; i++) {
         const int row = row_start + i;
         for (int d = lane_id; d < Traits::HEAD_DIM; d += 32) {
-            smem.O_accum[row][d] = 0.0f;
+            smem.O_accum[row][d] = __float2half(0.0f);
         }
     }
     __syncthreads();
@@ -791,7 +791,7 @@ extern "C" cudaError_t launch_fa_s512_v3_32_64_4_1_1_1(
 }
 
 // Config 5: BLOCK_M=16, BLOCK_N=64, WARPS=4, STAGES=2, SWIZZLE=1, HALF2=1
-// Reduce M dimension to cut O_accum from 8KB → 4KB (total 36KB vs 40KB)
+// Reduce M dimension + ITER1 FP16 O_accum → total ~34KB (was 40KB before ITER1)
 using Traits_16_64_4_2_1_1 = KernelTraits<16, 64, 64, 4, 2, true, true>;
 
 extern "C" cudaError_t launch_fa_s512_v3_16_64_4_2_1_1(
