@@ -70,15 +70,16 @@ __global__ void flash_attention_minimal_kernel(
     }
     __syncthreads();
     
-    // Online softmax state (per-row)
+    // Shared memory for output accumulator
+    __shared__ float O_accum[HEAD_DIM];
+    if (tid < HEAD_DIM) {
+        O_accum[tid] = 0.0f;
+    }
+    __syncthreads();
+    
+    // Online softmax state (per-row, single thread manages this)
     float m_i = -FLT_MAX;  // Running max
     float l_i = 0.0f;      // Running sum
-    
-    // Output accumulator (per-row, per-dimension)
-    float O_accum[HEAD_DIM];
-    for (int d = 0; d < HEAD_DIM; d++) {
-        O_accum[d] = 0.0f;
-    }
     
     // Loop over K/V tiles
     for (int n_block = 0; n_block < num_blocks_n; n_block++) {
@@ -122,11 +123,9 @@ __global__ void flash_attention_minimal_kernel(
             l_new += expf(S_tile[n_idx] - m_new);
         }
         
-        // Apply correction to O_accum
-        if (tid == 0) {
-            for (int d = 0; d < HEAD_DIM; d++) {
-                O_accum[d] *= correction;
-            }
+        // Apply correction to O_accum (parallel across threads)
+        for (int d = tid; d < HEAD_DIM; d += THREADS_PER_BLOCK) {
+            O_accum[d] *= correction;
         }
         __syncthreads();
         
