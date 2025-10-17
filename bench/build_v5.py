@@ -8,11 +8,9 @@ def build_v5(M=64, N=64, K=32, STAGES=2, NUM_WARPS=8):
     """Build V5 kernel with specified tile configuration."""
     
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    kernel_cu = os.path.join(repo_root, "csrc/kernels/fa_v5_warp_spec.cu")
-    bindings_cu = os.path.join(repo_root, "csrc/kernels/fa_v5_bindings.cu")
+    combined_cu = os.path.join(repo_root, "csrc/kernels/fa_v5_combined.cu")
     
-    assert os.path.exists(kernel_cu), f"Kernel not found: {kernel_cu}"
-    assert os.path.exists(bindings_cu), f"Bindings not found: {bindings_cu}"
+    assert os.path.exists(combined_cu), f"Kernel not found: {combined_cu}"
     
     cflags = [
         "-O3",
@@ -30,7 +28,7 @@ def build_v5(M=64, N=64, K=32, STAGES=2, NUM_WARPS=8):
     
     module = load(
         name=f"fa_v5_M{M}_N{N}_K{K}_S{STAGES}_W{NUM_WARPS}",
-        sources=[kernel_cu, bindings_cu],
+        sources=[combined_cu],
         extra_cuda_cflags=cflags,
         verbose=False
     )
