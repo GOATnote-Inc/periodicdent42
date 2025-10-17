@@ -48,15 +48,27 @@ cudaError_t cutlass_qkt(
     
     Gemm gemm_op;
     
-    // Check workspace size
+    // 1) Check if kernel supports this problem/layout
+    auto st = gemm_op.can_implement(args);
+    if (st != cutlass::Status::kSuccess) {
+        fprintf(stderr, "CUTLASS cannot implement: %s\n", cutlassGetStatusString(st));
+        return cudaErrorNotSupported;
+    }
+    
+    // 2) Workspace
     size_t workspace_size = gemm_op.get_workspace_size(args);
     void* workspace = nullptr;
     if (workspace_size > 0) {
-        cudaMalloc(&workspace, workspace_size);
+        if (cudaMalloc(&workspace, workspace_size) != cudaSuccess) {
+            fprintf(stderr, "cudaMalloc(workspace %zu) failed\n", workspace_size);
+            return cudaErrorMemoryAllocation;
+        }
     }
     
+    // 3) Initialize + run with status prints
     cutlass::Status status = gemm_op.initialize(args, workspace);
     if (status != cutlass::Status::kSuccess) {
+        fprintf(stderr, "initialize failed: %s\n", cutlassGetStatusString(status));
         if (workspace) cudaFree(workspace);
         return cudaErrorUnknown;
     }
@@ -66,6 +78,7 @@ cudaError_t cutlass_qkt(
     if (workspace) cudaFree(workspace);
     
     if (status != cutlass::Status::kSuccess) {
+        fprintf(stderr, "launch failed: %s\n", cutlassGetStatusString(status));
         return cudaErrorUnknown;
     }
     
