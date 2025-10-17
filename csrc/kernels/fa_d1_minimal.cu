@@ -93,6 +93,9 @@ __global__ void flash_attention_d1_minimal(
     float m_prev = -INFINITY;  // Running max
     float l_prev = 0.0f;        // Running sum of exp
     
+    // Each thread processes multiple rows
+    const int rows_per_thread = (BLOCK_M + THREADS - 1) / THREADS;
+    
     // ========================================
     // Load Q tile (reuse for all K/V tiles)
     // ========================================
@@ -158,8 +161,6 @@ __global__ void flash_attention_d1_minimal(
         // ========================================
         float m_new = -INFINITY;
         
-        // Each thread processes multiple rows
-        const int rows_per_thread = (BLOCK_M + THREADS - 1) / THREADS;
         for (int local_row = 0; local_row < rows_per_thread; ++local_row) {
             const int row = tid + local_row * THREADS;
             if (row < BLOCK_M) {
