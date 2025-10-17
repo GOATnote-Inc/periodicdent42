@@ -156,9 +156,9 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 10; i++) {
         cutlass_gemm_qk_transpose(
             M, N, K,
-            A.device_data(), A.capacity(),
-            B.device_data(), B.capacity(),
-            C.device_data(), C.capacity(),
+            A.device_data(), K,  // lda = K
+            B.device_data(), K,  // ldb = K
+            C.device_data(), N,  // ldc = N
             alpha, beta
         );
     }
@@ -173,9 +173,9 @@ int main(int argc, char **argv) {
     for (int i = 0; i < num_iters; i++) {
         cutlass_gemm_qk_transpose(
             M, N, K,
-            A.device_data(), A.capacity(),
-            B.device_data(), B.capacity(),
-            C.device_data(), C.capacity(),
+            A.device_data(), K,  // lda = K
+            B.device_data(), K,  // ldb = K
+            C.device_data(), N,  // ldc = N
             alpha, beta
         );
     }
