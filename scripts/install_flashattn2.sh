@@ -9,6 +9,12 @@ echo "Installing FlashAttention-2 for L4/Ada (sm_89)"
 echo "=================================================="
 echo ""
 
+# Load CUDA into PATH
+if [ -d "/usr/local/cuda/bin" ]; then
+    export PATH="/usr/local/cuda/bin:$PATH"
+    export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+fi
+
 # Environment setup
 export TORCH_CUDA_ARCH_LIST="8.9"  # Target Ada/L4 specifically
 export MAX_JOBS=8                  # Parallel compilation
