@@ -56,10 +56,11 @@ cudaError_t cutlass_gemm_qk_transpose(
     CutlassGemm gemm_operator;
     
     // Construct arguments
+    // Note: For B in ColumnMajor layout (transposed), the leading dimension is K not N
     CutlassGemm::Arguments args(
         {M, N, K},          // Problem dimensions
-        {A, lda},           // A tensor (Q)
-        {B, ldb},           // B tensor (K^T via ColumnMajor layout)
+        {A, lda},           // A tensor (Q): M×K row-major, lda=K
+        {B, K},             // B tensor (K^T): K×N column-major, ldb=K
         {C, ldc},           // C tensor (source)
         {C, ldc},           // D tensor (destination, same as C)
         {alpha, beta}       // Scalars
