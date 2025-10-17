@@ -37,6 +37,8 @@ torch::Tensor phaseD_attention_forward(
     
     float scale = 1.0f / sqrtf(static_cast<float>(D));
     
+    cudaStream_t stream = c10::cuda::getCurrentCUDAStream().stream();
+    
     launch_phaseD_tuned(
         reinterpret_cast<const half*>(Q.data_ptr<at::Half>()),
         reinterpret_cast<const half*>(K.data_ptr<at::Half>()),
@@ -44,7 +46,7 @@ torch::Tensor phaseD_attention_forward(
         reinterpret_cast<half*>(O.data_ptr<at::Half>()),
         B, H, M, N, D,
         scale,
-        at::cuda::getCurrentCUDAStream().stream()
+        stream
     );
     
     return O;
