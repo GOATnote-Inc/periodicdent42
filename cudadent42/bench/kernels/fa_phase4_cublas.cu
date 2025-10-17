@@ -47,10 +47,11 @@ __global__ void phase4_pv_softmax_kernel(
     const int row_start = row_block * BLOCK_M;
     const int rows_this_block = min(BLOCK_M, M - row_start);
     
-    __shared__ float S_smem[BLOCK_M][MAX_SEQ_LEN];
-    __shared__ half V_smem[MAX_SEQ_LEN][HEAD_DIM];
+    // Reduce SMEM: Only load what we need per iteration
+    __shared__ half V_smem[HEAD_DIM][HEAD_DIM];  // Tile of V (64×64)
     __shared__ float m_smem[BLOCK_M];
     __shared__ float l_smem[BLOCK_M];
+    __shared__ float S_tile[BLOCK_M][HEAD_DIM];  // Small S tile
     
     // Load S (Q@K^T scores) to SMEM
     for (int row = warp_id; row < rows_this_block; row += NUM_WARPS) {
