@@ -37,7 +37,8 @@ torch::Tensor phaseD_attention_forward(
     
     float scale = 1.0f / sqrtf(static_cast<float>(D));
     
-    auto stream = at::cuda::getCurrentCUDAStream(Q.device().index());
+    // Use default stream for now (simplifies build)
+    cudaStream_t stream = 0;
     
     launch_phaseD_tuned(
         reinterpret_cast<const half*>(Q.data_ptr<at::Half>()),
