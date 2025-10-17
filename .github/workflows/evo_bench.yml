@@ -1,0 +1,133 @@
+name: EvoEngineer Benchmark Gate
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      impl:
+        description: 'Implementation to test'
+        required: false
+        default: 'wmma'
+        type: choice
+        options:
+          - custom_v3
+          - cublas
+          - wmma
+          - hybrid_qkt
+
+jobs:
+  bench-gate:
+    runs-on: [self-hosted, gpu, cuda, l4]
+    timeout-minutes: 30
+    if: contains(github.event.head_commit.message, '[bench]') || github.event_name == 'workflow_dispatch'
+    
+    env:
+      IMPL: ${{ github.event.inputs.impl || 'wmma' }}
+      TORCH_CUDA_ARCH_LIST: '8.9'  # L4 Ada
+      CUDA_VISIBLE_DEVICES: '0'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install torch==2.5.0 --index-url https://download.pytorch.org/whl/cu121
+          pip install numpy
+      
+      - name: GPU Info
+        run: |
+          nvidia-smi
+          python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.version.cuda}'); print(f'GPU: {torch.cuda.get_device_name(0)}')"
+      
+      - name: Measure SDPA Baseline
+        run: |
+          mkdir -p .ci
+          python bench/measure_sdpa.py \
+            --backend flash \
+            --shape 1,8,512,64 \
+            --dtype float16 \
+            --iters 100 \
+            --warmup 20 \
+            --out .ci/sdpa.json
+      
+      - name: Measure Candidate
+        run: |
+          IMPL=${{ env.IMPL }} python bench/measure_candidate.py \
+            --shape 1,8,512,64 \
+            --dtype float16 \
+            --iters 100 \
+            --warmup 20 \
+            --ncu \
+            --out .ci/cand.json
+      
+      - name: Hard Gate Check
+        id: gate
+        run: |
+          python bench/gate.py \
+            --sdpa .ci/sdpa.json \
+            --cand .ci/cand.json \
+            --alpha 0.05 \
+            --speedup 0.95 \
+            --n-bootstrap 10000
+      
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ env.IMPL }}-${{ github.sha }}
+          path: .ci/*.json
+      
+      - name: Comment PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const sdpa = JSON.parse(fs.readFileSync('.ci/sdpa.json', 'utf8'));
+            const cand = JSON.parse(fs.readFileSync('.ci/cand.json', 'utf8'));
+            
+            const speedup = (sdpa.median_ms / cand.median_ms).toFixed(3);
+            const passed = cand.median_ms < sdpa.median_ms * 0.95;
+            const status = passed ? '✅ PASSED' : '❌ FAILED';
+            
+            const comment = `## ${status} EvoEngineer Benchmark Gate
+            
+            **IMPL**: \`${process.env.IMPL}\`
+            **Shape**: [1, 8, 512, 64] (B, H, S, D)
+            
+            | Metric | SDPA | Candidate | Speedup |
+            |--------|------|-----------|---------|
+            | Median | ${sdpa.median_ms.toFixed(4)} ms | ${cand.median_ms.toFixed(4)} ms | ${speedup}× |
+            | Min | ${sdpa.min_ms.toFixed(4)} ms | ${cand.min_ms.toFixed(4)} ms | - |
+            | Max | ${sdpa.max_ms.toFixed(4)} ms | ${cand.max_ms.toFixed(4)} ms | - |
+            
+            **Gate**: Candidate must be < 0.95× SDPA (5% faster minimum)
+            **Target**: < ${(sdpa.median_ms * 0.95).toFixed(4)} ms
+            **Result**: ${passed ? '✅ Gate passed!' : '❌ Gate failed - needs optimization'}
+            
+            ${cand.ncu_metrics && Object.keys(cand.ncu_metrics).length > 0 ? `
+            **Nsight Compute Metrics**:
+            ${Object.entries(cand.ncu_metrics).map(([k,v]) => `- ${k}: ${v}`).join('\n')}
+            ` : ''}
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
