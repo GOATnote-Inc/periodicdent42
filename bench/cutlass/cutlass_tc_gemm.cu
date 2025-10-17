@@ -6,7 +6,7 @@
 #include "cutlass/cutlass.h"
 #include "cutlass/gemm/device/gemm.h"
 
-// Use Sm89 directly instead of Sm80
+// Use Sm80 templates (compatible with sm_89 compilation)
 using Gemm = cutlass::gemm::device::Gemm<
     cutlass::half_t,                      // ElementA
     cutlass::layout::RowMajor,            // LayoutA
@@ -16,10 +16,10 @@ using Gemm = cutlass::gemm::device::Gemm<
     cutlass::layout::RowMajor,            // LayoutC
     float,                                // ElementAccumulator
     cutlass::arch::OpClassTensorOp,       // TensorOp
-    cutlass::arch::Sm89,                  // Use Sm89 directly
+    cutlass::arch::Sm80,                  // Sm80 templates work on sm_89
     cutlass::gemm::GemmShape<32, 32, 16>, // ThreadblockShape (M, N, K)
     cutlass::gemm::GemmShape<16, 16, 16>, // WarpShape
-    cutlass::gemm::GemmShape<16, 8, 16>,  // InstructionShape (Ada MMA)
+    cutlass::gemm::GemmShape<16, 8, 16>,  // InstructionShape
     cutlass::epilogue::thread::LinearCombination<
         float,                            // ElementOutput
         128 / cutlass::sizeof_bits<float>::value, // ElementsPerAccess
@@ -33,7 +33,7 @@ using Gemm = cutlass::gemm::device::Gemm<
 int main() {
     const int M = 32, N = 32, K = 64;  // Q@K^T dimensions
     
-    printf("Testing CUTLASS TensorOp on sm_89\n");
+    printf("Testing CUTLASS TensorOp (Sm80 templates on sm_89)\n");
     printf("Problem: M=%d, N=%d, K=%d\n", M, N, K);
     
     // Host allocations
