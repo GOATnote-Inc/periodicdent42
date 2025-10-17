@@ -17,11 +17,19 @@ def test_kernel(kernel_name, build_fn):
     setup_env()
     
     # Build
-    if build_fn() != 0:
-        return None, 0.0
+    try:
+        if build_fn() != 0:
+            return False, 0.0, 0.0, 0.0
+    except Exception as e:
+        print(f"Build error: {e}")
+        return False, 0.0, 0.0, 0.0
     
     # Import
-    module = __import__(kernel_name)
+    try:
+        module = __import__(kernel_name)
+    except Exception as e:
+        print(f"Import error: {e}")
+        return False, 0.0, 0.0, 0.0
     
     # Test config
     batch_size = 1
@@ -84,23 +92,31 @@ def main():
     print("Testing Phase 4...")
     setup_env()
     from build_phase3_variant import build_phase3_variant
-    passed4, time4, sdpa4, diff4 = test_kernel("fa_phase3", build_phase3_variant)
+    result4 = test_kernel("fa_phase3", build_phase3_variant)
+    if result4[0] is False:
+        print(f"❌ Phase 4: FAILED to build/import")
+        return
+    passed4, time4, sdpa4, diff4 = result4
     
     if passed4:
         print(f"✅ Phase 4: {time4:.2f} μs (correctness OK, max_diff={diff4:.6f})")
     else:
-        print(f"❌ Phase 4: FAILED")
+        print(f"❌ Phase 4: Correctness FAILED (max_diff={diff4:.6f})")
         return
     
     # Test Phase 6
     print("\nTesting Phase 6...")
     from build_phase6 import build_phase6
-    passed6, time6, sdpa6, diff6 = test_kernel("fa_phase6", build_phase6)
+    result6 = test_kernel("fa_phase6", build_phase6)
+    if result6[0] is False:
+        print(f"❌ Phase 6: FAILED to build/import")
+        return
+    passed6, time6, sdpa6, diff6 = result6
     
     if passed6:
         print(f"✅ Phase 6: {time6:.2f} μs (correctness OK, max_diff={diff6:.6f})")
     else:
-        print(f"❌ Phase 6: FAILED")
+        print(f"❌ Phase 6: Correctness FAILED (max_diff={diff6:.6f})")
         return
     
     # Comparison
