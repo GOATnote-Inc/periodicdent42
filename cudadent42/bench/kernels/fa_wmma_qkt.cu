@@ -141,6 +141,9 @@ __global__ void flash_attention_wmma_qkt(
     float m_prev = -INFINITY;
     float l_prev = 0.0f;
     
+    // Compute rows per thread for loop iterations
+    const int rows_per_thread = (BLOCK_M + THREADS - 1) / THREADS;
+    
     // Load Q tile (once, reuse for all KV tiles)
     for (int i = tid; i < BLOCK_M * HEAD_DIM; i += THREADS) {
         const int row = i / HEAD_DIM;
@@ -183,7 +186,6 @@ __global__ void flash_attention_wmma_qkt(
         
         // Online softmax: compute row-wise max
         float m_new = -INFINITY;
-        const int rows_per_thread = (BLOCK_M + THREADS - 1) / THREADS;
         
         for (int local_row = 0; local_row < rows_per_thread; ++local_row) {
             const int row = tid + local_row * THREADS;
