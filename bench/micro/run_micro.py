@@ -38,17 +38,26 @@ def main():
     
     print(f"✅ Wrote {csv_path}")
     
-    # Parse results
+    # Parse results (stop at "Top-3" line)
     configs = []
-    reader = csv.DictReader(lines[header_idx:])
+    csv_lines = []
+    for line in lines[header_idx:]:
+        if line.startswith("Top-3") or line.startswith(" "):
+            break
+        csv_lines.append(line)
+    
+    reader = csv.DictReader(csv_lines)
     for row in reader:
-        configs.append({
-            "BLOCK_M": int(row["BLOCK_M"]),
-            "BLOCK_N": int(row["BLOCK_N"]),
-            "VEC_WIDTH": int(row["VEC_WIDTH"]),
-            "NUM_WARPS": int(row["NUM_WARPS"]),
-            "cycles": float(row["CYCLES"])
-        })
+        try:
+            configs.append({
+                "BLOCK_M": int(row["BLOCK_M"]),
+                "BLOCK_N": int(row["BLOCK_N"]),
+                "VEC_WIDTH": int(row["VEC_WIDTH"]),
+                "NUM_WARPS": int(row["NUM_WARPS"]),
+                "cycles": float(row["CYCLES"])
+            })
+        except ValueError:
+            continue
     
     # Top-3
     configs.sort(key=lambda x: x["cycles"])
