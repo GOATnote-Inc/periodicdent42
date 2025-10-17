@@ -1,8 +1,11 @@
-#!/usr/bin/env bash
-set -euo pipefail
-nvcc -O3 -use_fast_math -std=c++17 -Xptxas -v \
-  -gencode=arch=compute_89,code=sm_89 \
-  ${CUSTOM_TILE_FLAGS:-} \
-  bench/micro/bench_many.cu -o bench/micro/bench_many
-echo "Built bench/micro/bench_many"
+#!/bin/bash
+# bench/micro/build_micro.sh
+set -e
 
+export PATH="/usr/local/cuda/bin:$PATH"
+
+nvcc -O3 -use_fast_math -std=c++17 \
+  -gencode=arch=compute_89,code=sm_89 \
+  bench/micro/bench_many.cu -o bench/micro/bench_many
+
+echo "✅ Microbench compiled"

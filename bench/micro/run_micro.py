@@ -1,37 +1,69 @@
 #!/usr/bin/env python3
-import csv, json, os, subprocess, pathlib, sys
-from datetime import datetime
+# bench/micro/run_micro.py
+import subprocess
+import json
+import csv
+from pathlib import Path
 
-root = pathlib.Path(__file__).resolve().parents[2]
-binp = root / "bench/micro/bench_many"
-logd = root / "evidence"
-logd.mkdir(exist_ok=True)
-csvp = logd / "micro_log.csv"
-bestp = logd / "micro_best.json"
-
-def build(use_tile=False):
-    env = os.environ.copy()
-    env["CUSTOM_TILE_FLAGS"] = "-DCUSTOM_SDPA_TILE -I src/attn" if use_tile else ""
-    subprocess.check_call(["bash", "bench/micro/build_micro.sh"], env=env, cwd=root)
-
-def run(groups=9, tw=4):
-    out = subprocess.check_output([str(binp), f"--groups={groups}", f"--tw={tw}", "--csv"], text=True)
-    csvp.write_text(out)
-    rows = list(csv.DictReader(out.splitlines()))
-    for r in rows:
-        r["ns_per_iter"] = float(r["ns_per_iter"])
-        for k in ("bm", "bk", "stages", "vec"):
-            r[k] = int(r[k])
-    rows.sort(key=lambda x: x["ns_per_iter"])
-    bestp.write_text(json.dumps({"ts": datetime.utcnow().isoformat() + "Z", "topk": rows[:8]}, indent=2))
-    print(f"✅ Wrote: {csvp} and {bestp}")
-    print(f"\n📊 Top-8 Configurations:")
-    print(f"{'Rank':<5} {'BM':<5} {'BK':<5} {'STAGES':<7} {'VEC':<5} {'ns/iter':<10}")
-    print("=" * 60)
-    for i, r in enumerate(rows[:8], 1):
-        print(f"{i:<5} {r['bm']:<5} {r['bk']:<5} {r['stages']:<7} {r['vec']:<5} {r['ns_per_iter']:<10.2f}")
+def main():
+    repo_root = Path(__file__).parent.parent.parent
+    micro_bin = repo_root / "bench" / "micro" / "bench_many"
+    
+    if not micro_bin.exists():
+        print("Building microbench...")
+        subprocess.run(["bash", str(repo_root / "bench" / "micro" / "build_micro.sh")], check=True)
+    
+    print("Running microbench...")
+    result = subprocess.run([str(micro_bin)], capture_output=True, text=True)
+    
+    # Parse output
+    lines = result.stdout.strip().split('\n')
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.startswith("BLOCK_M,BLOCK_N"):
+            header_idx = i
+            break
+    
+    if header_idx is None:
+        print("❌ No CSV header found")
+        return
+    
+    # Write CSV
+    evidence_dir = repo_root / "evidence"
+    evidence_dir.mkdir(exist_ok=True)
+    
+    csv_path = evidence_dir / "micro_log.csv"
+    with open(csv_path, 'w') as f:
+        f.write('\n'.join(lines[header_idx:]))
+    
+    print(f"✅ Wrote {csv_path}")
+    
+    # Parse results
+    configs = []
+    reader = csv.DictReader(lines[header_idx:])
+    for row in reader:
+        configs.append({
+            "BLOCK_M": int(row["BLOCK_M"]),
+            "BLOCK_N": int(row["BLOCK_N"]),
+            "VEC_WIDTH": int(row["VEC_WIDTH"]),
+            "NUM_WARPS": int(row["NUM_WARPS"]),
+            "cycles": float(row["CYCLES"])
+        })
+    
+    # Top-3
+    configs.sort(key=lambda x: x["cycles"])
+    top3 = configs[:3]
+    
+    best_path = evidence_dir / "micro_best.json"
+    with open(best_path, 'w') as f:
+        json.dump(top3, f, indent=2)
+    
+    print(f"✅ Wrote {best_path}")
+    print("\nTop-3:")
+    for i, cfg in enumerate(top3):
+        print(f"  {i+1}. BLOCK_M={cfg['BLOCK_M']} BLOCK_N={cfg['BLOCK_N']} "
+              f"VEC={cfg['VEC_WIDTH']} WARPS={cfg['NUM_WARPS']} "
+              f"CYCLES={cfg['cycles']:.0f}")
 
 if __name__ == "__main__":
-    build(use_tile=os.environ.get("MICRO_USE_TILE", "0") == "1")
-    run()
-
+    main()
