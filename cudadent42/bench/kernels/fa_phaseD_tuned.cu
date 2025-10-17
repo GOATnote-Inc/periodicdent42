@@ -41,7 +41,7 @@ __device__ float warp_reduce_max(float val) {
 __device__ float warp_reduce_sum(float val) {
     #pragma unroll 4  // Bounded unroll
     for (int offset = 16; offset > 0; offset /= 2) {
-        val += __shfl_down_sync(0xffffffff, val, offset));
+        val += __shfl_down_sync(0xffffffff, val, offset);
     }
     return val;
 }

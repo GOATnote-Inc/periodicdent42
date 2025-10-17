@@ -44,7 +44,7 @@ torch::Tensor phaseD_attention_forward(
         reinterpret_cast<half*>(O.data_ptr<at::Half>()),
         B, H, M, N, D,
         scale,
-        at::cuda::getCurrentCUDAStream()
+        c10::cuda::getCurrentCUDAStream()
     );
     
     return O;
