@@ -64,15 +64,21 @@ def main():
     print(f"Timing trials: {N_TRIALS}")
     print()
 
-    # Build Phase 4 kernel
+    # Build Phase 4 kernel (parameters via environment)
     print("📦 Building Phase 4 kernel...")
-    fa_phase4 = build_phase3_variant(
-        BLOCK_M=32,
-        NUM_WARPS=8,
-        VEC_WIDTH=4,
-        SYNC_POLICY=2,
-        REDUCE="warp"
-    )
+    os.environ['BLOCK_M'] = '32'
+    os.environ['NUM_WARPS'] = '8'
+    os.environ['VEC_WIDTH'] = '4'
+    os.environ['SYNC_POLICY'] = '2'
+    os.environ['REDUCE'] = 'warp'
+    
+    build_result = build_phase3_variant()
+    if build_result != 0:
+        print("❌ Failed to build Phase 4 kernel")
+        sys.exit(1)
+    
+    # Import the built module
+    import fa_phase3
     scale = 1.0 / (HEAD_DIM ** 0.5)
     print("   ✅ Phase 4 loaded (M=32, W=8, VEC=4)")
     print()
@@ -96,7 +102,7 @@ def main():
         
         # Phase 4 output
         with torch.no_grad():
-            phase4_out = fa_phase4.forward(Q, K, V, scale)
+            phase4_out = fa_phase3.forward(Q, K, V, scale)
         
         # Check correctness
         diff = (ref_out - phase4_out).abs().max().item()
@@ -133,7 +139,7 @@ def main():
     
     # Measure Phase 4
     print("   Measuring Phase 4 kernel...")
-    phase4_time = measure_time(lambda: fa_phase4.forward(Q, K, V, scale), n_trials=N_TRIALS)
+    phase4_time = measure_time(lambda: fa_phase3.forward(Q, K, V, scale), n_trials=N_TRIALS)
     print(f"   ✅ Phase 4: {phase4_time:.2f} μs")
     
     # Calculate speedup
