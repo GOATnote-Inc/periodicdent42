@@ -41,7 +41,15 @@ echo "STEP 2: Quick Metrics (Memory + Compute)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-ncu --metrics \
+# Use full path to NCU
+NCU_BIN="/usr/local/cuda/bin/ncu"
+if [ ! -f "$NCU_BIN" ]; then
+    echo "❌ NCU not found at $NCU_BIN"
+    echo "   Trying 'ncu' in PATH..."
+    NCU_BIN="ncu"
+fi
+
+$NCU_BIN --metrics \
   gpu__time_duration.sum,\
   sm__throughput.avg.pct_of_peak_sustained_elapsed,\
   dram__throughput.avg.pct_of_peak_sustained_elapsed,\
@@ -84,7 +92,7 @@ echo ""
 echo "This may take 5-10 minutes..."
 echo ""
 
-ncu --set full \
+$NCU_BIN --set full \
   --target-processes all \
   --kernel-name regex:".*" \
   --launch-count 1 \
