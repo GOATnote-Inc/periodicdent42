@@ -32,10 +32,14 @@ def build_phase3_stable():
     
     # Source files
     kernel_file = "cudadent42/bench/kernels/fa_phase3_stable.cu"
+    bindings_file = "cudadent42/bench/kernels/fa_phase3_stable_bindings.cpp"
     
-    # Check if kernel exists
+    # Check if files exist
     if not Path(kernel_file).exists():
         print(f"❌ Error: {kernel_file} not found")
+        sys.exit(1)
+    if not Path(bindings_file).exists():
+        print(f"❌ Error: {bindings_file} not found")
         sys.exit(1)
     
     # Compile flags
@@ -56,7 +60,7 @@ def build_phase3_stable():
     try:
         module = load(
             name='fa_phase3_stable',
-            sources=[kernel_file],
+            sources=[kernel_file, bindings_file],
             extra_cuda_cflags=extra_cuda_cflags,
             verbose=True
         )
