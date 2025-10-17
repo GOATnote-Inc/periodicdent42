@@ -20,6 +20,8 @@ export REDUCE=warp
 python3 bench/build_phase3_variant.py >/dev/null 2>&1
 
 python3 -c "
+import sys
+sys.path.insert(0, '/home/kiteboard/.cache/torch_extensions/py310_cu121/fa_phase3')
 import torch
 import time
 import fa_phase3
