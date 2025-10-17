@@ -43,7 +43,7 @@ __device__ __forceinline__ float warp_max(float v) {
 __device__ __forceinline__ float warp_sum(float v) {
     #pragma unroll
     for (int d = 16; d > 0; d >>= 1) {
-        v += __shfl_down_sync(0xffffffff, v, d));
+        v += __shfl_down_sync(0xffffffff, v, d);
     }
     return v;
 }
