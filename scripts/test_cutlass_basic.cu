@@ -8,6 +8,7 @@
 // CUTLASS GEMM configuration for FP16 -> FP32
 // C = alpha * A @ B + beta * C
 // For Q@K^T: (32x64) = (32x64) @ (64x64)^T
+// Using Sm80 (Ampere) config which is compatible with Sm89 (Ada)
 using Gemm = cutlass::gemm::device::Gemm<
     __half,                                    // Element A
     cutlass::layout::RowMajor,                 // Layout A
@@ -17,11 +18,11 @@ using Gemm = cutlass::gemm::device::Gemm<
     cutlass::layout::RowMajor,                 // Layout C
     float,                                     // Element accumulator
     cutlass::arch::OpClassTensorOp,            // Operator class (Tensor Cores)
-    cutlass::arch::Sm89                        // Architecture (Ada)
+    cutlass::arch::Sm80                        // Architecture (Ampere, compatible with Ada)
 >;
 
 int main() {
-    std::cout << "CUTLASS Basic Test for sm_89 (L4/Ada)" << std::endl;
+    std::cout << "CUTLASS Basic Test for sm_89 (L4/Ada) using Sm80 config" << std::endl;
     
     // Small test matrices
     int M = 32;
