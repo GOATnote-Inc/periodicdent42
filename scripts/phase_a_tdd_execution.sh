@@ -14,7 +14,7 @@ cd ~/periodicdent42
 source ~/venv/bin/activate
 
 # Set PYTHONPATH for module imports
-export PYTHONPATH="$(pwd):$PYTHONPATH"
+export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
 # Colors for output
 GREEN='\033[0;32m'
