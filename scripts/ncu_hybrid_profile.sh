@@ -6,9 +6,13 @@ set -e
 cd ~/periodicdent42
 source ~/venv/bin/activate
 
-echo "=" 70
+# Add CUDA to PATH
+export PATH="/usr/local/cuda/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+
+echo "======================================================================"
 echo "Phase B.4: NCU Profiling - Hybrid Attention"
-echo "="*70
+echo "======================================================================"
 echo ""
 
 # Create evidence directory
