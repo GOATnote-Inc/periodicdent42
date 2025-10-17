@@ -31,11 +31,12 @@ def benchmark_phaseD(B=1, H=8, S=512, D=64, warmup=10, iters=100):
     k = torch.randn(B, H, S, D, device='cuda', dtype=torch.float16)
     v = torch.randn(B, H, S, D, device='cuda', dtype=torch.float16)
     
-    # Load module (should be already built)
+    # Build/load module
     try:
-        import fa_phaseD_tuned
-    except ImportError:
-        print("❌ Module not built! Run bench/build_phaseD.py first")
+        from build_phaseD import build_phaseD
+        fa_phaseD_tuned = build_phaseD()
+    except Exception as e:
+        print(f"❌ Module build/load failed: {e}")
         sys.exit(1)
     
     # Warmup
