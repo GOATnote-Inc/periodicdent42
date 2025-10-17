@@ -32,7 +32,7 @@ def build_phase3_stable():
     
     # Source files
     kernel_file = "cudadent42/bench/kernels/fa_phase3_stable.cu"
-    bindings_file = "cudadent42/bench/kernels/fa_phase3_stable_bindings.cpp"
+    bindings_file = "cudadent42/bench/kernels/fa_phase3_stable_bindings.cu"
     
     # Check if files exist
     if not Path(kernel_file).exists():
