@@ -103,19 +103,20 @@ void flash_attention_phase6_kernel(
     }
     __syncthreads();
     
-    // Initialize online softmax accumulators
-    float m_row[BLOCK_M];
-    float l_row[BLOCK_M];
-    float O_accum[BLOCK_M][HEAD_DIM];
+    // Initialize online softmax accumulators (SHARED MEMORY to avoid register pressure)
+    __shared__ float m_smem[BLOCK_M];
+    __shared__ float l_smem[BLOCK_M];
+    __shared__ float O_smem[BLOCK_M][HEAD_DIM];
     
     for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
-        m_row[row] = -FLT_MAX;
-        l_row[row] = 0.0f;
+        m_smem[row] = -FLT_MAX;
+        l_smem[row] = 0.0f;
         #pragma unroll 8
         for (int d = 0; d < HEAD_DIM; d++) {
-            O_accum[row][d] = 0.0f;
+            O_smem[row][d] = 0.0f;
         }
     }
+    __syncthreads();
     
     // ========================================================================
     // KV LOOP
@@ -170,14 +171,14 @@ void flash_attention_phase6_kernel(
             for (int col = 1; col < kv_size; col++) {
                 m_new = fmaxf(m_new, S_smem[row][col]);
             }
-            m_new = fmaxf(m_new, m_row[row]);
+            m_new = fmaxf(m_new, m_smem[row]);
             
             // Rescale previous output
-            const float scale_old = expf(m_row[row] - m_new);
-            l_row[row] *= scale_old;
+            const float scale_old = expf(m_smem[row] - m_new);
+            l_smem[row] *= scale_old;
             #pragma unroll 8
             for (int d = 0; d < HEAD_DIM; d++) {
-                O_accum[row][d] *= scale_old;
+                O_smem[row][d] *= scale_old;
             }
             
             // Compute exp(S - m_new) and update
@@ -189,8 +190,8 @@ void flash_attention_phase6_kernel(
                 l_new += exp_val;
             }
             
-            l_row[row] += l_new;
-            m_row[row] = m_new;
+            l_smem[row] += l_new;
+            m_smem[row] = m_new;
         }
         __syncthreads();
         
@@ -215,7 +216,7 @@ void flash_attention_phase6_kernel(
                 for (int col = 0; col < kv_size; col++) {
                     sum += S_smem[row][col] * __half2float(KV_smem[col][d]);
                 }
-                O_accum[row][d] += sum;
+                O_smem[row][d] += sum;
             }
         }
         __syncthreads();
@@ -227,13 +228,13 @@ void flash_attention_phase6_kernel(
     for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
         const int q_pos = query_start + row;
         if (q_pos < seq_len) {
-            const float inv_l = 1.0f / l_row[row];
+            const float inv_l = 1.0f / l_smem[row];
             
             // Normalize and write (vectorized)
             half O_half[HEAD_DIM];
             #pragma unroll 8
             for (int d = 0; d < HEAD_DIM; d++) {
-                O_half[d] = __float2half(O_accum[row][d] * inv_l);
+                O_half[d] = __float2half(O_smem[row][d] * inv_l);
             }
             
             // Vectorized store: 8 FP16 at a time
