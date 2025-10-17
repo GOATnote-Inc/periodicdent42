@@ -4,12 +4,10 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "cutlass/cutlass.h"
 #include "cutlass/gemm/device/gemm.h"
-#include "cutlass/util/host_tensor.h"
-#include "cutlass/util/reference/host/tensor_fill.h"
-#include "cutlass/util/reference/host/tensor_compare.h"
 
 using ElementA = cutlass::half_t;
 using ElementB = cutlass::half_t;
@@ -63,40 +61,41 @@ int main() {
     const float alpha = 1.0f / sqrtf(K_dim);
     const float beta = 0.0f;
     
-    // Allocate
-    cutlass::HostTensor<ElementA, LayoutA> Q({M, K_dim});
-    cutlass::HostTensor<ElementB, LayoutB> K({N, K_dim});
-    cutlass::HostTensor<ElementC, LayoutC> S({M, N});
+    // Allocate host
+    half *Q_h = (half*)malloc(M * K_dim * sizeof(half));
+    half *K_h = (half*)malloc(N * K_dim * sizeof(half));
+    float *S_h = (float*)malloc(M * N * sizeof(float));
     
-    // Fill with test data
-    cutlass::reference::host::TensorFillRandomUniform(Q.host_view(), 1, ElementA(1.0), ElementA(-1.0), 0);
-    cutlass::reference::host::TensorFillRandomUniform(K.host_view(), 1, ElementB(1.0), ElementB(-1.0), 1);
-    cutlass::reference::host::TensorFill(S.host_view(), ElementC(0));
+    // Initialize
+    for (int i = 0; i < M * K_dim; i++) Q_h[i] = __float2half(0.1f);
+    for (int i = 0; i < N * K_dim; i++) K_h[i] = __float2half(0.1f);
+    for (int i = 0; i < M * N; i++) S_h[i] = 0.0f;
     
-    Q.sync_device();
-    K.sync_device();
-    S.sync_device();
+    // Allocate device
+    half *Q_d, *K_d;
+    float *S_d;
+    cudaMalloc(&Q_d, M * K_dim * sizeof(half));
+    cudaMalloc(&K_d, N * K_dim * sizeof(half));
+    cudaMalloc(&S_d, M * N * sizeof(float));
+    
+    cudaMemcpy(Q_d, Q_h, M * K_dim * sizeof(half), cudaMemcpyHostToDevice);
+    cudaMemcpy(K_d, K_h, N * K_dim * sizeof(half), cudaMemcpyHostToDevice);
+    cudaMemcpy(S_d, S_h, M * N * sizeof(float), cudaMemcpyHostToDevice);
     
     // Run CUTLASS
-    cudaError_t err = cutlass_qkt(
-        reinterpret_cast<const half*>(Q.device_data()),
-        reinterpret_cast<const half*>(K.device_data()),
-        S.device_data(),
-        M, N, K_dim,
-        alpha, beta
-    );
+    cudaError_t err = cutlass_qkt(Q_d, K_d, S_d, M, N, K_dim, alpha, beta);
     
     if (err != cudaSuccess) {
         printf("❌ CUTLASS GEMM failed\n");
         return 1;
     }
     
-    S.sync_host();
+    cudaMemcpy(S_h, S_d, M * N * sizeof(float), cudaMemcpyDeviceToHost);
     
     // Verify non-zero
     bool has_nonzero = false;
     for (int i = 0; i < M * N; i++) {
-        if (S.host_data()[i] != 0.0f) {
+        if (S_h[i] != 0.0f) {
             has_nonzero = true;
             break;
         }
@@ -104,7 +103,7 @@ int main() {
     
     printf("%s CUTLASS Q@K^T: M=%d, N=%d, K=%d\n", 
            has_nonzero ? "✅" : "❌", M, N, K_dim);
-    printf("Sample S[0,0]=%.6f\n", S.host_data()[0]);
+    printf("Sample S[0,0]=%.6f\n", S_h[0]);
     
     // Benchmark
     cudaEvent_t start, stop;
@@ -114,13 +113,7 @@ int main() {
     const int iters = 100;
     cudaEventRecord(start);
     for (int i = 0; i < iters; i++) {
-        cutlass_qkt(
-            reinterpret_cast<const half*>(Q.device_data()),
-            reinterpret_cast<const half*>(K.device_data()),
-            S.device_data(),
-            M, N, K_dim,
-            alpha, beta
-        );
+        cutlass_qkt(Q_d, K_d, S_d, M, N, K_dim, alpha, beta);
     }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -128,6 +121,13 @@ int main() {
     float ms = 0;
     cudaEventElapsedTime(&ms, start, stop);
     printf("CUTLASS Q@K^T: %.2f μs/iter\n", ms * 1000.0f / iters);
+    
+    free(Q_h);
+    free(K_h);
+    free(S_h);
+    cudaFree(Q_d);
+    cudaFree(K_d);
+    cudaFree(S_d);
     
     return 0;
 }
