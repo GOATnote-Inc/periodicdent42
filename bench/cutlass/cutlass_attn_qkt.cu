@@ -38,7 +38,7 @@ cudaError_t cutlass_qkt(
     float beta
 ) {
     typename Gemm::Arguments args{
-        {M, N, K_dim},
+        cutlass::gemm::GemmCoord{M, N, K_dim},
         {reinterpret_cast<const ElementA*>(Q), K_dim},
         {reinterpret_cast<const ElementB*>(K), K_dim},
         {S, N},
@@ -47,7 +47,23 @@ cudaError_t cutlass_qkt(
     };
     
     Gemm gemm_op;
-    cutlass::Status status = gemm_op(args);
+    
+    // Check workspace size
+    size_t workspace_size = gemm_op.get_workspace_size(args);
+    void* workspace = nullptr;
+    if (workspace_size > 0) {
+        cudaMalloc(&workspace, workspace_size);
+    }
+    
+    cutlass::Status status = gemm_op.initialize(args, workspace);
+    if (status != cutlass::Status::kSuccess) {
+        if (workspace) cudaFree(workspace);
+        return cudaErrorUnknown;
+    }
+    
+    status = gemm_op();
+    
+    if (workspace) cudaFree(workspace);
     
     if (status != cutlass::Status::kSuccess) {
         return cudaErrorUnknown;
