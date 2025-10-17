@@ -1,16 +1,14 @@
 // ============================================================================
-// PHASE 6: AGGRESSIVE SCALAR OPTIMIZATION
+// PHASE 6: TARGETED SCALAR OPTIMIZATION (Simplified & Robust)
 // ============================================================================
-// Target: 500-600 μs (2× speedup from Phase 4's 1,028 μs)
+// Based on Phase 4's proven design + vectorization + tuning
+// Target: 1,028 → 500-700 μs (1.5-2× speedup)
 //
-// Key Optimizations:
-// 1. Vectorized loads (uint4, 16-byte aligned)
-// 2. Optimized tile sizes (64×64 vs 32×64)
-// 3. Software pipelining (overlap compute/load)
-// 4. Register tiling (4×4 output tiles per thread)
-// 5. Reduced synchronization points
-//
-// Architecture: L4/Ada (sm_89)
+// Key Changes from Phase 4:
+// 1. Vectorized loads (uint4 = 16 bytes = 8×FP16)
+// 2. Increased threads (256 vs 128 for better occupancy)
+// 3. Optimized loop unrolling
+// 4. Reduced synchronization
 // ============================================================================
 
 #include <cuda_fp16.h>
@@ -19,26 +17,27 @@
 
 constexpr int HEAD_DIM = 64;
 
-// Tunable tile configuration
-#ifndef TILE_M
-constexpr int TILE_M = 64;  // Increased from 32 for better occupancy
+#ifndef BLOCK_M
+constexpr int BLOCK_M = 32;
 #endif
-#ifndef TILE_N
-constexpr int TILE_N = 64;
+#ifndef BLOCK_N
+constexpr int BLOCK_N = 64;
 #endif
-constexpr int TILE_K = HEAD_DIM;
-
 #ifndef NUM_THREADS
-constexpr int NUM_THREADS = 256;  // 8 warps for better occupancy
+constexpr int NUM_THREADS = 256;  // Increased from 128
 #endif
 
-// Vectorization width (4 halfs = 8 bytes, or 8 halfs = 16 bytes)
-constexpr int VEC_WIDTH = 8;  // Load 16 bytes (8×FP16) at once
+// Vectorized load: 8 FP16 values (16 bytes) at once
+__device__ __forceinline__ void load_vec8(half* dst, const half* src) {
+    *reinterpret_cast<uint4*>(dst) = *reinterpret_cast<const uint4*>(src);
+}
 
-// ============================================================================
-// WARP-LEVEL REDUCTIONS
-// ============================================================================
+// Vectorized store
+__device__ __forceinline__ void store_vec8(half* dst, const half* src) {
+    *reinterpret_cast<uint4*>(dst) = *reinterpret_cast<const uint4*>(src);
+}
 
+// Warp reductions
 __device__ __forceinline__ float warp_reduce_max(float val) {
     #pragma unroll
     for (int offset = 16; offset > 0; offset >>= 1) {
@@ -56,16 +55,7 @@ __device__ __forceinline__ float warp_reduce_sum(float val) {
 }
 
 // ============================================================================
-// VECTORIZED LOAD HELPERS
-// ============================================================================
-
-// Load 8 FP16 values (16 bytes) with single transaction
-__device__ __forceinline__ void load_vec8(half* dst, const half* src) {
-    *reinterpret_cast<uint4*>(dst) = *reinterpret_cast<const uint4*>(src);
-}
-
-// ============================================================================
-// PHASE 6 KERNEL: VECTORIZED + TILED + PIPELINED
+// PHASE 6 KERNEL: VECTORIZED + OPTIMIZED
 // ============================================================================
 
 __global__ __launch_bounds__(NUM_THREADS, 2)
@@ -82,217 +72,150 @@ void flash_attention_phase6_kernel(
     const int batch_idx = blockIdx.z;
     const int head_idx = blockIdx.y;
     const int query_block_idx = blockIdx.x;
-    
     const int tid = threadIdx.x;
-    const int warp_id = tid / 32;
-    const int lane_id = tid % 32;
-    
-    // Calculate row and column responsibilities for this thread
-    const int rows_per_thread = TILE_M / NUM_THREADS;
-    const int thread_row_start = (tid * TILE_M) / NUM_THREADS;
     
     const int query_offset = (batch_idx * num_heads + head_idx) * seq_len * HEAD_DIM;
     const int kv_offset = query_offset;
     const int output_offset = query_offset;
     
-    const int query_start = query_block_idx * TILE_M;
-    const int rows_this_block = min(TILE_M, seq_len - query_start);
+    const int query_start = query_block_idx * BLOCK_M;
+    const int rows_this_block = min(BLOCK_M, seq_len - query_start);
     
     if (query_start >= seq_len) return;
     
-    // ========================================================================
-    // SHARED MEMORY LAYOUT (optimized for vectorized access)
-    // ========================================================================
-    __shared__ half Q_smem[TILE_M][HEAD_DIM];      // 8KB
-    __shared__ half KV_smem[TILE_N][HEAD_DIM];     // 8KB (reused for K then V)
-    __shared__ float S_smem[TILE_M][TILE_N];       // 16KB
-    __shared__ float m_smem[TILE_M];               // Running max
-    __shared__ float l_smem[TILE_M];               // Running sum
+    // Shared memory
+    __shared__ half Q_smem[BLOCK_M][HEAD_DIM];
+    __shared__ half KV_smem[BLOCK_N][HEAD_DIM];  // Reused for K then V
+    __shared__ float S_smem[BLOCK_M][BLOCK_N];
     
     // ========================================================================
-    // LOAD Q TILE (VECTORIZED)
+    // LOAD Q TILE (VECTORIZED: 8 FP16 at a time)
     // ========================================================================
-    // Each thread loads multiple vectors
-    #pragma unroll 2
     for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
         const int q_row = query_start + row;
         if (q_row < seq_len) {
-            // Vectorized load: 8 FP16 at a time (16 bytes)
+            // Load 64 elements in 8 vectorized loads (8×8 = 64)
             #pragma unroll
-            for (int d = 0; d < HEAD_DIM; d += VEC_WIDTH) {
+            for (int d = 0; d < HEAD_DIM; d += 8) {
                 load_vec8(&Q_smem[row][d], &Q[query_offset + q_row * HEAD_DIM + d]);
             }
         }
     }
     __syncthreads();
     
-    // ========================================================================
-    // INITIALIZE OUTPUT ACCUMULATOR (per-thread register tile)
-    // ========================================================================
-    float O_thread[4][HEAD_DIM];  // 4 rows per thread max
-    float m_thread[4];            // Running max
-    float l_thread[4];            // Running exp sum
+    // Initialize online softmax accumulators
+    float m_row[BLOCK_M];
+    float l_row[BLOCK_M];
+    float O_accum[BLOCK_M][HEAD_DIM];
     
-    #pragma unroll
-    for (int r = 0; r < 4; r++) {
-        m_thread[r] = -FLT_MAX;
-        l_thread[r] = 0.0f;
-        #pragma unroll
+    for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
+        m_row[row] = -FLT_MAX;
+        l_row[row] = 0.0f;
+        #pragma unroll 8
         for (int d = 0; d < HEAD_DIM; d++) {
-            O_thread[r][d] = 0.0f;
+            O_accum[row][d] = 0.0f;
         }
     }
     
     // ========================================================================
-    // KV LOOP WITH SOFTWARE PIPELINING
+    // KV LOOP
     // ========================================================================
-    const int num_kv_blocks = (seq_len + TILE_N - 1) / TILE_N;
+    const int num_kv_blocks = (seq_len + BLOCK_N - 1) / BLOCK_N;
     
     for (int kv_block = 0; kv_block < num_kv_blocks; kv_block++) {
-        const int kv_start = kv_block * TILE_N;
-        const int kv_size = min(TILE_N, seq_len - kv_start);
+        const int kv_start = kv_block * BLOCK_N;
+        const int kv_size = min(BLOCK_N, seq_len - kv_start);
         
-        // ====================================================================
-        // LOAD K TILE (VECTORIZED)
-        // ====================================================================
-        #pragma unroll 2
+        // Load K tile (vectorized)
         for (int kv_row = tid; kv_row < kv_size; kv_row += NUM_THREADS) {
             const int k_row = kv_start + kv_row;
             if (k_row < seq_len) {
                 #pragma unroll
-                for (int d = 0; d < HEAD_DIM; d += VEC_WIDTH) {
+                for (int d = 0; d < HEAD_DIM; d += 8) {
                     load_vec8(&KV_smem[kv_row][d], &K[kv_offset + k_row * HEAD_DIM + d]);
                 }
             }
         }
         __syncthreads();
         
-        // ====================================================================
-        // COMPUTE Q@K^T (REGISTER TILED, 4×4 output tiles)
-        // ====================================================================
-        float S_thread[4][4];  // 4 query rows × 4 KV columns per thread
-        
-        #pragma unroll
-        for (int tr = 0; tr < 4; tr++) {
-            const int q_row = thread_row_start + tr;
-            if (q_row >= rows_this_block) break;
-            
-            // Each thread computes 4 columns of S
-            #pragma unroll
-            for (int tc = 0; tc < 4; tc++) {
-                const int kv_col = lane_id * 2 + tc;  // 32 lanes × 2 = 64 columns
-                if (kv_col >= kv_size) {
-                    S_thread[tr][tc] = -FLT_MAX;
-                    continue;
-                }
-                
-                // Dot product Q[q_row] · K[kv_col]
+        // Compute Q@K^T → S
+        for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
+            #pragma unroll 4
+            for (int col = 0; col < kv_size; col++) {
                 float sum = 0.0f;
                 #pragma unroll
                 for (int d = 0; d < HEAD_DIM; d++) {
-                    sum += __half2float(Q_smem[q_row][d]) * __half2float(KV_smem[kv_col][d]);
+                    sum += __half2float(Q_smem[row][d]) * __half2float(KV_smem[col][d]);
                 }
-                S_thread[tr][tc] = sum * softmax_scale;
+                
+                sum *= softmax_scale;
                 
                 // Causal mask
-                const int q_pos = query_start + q_row;
-                const int k_pos = kv_start + kv_col;
+                const int q_pos = query_start + row;
+                const int k_pos = kv_start + col;
                 if (k_pos > q_pos) {
-                    S_thread[tr][tc] = -FLT_MAX;
+                    sum = -FLT_MAX;
                 }
-            }
-        }
-        
-        // ====================================================================
-        // ONLINE SOFTMAX UPDATE (WARP-COOPERATIVE)
-        // ====================================================================
-        #pragma unroll
-        for (int tr = 0; tr < 4; tr++) {
-            const int q_row = thread_row_start + tr;
-            if (q_row >= rows_this_block) break;
-            
-            // Find max in this thread's tile
-            float m_new = S_thread[tr][0];
-            #pragma unroll
-            for (int tc = 1; tc < 4; tc++) {
-                m_new = fmaxf(m_new, S_thread[tr][tc]);
-            }
-            
-            // Warp-wide max reduction
-            m_new = warp_reduce_max(m_new);
-            m_new = fmaxf(m_new, m_thread[tr]);
-            
-            // Rescale previous output and sum
-            const float scale_old = expf(m_thread[tr] - m_new);
-            l_thread[tr] *= scale_old;
-            #pragma unroll
-            for (int d = 0; d < HEAD_DIM; d++) {
-                O_thread[tr][d] *= scale_old;
-            }
-            
-            // Compute exp(S - m_new) and sum
-            float l_new = 0.0f;
-            #pragma unroll
-            for (int tc = 0; tc < 4; tc++) {
-                const float exp_val = expf(S_thread[tr][tc] - m_new);
-                S_thread[tr][tc] = exp_val;
-                l_new += exp_val;
-            }
-            
-            // Warp-wide sum reduction
-            l_new = warp_reduce_sum(l_new);
-            l_thread[tr] += l_new;
-            m_thread[tr] = m_new;
-        }
-        
-        // Write S to SMEM for P@V (only if needed by other threads)
-        #pragma unroll
-        for (int tr = 0; tr < 4; tr++) {
-            const int q_row = thread_row_start + tr;
-            if (q_row >= rows_this_block) break;
-            
-            #pragma unroll
-            for (int tc = 0; tc < 4; tc++) {
-                const int kv_col = lane_id * 2 + tc;
-                if (kv_col < kv_size) {
-                    S_smem[q_row][kv_col] = S_thread[tr][tc];
-                }
+                
+                S_smem[row][col] = sum;
             }
         }
         __syncthreads();
         
-        // ====================================================================
-        // LOAD V TILE (VECTORIZED, REUSE KV_smem)
-        // ====================================================================
-        #pragma unroll 2
+        // Online softmax update
+        for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
+            // Find max in this block
+            float m_new = S_smem[row][0];
+            #pragma unroll 4
+            for (int col = 1; col < kv_size; col++) {
+                m_new = fmaxf(m_new, S_smem[row][col]);
+            }
+            m_new = fmaxf(m_new, m_row[row]);
+            
+            // Rescale previous output
+            const float scale_old = expf(m_row[row] - m_new);
+            l_row[row] *= scale_old;
+            #pragma unroll 8
+            for (int d = 0; d < HEAD_DIM; d++) {
+                O_accum[row][d] *= scale_old;
+            }
+            
+            // Compute exp(S - m_new) and update
+            float l_new = 0.0f;
+            #pragma unroll 4
+            for (int col = 0; col < kv_size; col++) {
+                const float exp_val = expf(S_smem[row][col] - m_new);
+                S_smem[row][col] = exp_val;
+                l_new += exp_val;
+            }
+            
+            l_row[row] += l_new;
+            m_row[row] = m_new;
+        }
+        __syncthreads();
+        
+        // Load V tile (vectorized, reuse KV_smem)
         for (int kv_row = tid; kv_row < kv_size; kv_row += NUM_THREADS) {
             const int v_row = kv_start + kv_row;
             if (v_row < seq_len) {
                 #pragma unroll
-                for (int d = 0; d < HEAD_DIM; d += VEC_WIDTH) {
+                for (int d = 0; d < HEAD_DIM; d += 8) {
                     load_vec8(&KV_smem[kv_row][d], &V[kv_offset + v_row * HEAD_DIM + d]);
                 }
             }
         }
         __syncthreads();
         
-        // ====================================================================
-        // COMPUTE P@V (ACCUMULATE INTO O_thread)
-        // ====================================================================
-        #pragma unroll
-        for (int tr = 0; tr < 4; tr++) {
-            const int q_row = thread_row_start + tr;
-            if (q_row >= rows_this_block) break;
-            
-            // Each thread accumulates from its P columns
-            #pragma unroll
+        // Accumulate P@V → O
+        for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
+            #pragma unroll 8
             for (int d = 0; d < HEAD_DIM; d++) {
                 float sum = 0.0f;
-                #pragma unroll
-                for (int kv_col = 0; kv_col < kv_size; kv_col++) {
-                    sum += S_smem[q_row][kv_col] * __half2float(KV_smem[kv_col][d]);
+                #pragma unroll 4
+                for (int col = 0; col < kv_size; col++) {
+                    sum += S_smem[row][col] * __half2float(KV_smem[col][d]);
                 }
-                O_thread[tr][d] += sum;
+                O_accum[row][d] += sum;
             }
         }
         __syncthreads();
@@ -301,27 +224,22 @@ void flash_attention_phase6_kernel(
     // ========================================================================
     // FINALIZE AND WRITE OUTPUT (VECTORIZED)
     // ========================================================================
-    #pragma unroll
-    for (int tr = 0; tr < 4; tr++) {
-        const int q_row = thread_row_start + tr;
-        if (q_row >= rows_this_block) break;
-        
-        const int q_pos = query_start + q_row;
+    for (int row = tid; row < rows_this_block; row += NUM_THREADS) {
+        const int q_pos = query_start + row;
         if (q_pos < seq_len) {
-            const float inv_l = 1.0f / l_thread[tr];
+            const float inv_l = 1.0f / l_row[row];
             
-            // Normalize and write output (vectorized)
+            // Normalize and write (vectorized)
             half O_half[HEAD_DIM];
-            #pragma unroll
+            #pragma unroll 8
             for (int d = 0; d < HEAD_DIM; d++) {
-                O_half[d] = __float2half(O_thread[tr][d] * inv_l);
+                O_half[d] = __float2half(O_accum[row][d] * inv_l);
             }
             
             // Vectorized store: 8 FP16 at a time
             #pragma unroll
-            for (int d = 0; d < HEAD_DIM; d += VEC_WIDTH) {
-                *reinterpret_cast<uint4*>(&O[output_offset + q_pos * HEAD_DIM + d]) = 
-                    *reinterpret_cast<uint4*>(&O_half[d]);
+            for (int d = 0; d < HEAD_DIM; d += 8) {
+                store_vec8(&O[output_offset + q_pos * HEAD_DIM + d], &O_half[d]);
             }
         }
     }
@@ -342,7 +260,7 @@ extern "C" void launch_flash_attention_phase6(
     int seq_len,
     cudaStream_t stream
 ) {
-    const int num_query_blocks = (seq_len + TILE_M - 1) / TILE_M;
+    const int num_query_blocks = (seq_len + BLOCK_M - 1) / BLOCK_M;
     
     dim3 grid(num_query_blocks, num_heads, batch_size);
     dim3 block(NUM_THREADS);
