@@ -6,6 +6,7 @@
 #include <cuda_fp16.h>
 #include <stdio.h>
 #include <vector>
+#include <algorithm>
 
 constexpr int HEAD_DIM = 64;
 constexpr int WARMUP = 10;
