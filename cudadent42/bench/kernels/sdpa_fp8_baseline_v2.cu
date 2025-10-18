@@ -137,8 +137,12 @@ __global__ void sdpa_fp8_baseline_v2_kernel(
                     score += q_val * k_val;
                 }
                 
-                score = warp_reduce_sum(score);
-                score *= softmax_scale;
+                score = warp_reduce_sum(score);  // Now only lane 0 has the sum
+                if (lane_id == 0) {
+                    score *= softmax_scale;
+                }
+                // Broadcast from lane 0 to all lanes!
+                score = __shfl_sync(0xffffffff, score, 0);
                 S_row[n] = score;
             }
             
