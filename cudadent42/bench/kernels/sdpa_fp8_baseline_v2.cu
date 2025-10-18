@@ -3,6 +3,7 @@
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <cstdint>
 #include <stdio.h>
 
 #define HEAD_DIM 64
