@@ -27,6 +27,7 @@ def build_module():
         name="sdpa_fp8_wmma",
         sources=[
             os.path.join(source_dir, "sdpa_fp8_wmma.cu"),
+            os.path.join(source_dir, "sdpa_fp8_wmma_launch.cu"),
             os.path.join(source_dir, "sdpa_fp8_wmma_bindings.cpp"),
         ],
         extra_cuda_cflags=[
