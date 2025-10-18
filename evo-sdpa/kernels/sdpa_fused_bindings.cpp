@@ -36,7 +36,8 @@ torch::Tensor sdpa_fused_forward_py(
     params.scale = scale;
     params.causal = causal;
     
-    cudaError_t err = sdpa_fused_forward(params);
+    // Use V2 kernel (WMMA + cp.async + dynamic SMEM)
+    cudaError_t err = sdpa_fused_forward_v2(params);
     TORCH_CHECK(err == cudaSuccess, "CUDA error: ", cudaGetErrorString(err));
     
     return O;

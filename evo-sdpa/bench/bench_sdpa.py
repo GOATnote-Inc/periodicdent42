@@ -12,6 +12,7 @@ def build_ext():
     kernel_dir = os.path.join(os.path.dirname(__file__), "..", "kernels")
     srcs = [
         os.path.join(kernel_dir, "sdpa_fused.cu"),
+        os.path.join(kernel_dir, "sdpa_fused_v2.cu"),
         os.path.join(kernel_dir, "sdpa_fused_bindings.cpp")
     ]
     

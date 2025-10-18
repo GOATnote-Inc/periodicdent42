@@ -16,6 +16,7 @@ struct SdpaParams {
     bool causal;        // causal masking flag
 };
 
-// Forward declaration
+// Forward declarations
 cudaError_t sdpa_fused_forward(const SdpaParams& params, cudaStream_t stream = 0);
+cudaError_t sdpa_fused_forward_v2(const SdpaParams& params, cudaStream_t stream = 0);
 
