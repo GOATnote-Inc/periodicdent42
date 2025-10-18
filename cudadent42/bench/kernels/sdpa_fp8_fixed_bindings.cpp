@@ -50,6 +50,9 @@ torch::Tensor sdpa_fp8_fixed_forward(
     
     const float softmax_scale = 1.0f / sqrtf(static_cast<float>(D));
     
+    const at::cuda::OptionalCUDAGuard device_guard(Q.device());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    
     launch_sdpa_fp8_fixed(
         Q.data_ptr(),
         K.data_ptr(),
@@ -60,7 +63,7 @@ torch::Tensor sdpa_fp8_fixed_forward(
         reinterpret_cast<half*>(O.data_ptr<at::Half>()),
         B, H, S, D,
         softmax_scale,
-        c10::cuda::getCurrentCUDAStream()
+        stream
     );
     
     return O;
