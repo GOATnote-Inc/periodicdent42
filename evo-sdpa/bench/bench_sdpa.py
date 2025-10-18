@@ -13,6 +13,7 @@ def build_ext():
     srcs = [
         os.path.join(kernel_dir, "sdpa_fused.cu"),
         os.path.join(kernel_dir, "sdpa_fused_v2.cu"),
+        os.path.join(kernel_dir, "sdpa_fused_v2b.cu"),
         os.path.join(kernel_dir, "sdpa_fused_bindings.cpp")
     ]
     
@@ -44,11 +45,12 @@ def rand_inputs(B, H, L, d, dtype=torch.float16, device="cuda"):
     v = torch.randn(B, H, L, d, device=device, dtype=dtype) * 0.1
     return q, k, v
 
-def run_case(mod, B=2, H=8, L=2048, d=64, causal=False, dtype=torch.float16, iters=100):
+def run_case(mod, B=2, H=8, L=2048, d=64, causal=False, dtype=torch.float16, iters=100, verbose=True):
     """Run single benchmark case"""
-    print(f"\n{'='*80}")
-    print(f"Testing: B={B}, H={H}, L={L}, d={d}, causal={causal}, dtype={dtype}")
-    print('='*80)
+    if verbose:
+        print(f"\n{'='*80}")
+        print(f"Testing: B={B}, H={H}, L={L}, d={d}, causal={causal}, dtype={dtype}")
+        print('='*80)
     
     q, k, v = rand_inputs(B, H, L, d, dtype)
     scale = 1.0 / math.sqrt(d)
@@ -71,9 +73,10 @@ def run_case(mod, B=2, H=8, L=2048, d=64, causal=False, dtype=torch.float16, ite
     max_abs = (O - o_ref).abs().max().item()
     ok = (max_abs <= 5*tol) or (max_rel <= 5*tol)
     
-    print(f"Correctness: {'✅ PASS' if ok else '❌ FAIL'}")
-    print(f"  max_abs_diff: {max_abs:.6f}")
-    print(f"  max_rel_diff: {max_rel:.6f}")
+    if verbose:
+        print(f"Correctness: {'✅ PASS' if ok else '❌ FAIL'}")
+        print(f"  max_abs_diff: {max_abs:.6f}")
+        print(f"  max_rel_diff: {max_rel:.6f}")
     
     if not ok:
         return {"ok": False, "us": float('inf'), "us_ref": 0, "speedup_vs_torch": 0}
@@ -102,10 +105,17 @@ def run_case(mod, B=2, H=8, L=2048, d=64, causal=False, dtype=torch.float16, ite
     
     speedup = us_ref / us if us > 0 else 0
     
-    print(f"\nPerformance:")
-    print(f"  Custom kernel:  {us:7.2f} μs")
-    print(f"  PyTorch SDPA:   {us_ref:7.2f} μs")
-    print(f"  Speedup:        {speedup:.2f}×")
+    if verbose:
+        print(f"\nPerformance:")
+        print(f"  Custom kernel:  {us:7.2f} μs")
+        print(f"  PyTorch SDPA:   {us_ref:7.2f} μs")
+        print(f"  Speedup:        {speedup:.2f}×")
+    else:
+        # Compact output for automated runs
+        status = "✅" if ok else "❌"
+        print(f"{status} B={B} H={H} L={L:4d} d={d:3d} causal={int(causal)} | "
+              f"custom={us:7.2f}μs torch={us_ref:7.2f}μs speedup={speedup:.2f}× "
+              f"max_diff={max_abs:.6f}")
     
     return {
         "ok": ok,
