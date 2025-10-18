@@ -167,9 +167,9 @@ __global__ void sdpa_fp8_baseline_v2_kernel(
                 O_row[d] *= rescale;
             }
             
-            // P @ V
+            // P @ V (with proper normalization!)
             for (int n = 0; n < kv_len; n++) {
-                float p_normalized = S_row[n];
+                float p_normalized = S_row[n] / l_new;  // ✅ FIX: Normalize by sum!
                 
                 #pragma unroll 8
                 for (int d = lane_id; d < D; d += 32) {
