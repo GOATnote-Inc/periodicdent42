@@ -24,12 +24,13 @@
 using namespace nvcuda;
 
 // Tile configurations (per HEAD_DIM)
-// d=64:  (M,N,K) = (64, 128, 64) → SMEM ~84 KB
-// d=128: (M,N,K) = (64, 64, 64)  → SMEM ~88 KB
+// Constrained by 48 KB SMEM limit on L4
+// d=64:  (M,N,K) = (32, 32, 64) → SMEM ~40 KB
+// d=128: (M,N,K) = (32, 32, 64) → SMEM ~46 KB
 template<int HEAD_DIM>
 struct TileConfig {
-    static constexpr int M = 64;
-    static constexpr int N = (HEAD_DIM == 64) ? 128 : 64;
+    static constexpr int M = 32;
+    static constexpr int N = 32;
     static constexpr int K = 64;
 };
 
