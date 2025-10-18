@@ -167,14 +167,14 @@ __global__ void sdpa_fp8_baseline_v2_kernel(
                 O_row[d] *= rescale;
             }
             
-            // P @ V (with proper normalization!)
+            // P @ V (unnormalized - correct for online Flash!)
             for (int n = 0; n < kv_len; n++) {
-                float p_normalized = S_row[n] / l_new;  // ✅ FIX: Normalize by sum!
+                float p = S_row[n];  // Unnormalized exp(score - m_new)
                 
                 #pragma unroll 8
                 for (int d = lane_id; d < D; d += 32) {
                     float v_val = dequant_sim_fp8(V_smem[n][d], v_s);
-                    O_row[d] += p_normalized * v_val;
+                    O_row[d] += p * v_val;
                 }
             }
             
