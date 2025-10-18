@@ -21,7 +21,7 @@ set -euo pipefail
 
 # Configuration
 GPU_INSTANCE="cudadent42-l4-dev"
-GPU_ZONE="us-central1-a"
+GPU_ZONE="us-west1-c"
 GPU_PROJECT="periodicdent42"  # Update if different
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
