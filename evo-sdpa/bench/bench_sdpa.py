@@ -17,6 +17,7 @@ def build_ext():
         os.path.join(kernel_dir, "sdpa_fused_v2c.cu"),
         os.path.join(kernel_dir, "sdpa_fused_v2c_v4.cu"),
         os.path.join(kernel_dir, "sdpa_fused_v2c_v5.cu"),
+        os.path.join(kernel_dir, "sdpa_fused_v2c_v6.cu"),
         os.path.join(kernel_dir, "sdpa_fused_bindings.cpp")
     ]
     
