@@ -228,10 +228,12 @@ __global__ void sdpa_fused_v2c_kernel(
                     score = __shfl_sync(0xffffffff, score * scale, 0);
                 }
             }
-            
-            __syncwarp();  // Ensure scores written
-            
-            // Process each owned row (streaming softmax)
+        }
+        
+        __syncthreads();  // FIX: All warps share S_scores, need full block sync!
+        
+        // Process each owned row (streaming softmax)
+        if (my_num_rows > 0) {
             for (int r = my_row_start; r < my_row_end; ++r) {
                 // Read scores for this row (already scaled)
                 float row_max = -FLT_MAX;
