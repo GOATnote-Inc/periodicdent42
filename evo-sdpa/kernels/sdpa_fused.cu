@@ -31,7 +31,7 @@
 using namespace nvcuda;
 
 // Tunables
-#define TILE_M 128    // Q rows per CTA
+#define TILE_M 64     // Q rows per CTA (reduced for SMEM budget)
 #define TILE_N 64     // K/V rows per iteration
 #define HEAD_DIM 64   // d_head (compile-time for now)
 #define PAD 16        // SMEM padding (80 = 64 + 16)
@@ -110,13 +110,13 @@ __global__ void sdpa_fused_kernel(
     const T* V_bh = V + bh * L * d;
     T* O_bh = O + bh * L * d;
     
-    // Shared memory (45 KB total)
-    __shared__ __align__(16) half sQ[TILE_M][HEAD_DIM + PAD];           // 20 KB
-    __shared__ __align__(16) half sK[2][TILE_N][HEAD_DIM + PAD];        // 16 KB (double-buffer)
-    __shared__ __align__(16) half sV[2][TILE_N][HEAD_DIM + PAD];        // 16 KB
+    // Shared memory (~46 KB total for TILE_M=64)
+    __shared__ __align__(16) half sQ[TILE_M][HEAD_DIM + PAD];           // 10 KB
+    __shared__ __align__(16) half sK[TILE_N][HEAD_DIM + PAD];           // 10 KB (single-buffer)
+    __shared__ __align__(16) half sV[TILE_N][HEAD_DIM + PAD];           // 10 KB
     __shared__ float m_smem[TILE_M];                                     // max per Q row
     __shared__ float l_smem[TILE_M];                                     // sum_exp per Q row
-    __shared__ __align__(16) float O_accum[TILE_M][HEAD_DIM + PAD];     // 40 KB (FP32 accum)
+    __shared__ __align__(16) float O_accum[TILE_M][HEAD_DIM + PAD];     // 20 KB (FP32 accum)
     
     // Load Q tile (once per CTA)
     for (int idx = tid; idx < num_q_rows * HEAD_DIM; idx += blockDim.x) {
@@ -143,24 +143,8 @@ __global__ void sdpa_fused_kernel(
     }
     __syncthreads();
     
-    // Stream K/V tiles
+    // Stream K/V tiles (single-buffer for now)
     const int num_kv_tiles = (L + TILE_N - 1) / TILE_N;
-    int current_stage = 0;
-    
-    // Prefetch first K/V tile
-    if (num_kv_tiles > 0) {
-        int kv_start = 0;
-        int kv_end = min(TILE_N, L);
-        int kv_len = kv_end - kv_start;
-        
-        for (int idx = tid; idx < kv_len * HEAD_DIM; idx += blockDim.x) {
-            int n = idx / HEAD_DIM;
-            int c = idx % HEAD_DIM;
-            sK[0][n][c] = __ldg(&K_bh[(kv_start + n) * d + c]);
-            sV[0][n][c] = __ldg(&V_bh[(kv_start + n) * d + c]);
-        }
-    }
-    __syncthreads();
     
     // Main loop over K/V tiles
     for (int t = 0; t < num_kv_tiles; ++t) {
@@ -168,24 +152,16 @@ __global__ void sdpa_fused_kernel(
         const int kv_end = min(kv_start + TILE_N, L);
         const int kv_len = kv_end - kv_start;
         
-        const int read_stage = current_stage;
-        const int write_stage = 1 - current_stage;
-        
-        // Prefetch next K/V tile (if exists)
-        if (t + 1 < num_kv_tiles) {
-            int next_kv_start = (t + 1) * TILE_N;
-            int next_kv_end = min(next_kv_start + TILE_N, L);
-            int next_kv_len = next_kv_end - next_kv_start;
-            
-            for (int idx = tid; idx < next_kv_len * HEAD_DIM; idx += blockDim.x) {
-                int n = idx / HEAD_DIM;
-                int c = idx % HEAD_DIM;
-                sK[write_stage][n][c] = __ldg(&K_bh[(next_kv_start + n) * d + c]);
-                sV[write_stage][n][c] = __ldg(&V_bh[(next_kv_start + n) * d + c]);
-            }
+        // Load K/V tile
+        for (int idx = tid; idx < kv_len * HEAD_DIM; idx += blockDim.x) {
+            int n = idx / HEAD_DIM;
+            int c = idx % HEAD_DIM;
+            sK[n][c] = __ldg(&K_bh[(kv_start + n) * d + c]);
+            sV[n][c] = __ldg(&V_bh[(kv_start + n) * d + c]);
         }
+        __syncthreads();
         
-        // Compute Q @ K^T for current tile (WMMA-based, but simplified for first candidate)
+        // Compute Q @ K^T for current tile (scalar for now)
         // TODO: Full WMMA fragmentation for better TC utilization
         
         // Each warp processes multiple Q rows
@@ -199,7 +175,7 @@ __global__ void sdpa_fused_kernel(
                 for (int n = 0; n < kv_len; ++n) {
                     float dot = 0.0f;
                     for (int c = lane; c < HEAD_DIM; c += 32) {
-                        dot += __half2float(sQ[r][c]) * __half2float(sK[read_stage][n][c]);
+                        dot += __half2float(sQ[r][c]) * __half2float(sK[n][c]);
                     }
                     dot = warp_reduce_sum(dot);
                     dot *= scale;
@@ -246,7 +222,7 @@ __global__ void sdpa_fused_kernel(
                 for (int n = 0; n < kv_len; ++n) {
                     float p = scores[n];
                     for (int c = lane; c < HEAD_DIM; c += 32) {
-                        O_accum[r][c] += p * __half2float(sV[read_stage][n][c]);
+                        O_accum[r][c] += p * __half2float(sV[n][c]);
                     }
                 }
                 
@@ -258,7 +234,6 @@ __global__ void sdpa_fused_kernel(
             }
         }
         
-        current_stage = write_stage;
         __syncthreads();
     }
     
