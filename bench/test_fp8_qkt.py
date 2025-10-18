@@ -13,7 +13,7 @@ def quantize_simple(tensor, scale):
     fp8_max = 448.0
     tensor_scaled = tensor / scale
     tensor_clipped = tensor_scaled.clamp(-fp8_max, fp8_max)
-    tensor_uint8 = ((tensor_clipped + fp8_max) / (2 * fp8_max) * 255).round().to(torch::uint8)
+    tensor_uint8 = ((tensor_clipped + fp8_max) / (2 * fp8_max) * 255).round().to(torch.uint8)
     return tensor_uint8
 
 def test_qkt():
@@ -76,9 +76,18 @@ def test_qkt():
     print(f"S_cuda range: [{S_cuda.min():.4f}, {S_cuda.max():.4f}]")
     print()
     
-    # Reference (FP16)
-    S_ref = torch.matmul(Q_fp16, K_fp16.T)
-    print(f"S_ref range: [{S_ref.min():.4f}, {S_ref.max():.4f}]")
+    # Reference: Dequantize first, then matmul (apples to apples!)
+    fp8_max = 448.0
+    Q_dequant = ((Q_fp8.float() / 255.0 * (2 * fp8_max) - fp8_max) * Q_scale).to(torch.float16)
+    K_dequant = ((K_fp8.float() / 255.0 * (2 * fp8_max) - fp8_max) * K_scale).to(torch.float16)
+    
+    S_ref = torch.matmul(Q_dequant, K_dequant.T)
+    print(f"S_ref (dequantized) range: [{S_ref.min():.4f}, {S_ref.max():.4f}]")
+    print()
+    
+    # Also compute with original FP16 for comparison
+    S_ref_fp16 = torch.matmul(Q_fp16, K_fp16.T)
+    print(f"S_ref (original FP16) range: [{S_ref_fp16.min():.4f}, {S_ref_fp16.max():.4f}]")
     print()
     
     # Compare

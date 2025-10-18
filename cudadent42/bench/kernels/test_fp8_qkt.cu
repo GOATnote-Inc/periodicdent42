@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cstdint>
+#include <cstdio>
 
 __device__ __forceinline__ float dequant_sim_fp8(uint8_t val_uint8, float scale) {
     float val = (float(val_uint8) / 255.0f) * (2.0f * 448.0f) - 448.0f;
@@ -36,6 +37,15 @@ __global__ void test_qkt_kernel(
     
     const int lane_id = threadIdx.x % 32;
     
+    // Debug: print first thread's values
+    if (m == 0 && n == 0 && lane_id == 0) {
+        printf("DEBUG: Q_scale=%.6f, K_scale=%.6f\\n", Q_scale, K_scale);
+        printf("DEBUG: Q[0]=%d, K[0]=%d\\n", Q[0], K[0]);
+        float q0 = dequant_sim_fp8(Q[0], Q_scale);
+        float k0 = dequant_sim_fp8(K[0], K_scale);
+        printf("DEBUG: q0=%.6f, k0=%.6f\\n", q0, k0);
+    }
+    
     // Compute dot product: Q[m] · K[n]
     float score = 0.0f;
     
@@ -50,6 +60,9 @@ __global__ void test_qkt_kernel(
     
     // Write result (only lane 0)
     if (lane_id == 0) {
+        if (m == 0 && n == 0) {
+            printf("DEBUG: score[0,0]=%.6f\\n", score);
+        }
         S[m * N + n] = __float2half(score);
     }
 }
