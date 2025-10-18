@@ -45,19 +45,12 @@ __device__ __forceinline__ int xor_swizzle(int n, int k, int granularity = 8) {
     return (n_blk ^ k_blk) * granularity + n_in;
 }
 
-// cp.async helpers (legal sizes: 4, 8, 16 bytes)
+// cp.async helpers
+// NOTE: Ada (sm_89) only supports 16-byte cp.async.cg, not 8B or 4B
 __device__ __forceinline__ void cp_async_16B(void* smem_ptr, const void* global_ptr) {
     unsigned smem_addr = __cvta_generic_to_shared(smem_ptr);
     asm volatile(
         "cp.async.cg.shared.global [%0], [%1], 16;\n"
-        :: "r"(smem_addr), "l"(global_ptr)
-    );
-}
-
-__device__ __forceinline__ void cp_async_8B(void* smem_ptr, const void* global_ptr) {
-    unsigned smem_addr = __cvta_generic_to_shared(smem_ptr);
-    asm volatile(
-        "cp.async.cg.shared.global [%0], [%1], 8;\n"
         :: "r"(smem_addr), "l"(global_ptr)
     );
 }
@@ -256,11 +249,9 @@ __global__ void sdpa_fused_v2c_kernel(
                 const half* src_v = &V_bh[(kv_start + n) * d + k_start];
                 half* dst_v = &sV[(read_stage * N + n) * HEAD_DIM_PADDED + k_start];
                 
-                // Check alignment for 16B copy
+                // Use cp.async only if 16B-aligned (Ada requirement)
                 if (((size_t)src_v % 16 == 0) && ((size_t)dst_v % 16 == 0)) {
                     cp_async_16B(dst_v, src_v);
-                } else if (((size_t)src_v % 8 == 0) && ((size_t)dst_v % 8 == 0)) {
-                    cp_async_8B(dst_v, src_v);
                 } else {
                     // Scalar fallback
                     #pragma unroll
@@ -305,8 +296,6 @@ __global__ void sdpa_fused_v2c_kernel(
                     half* dst_v = &sV[(write_stage * N + n) * HEAD_DIM_PADDED + k_start];
                     if (((size_t)src_v % 16 == 0) && ((size_t)dst_v % 16 == 0)) {
                         cp_async_16B(dst_v, src_v);
-                    } else if (((size_t)src_v % 8 == 0) && ((size_t)dst_v % 8 == 0)) {
-                        cp_async_8B(dst_v, src_v);
                     } else {
                         #pragma unroll
                         for (int i = 0; i < ELEMS_PER_SEG; ++i) {
