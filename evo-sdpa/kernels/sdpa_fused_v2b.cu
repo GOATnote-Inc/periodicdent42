@@ -364,7 +364,7 @@ template __global__ void sdpa_fused_v2b_kernel<half, 128, 3>(
 
 // Runtime dispatcher with SMEM validation
 cudaError_t sdpa_fused_forward_v2b(const SdpaParams& params, cudaStream_t stream) {
-    const int M = TileConfig<64>::M;  // Same for both d=64 and d=128
+    const int M = (params.d == 64) ? TileConfig<64>::M : TileConfig<128>::M;  // d-dependent
     const int STAGES = (params.L >= 2048) ? 3 : 2;
     
     dim3 grid((params.L + M - 1) / M, params.B * params.H);
