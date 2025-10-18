@@ -356,7 +356,7 @@ template __global__ void sdpa_fused_v2_kernel<half, 64, 3>(
 template __global__ void sdpa_fused_v2_kernel<half, 128, 3>(
     const half*, const half*, const half*, half*, int, int, int, int, float, bool);
 
-// Runtime dispatcher
+// Runtime dispatcher with proper function pointer setup
 cudaError_t sdpa_fused_forward_v2(const SdpaParams& params, cudaStream_t stream) {
     const int M = (params.d == 64) ? 64 : 64;
     const int STAGES = (params.L >= 2048) ? 3 : 2;
@@ -374,30 +374,29 @@ cudaError_t sdpa_fused_forward_v2(const SdpaParams& params, cudaStream_t stream)
             SmemLayout<128, 2>::total_bytes : SmemLayout<128, 3>::total_bytes;
     }
     
-    // Set dynamic SMEM attribute
-    void* kernel_ptr = nullptr;
-    if (params.d == 64 && STAGES == 2) {
-        kernel_ptr = (void*)sdpa_fused_v2_kernel<half, 64, 2>;
-    } else if (params.d == 64 && STAGES == 3) {
-        kernel_ptr = (void*)sdpa_fused_v2_kernel<half, 64, 3>;
-    } else if (params.d == 128 && STAGES == 2) {
-        kernel_ptr = (void*)sdpa_fused_v2_kernel<half, 128, 2>;
-    } else {
-        kernel_ptr = (void*)sdpa_fused_v2_kernel<half, 128, 3>;
+    // Validate SMEM size
+    int device;
+    cudaGetDevice(&device);
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+    
+    if (smem_bytes > prop.sharedMemPerBlock) {
+        printf("[ERROR] SMEM required (%zu KB) exceeds limit (%zu KB)\n", 
+               smem_bytes / 1024, prop.sharedMemPerBlock / 1024);
+        return cudaErrorInvalidConfiguration;
     }
     
-    cudaFuncSetAttribute(kernel_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
+    // Launch with proper function pointer setup
+    cudaError_t err = cudaSuccess;
     
-    // Launch banner (debug)
-    #ifdef DEBUG_SDPA
-    printf("[Child-V2] d=%d, L=%d, M=%d, N=%d, STAGES=%d, SMEM=%zu KB\n",
-           params.d, params.L, M, 
-           (params.d == 64) ? 128 : 64, STAGES, smem_bytes / 1024);
-    #endif
-    
-    // Launch kernel
     if (params.d == 64 && STAGES == 2) {
-        sdpa_fused_v2_kernel<half, 64, 2><<<grid, block, smem_bytes, stream>>>(
+        auto kernel_func = sdpa_fused_v2_kernel<half, 64, 2>;
+        err = cudaFuncSetAttribute(kernel_func, 
+                                     cudaFuncAttributeMaxDynamicSharedMemorySize, 
+                                     smem_bytes);
+        if (err != cudaSuccess) return err;
+        
+        kernel_func<<<grid, block, smem_bytes, stream>>>(
             reinterpret_cast<const half*>(params.Q),
             reinterpret_cast<const half*>(params.K),
             reinterpret_cast<const half*>(params.V),
@@ -405,7 +404,13 @@ cudaError_t sdpa_fused_forward_v2(const SdpaParams& params, cudaStream_t stream)
             params.B, params.H, params.L, params.d, params.scale, params.causal
         );
     } else if (params.d == 64 && STAGES == 3) {
-        sdpa_fused_v2_kernel<half, 64, 3><<<grid, block, smem_bytes, stream>>>(
+        auto kernel_func = sdpa_fused_v2_kernel<half, 64, 3>;
+        err = cudaFuncSetAttribute(kernel_func, 
+                                     cudaFuncAttributeMaxDynamicSharedMemorySize, 
+                                     smem_bytes);
+        if (err != cudaSuccess) return err;
+        
+        kernel_func<<<grid, block, smem_bytes, stream>>>(
             reinterpret_cast<const half*>(params.Q),
             reinterpret_cast<const half*>(params.K),
             reinterpret_cast<const half*>(params.V),
@@ -413,7 +418,13 @@ cudaError_t sdpa_fused_forward_v2(const SdpaParams& params, cudaStream_t stream)
             params.B, params.H, params.L, params.d, params.scale, params.causal
         );
     } else if (params.d == 128 && STAGES == 2) {
-        sdpa_fused_v2_kernel<half, 128, 2><<<grid, block, smem_bytes, stream>>>(
+        auto kernel_func = sdpa_fused_v2_kernel<half, 128, 2>;
+        err = cudaFuncSetAttribute(kernel_func, 
+                                     cudaFuncAttributeMaxDynamicSharedMemorySize, 
+                                     smem_bytes);
+        if (err != cudaSuccess) return err;
+        
+        kernel_func<<<grid, block, smem_bytes, stream>>>(
             reinterpret_cast<const half*>(params.Q),
             reinterpret_cast<const half*>(params.K),
             reinterpret_cast<const half*>(params.V),
@@ -421,7 +432,13 @@ cudaError_t sdpa_fused_forward_v2(const SdpaParams& params, cudaStream_t stream)
             params.B, params.H, params.L, params.d, params.scale, params.causal
         );
     } else {
-        sdpa_fused_v2_kernel<half, 128, 3><<<grid, block, smem_bytes, stream>>>(
+        auto kernel_func = sdpa_fused_v2_kernel<half, 128, 3>;
+        err = cudaFuncSetAttribute(kernel_func, 
+                                     cudaFuncAttributeMaxDynamicSharedMemorySize, 
+                                     smem_bytes);
+        if (err != cudaSuccess) return err;
+        
+        kernel_func<<<grid, block, smem_bytes, stream>>>(
             reinterpret_cast<const half*>(params.Q),
             reinterpret_cast<const half*>(params.K),
             reinterpret_cast<const half*>(params.V),
