@@ -52,8 +52,9 @@ __device__ __forceinline__ void cp_async_commit_group() {
     asm volatile("cp.async.commit_group;\n" ::);
 }
 
-__device__ __forceinline__ void cp_async_wait_group(int n) {
-    asm volatile("cp.async.wait_group %0;\n" :: "n"(n));
+template<int N>
+__device__ __forceinline__ void cp_async_wait_group() {
+    asm volatile("cp.async.wait_group %0;\n" :: "n"(N));
 }
 #endif
 
@@ -154,7 +155,7 @@ __global__ void sdpa_fp8_vectorized_kernel(
             cp_async_16B(&sV[n][d_chunk], v_src);
         }
         cp_async_commit_group();
-        cp_async_wait_group(0);
+        cp_async_wait_group<0>();
         __syncthreads();
 #else
         // Synchronous vectorized loads (fallback for sm_75)
