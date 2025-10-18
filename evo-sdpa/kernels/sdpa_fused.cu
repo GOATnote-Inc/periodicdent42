@@ -31,7 +31,7 @@
 using namespace nvcuda;
 
 // Tunables
-#define TILE_M 64     // Q rows per CTA (reduced for SMEM budget)
+#define TILE_M 48     // Q rows per CTA (tuned for 48 KB SMEM limit)
 #define TILE_N 64     // K/V rows per iteration
 #define HEAD_DIM 64   // d_head (compile-time for now)
 #define PAD 16        // SMEM padding (80 = 64 + 16)
