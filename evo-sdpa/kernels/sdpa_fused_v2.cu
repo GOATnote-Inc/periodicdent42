@@ -17,6 +17,7 @@
 #include <mma.h>
 #include <cstdint>
 #include <cfloat>
+#include <cstdio>
 #include "runtime.hpp"
 #include "nvtx.hpp"
 
