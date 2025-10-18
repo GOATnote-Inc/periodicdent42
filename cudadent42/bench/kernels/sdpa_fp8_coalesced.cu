@@ -34,10 +34,10 @@ __device__ __forceinline__ float dequant_sim_fp8(uint8_t u, float s){
 // cp.async helper (address-space correct for Ampere/Ada)
 #if __CUDA_ARCH__ >= 800
 __device__ __forceinline__
-void cp_async_1B(void* smem_dst, const void* gmem_src) {
+void cp_async_4B(void* smem_dst, const void* gmem_src) {
     unsigned smem = static_cast<unsigned>(__cvta_generic_to_shared(smem_dst));
     asm volatile(
-        "cp.async.ca.shared.global [%0], [%1], 1;\n" :: "r"(smem), "l"(gmem_src)
+        "cp.async.ca.shared.global [%0], [%1], 4;\n" :: "r"(smem), "l"(gmem_src)
     );
 }
 
@@ -119,16 +119,30 @@ __global__ void sdpa_fp8_coalesced_kernel(
 
         // --- Load K/V tile (coalesced with cp.async for Ampere/Ada) ---
 #if __CUDA_ARCH__ >= 800
-        // cp.async path: each thread copies 1 byte, hardware coalesces
-        for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
-            int n = idx / D;
-            int d = idx % D;
+        // cp.async path: 4-byte granularity (uint32 = 4× uint8)
+        // Each thread copies 4 consecutive uint8 elements
+        const int elems_per_thread = 4;
+        const int total_4B_chunks = (kv_len * D + elems_per_thread - 1) / elems_per_thread;
+        
+        for (int idx = tid; idx < total_4B_chunks; idx += blockDim.x) {
+            int elem_offset = idx * elems_per_thread;
+            int n = elem_offset / D;
+            int d = elem_offset % D;
             
-            const uint8_t* k_src = Kbh + (size_t)(kv_start + n) * D + d;
-            const uint8_t* v_src = Vbh + (size_t)(kv_start + n) * D + d;
-            
-            cp_async_1B(&sK[n][d], k_src);
-            cp_async_1B(&sV[n][d], v_src);
+            if (n < kv_len && d + elems_per_thread <= D) {
+                // Safe 4-byte copy
+                const uint8_t* k_src = Kbh + (size_t)(kv_start + n) * D + d;
+                const uint8_t* v_src = Vbh + (size_t)(kv_start + n) * D + d;
+                
+                cp_async_4B(&sK[n][d], k_src);
+                cp_async_4B(&sV[n][d], v_src);
+            } else if (n < kv_len) {
+                // Tail: scalar copy
+                for (int dd = d; dd < D && dd < d + elems_per_thread; ++dd) {
+                    sK[n][dd] = Kbh[(size_t)(kv_start + n) * D + dd];
+                    sV[n][dd] = Vbh[(size_t)(kv_start + n) * D + dd];
+                }
+            }
         }
         cp_async_commit_group();
         cp_async_wait_group<0>();
