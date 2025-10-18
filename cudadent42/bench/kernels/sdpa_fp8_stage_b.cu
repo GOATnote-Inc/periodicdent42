@@ -9,7 +9,7 @@ using namespace nvcuda;
 // --- Tunables (L4 optimized, Stage B with Tensor Cores) ---
 #define HEAD_DIM 64
 #define TILE_M   32
-#define TILE_N   64
+#define TILE_N   32      // REDUCED to fit SMEM (was 64)
 #define NUM_WARPS 8
 #define THREADS_PER_BLOCK (NUM_WARPS * 32)
 #define D_PAD 80  // 16B aligned (64 + 16)
@@ -88,11 +88,13 @@ __global__ void sdpa_fp8_stage_b_kernel(
         vLUT[u] = x * v_s;
     }
 
-    // --- Load Q tile (uint8) ---
+    // --- Load Q tile (uint8) and convert to FP16 ---
     for (int idx = tid; idx < rows_in_tile * D; idx += blockDim.x) {
         int r = idx / D;
         int d = idx % D;
-        sQ.u8[r][d] = Qbh[(size_t)(q_start + r) * D + d];
+        uint8_t q_u8 = Qbh[(size_t)(q_start + r) * D + d];
+        float f = dequant_sim_fp8(q_u8, q_s);
+        sQ[r][d] = __float2half(f);
     }
 
     // Init stats and U
@@ -104,16 +106,6 @@ __global__ void sdpa_fp8_stage_b_kernel(
     for (int r = tid; r < rows_in_tile; r += blockDim.x) {
         m_smem[r] = -INFINITY;
         l_smem[r] = 0.f;
-    }
-    __syncthreads();
-
-    // --- Convert Q to FP16 in-place (reusing same SMEM) ---
-    for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
-        for (int d = lane; d < D; d += 32) {
-            uint8_t u8_val = sQ.u8[r][d];
-            float f = dequant_sim_fp8(u8_val, q_s);
-            sQ.h[r][d] = __float2half(f);
-        }
     }
     __syncthreads();
 
