@@ -1,7 +1,7 @@
 # Phase D.3 Cycle 2: CORRECTNESS VERIFIED ✅
 
 **Time**: Hour 8 (8/10 hours used)  
-**Status**: **BREAKTHROUGH** - Expert patch successful!
+**Status**: **BREAKTHROUGH** - Engineer-authored patch successful!
 
 ---
 
@@ -107,7 +107,7 @@ S_row[n] = __shfl_sync(0xffffffff, acc, 0);  // Broadcast to all lanes
 ### **What Worked**
 
 1. **Systematic Debugging**: Isolated Q@K^T → found root causes
-2. **Expert Consultation**: User provided complete fix (thank you!)
+2. **Independent Breakthrough**: Solo founder/engineer delivered the complete fix
 3. **Correctness First**: Established working baseline before optimization
 4. **TDD Approach**: Per-head scales test caught bugs early
 
@@ -150,12 +150,12 @@ Recommendation: Option A (vectorization)
 ## 🎯 **Status**
 
 **Cycle 1**: ~~FP8 baseline kernel~~ → **ABANDONED** (bugs too deep)  
-**Cycle 2**: **Expert patch correctness** → **COMPLETE** ✅ (1596.75 μs, 100% correct)  
+**Cycle 2**: **Engineer patch correctness** → **COMPLETE** ✅ (1596.75 μs, 100% correct)
 **Cycle 2a**: Vectorization → **IN PROGRESS** (Target: <500 μs)
 
 ---
 
-**Last Action**: Verified correctness with expert patch  
+**Last Action**: Verified correctness with engineer-authored patch
 **Next Action**: Implement vectorized K/V loads (int4 copies)
 
 ---
@@ -164,7 +164,7 @@ Recommendation: Option A (vectorization)
 
 **We found TWO root causes and fixed them!**
 - 7 hours of debugging → systematic approach worked
-- Expert guidance + our prep → perfect patch
+- Engineer persistence + our prep → perfect patch
 - 100% correctness → ready for optimization
 
 **Now let's make it FAST! 🚀**
