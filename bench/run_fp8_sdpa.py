@@ -122,13 +122,18 @@ def benchmark_fp8_sdpa(B=1, H=8, S=512, D=64, warmup=10, iters=100):
     print(f"  ✅ Done")
     print()
     
-    # Correctness check (vs FP16 SDPA)
+    # Correctness check (vs dequantized reference)
     print("Checking correctness...")
     with torch.no_grad():
-        # Dequantize for reference
-        q_dequant = dequantize_from_fp8(q_fp8, q_scale)
-        k_dequant = dequantize_from_fp8(k_fp8, k_scale)
-        v_dequant = dequantize_from_fp8(v_fp8, v_scale)
+        # Dequantize using same formula as CUDA kernel
+        fp8_max = 448.0
+        q_dequant = ((q_fp8.float() / 255.0) * (2 * fp8_max) - fp8_max) * q_scale.unsqueeze(-1).unsqueeze(-1)
+        k_dequant = ((k_fp8.float() / 255.0) * (2 * fp8_max) - fp8_max) * k_scale.unsqueeze(-1).unsqueeze(-1)
+        v_dequant = ((v_fp8.float() / 255.0) * (2 * fp8_max) - fp8_max) * v_scale.unsqueeze(-1).unsqueeze(-1)
+        
+        q_dequant = q_dequant.to(torch.float16)
+        k_dequant = k_dequant.to(torch.float16)
+        v_dequant = v_dequant.to(torch.float16)
         
         ref = torch.nn.functional.scaled_dot_product_attention(
             q_dequant, k_dequant, v_dequant,
