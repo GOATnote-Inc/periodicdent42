@@ -60,7 +60,7 @@ torch::Tensor sdpa_fp8_fixed_forward(
         reinterpret_cast<half*>(O.data_ptr<at::Half>()),
         B, H, S, D,
         softmax_scale,
-        at::cuda::getCurrentCUDAStream()
+        c10::cuda::getCurrentCUDAStream()
     );
     
     return O;
