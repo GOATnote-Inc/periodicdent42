@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-<cstdint>
+#include <cstdint>
 
 // Forward declaration of kernel
 extern __global__ void sdpa_fp8_wmma_kernel(
