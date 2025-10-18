@@ -14,6 +14,11 @@
 
 static_assert(HEAD_DIM % 16 == 0, "HEAD_DIM must be 16-byte aligned for int4 loads");
 
+// half4 helper (not in cuda_fp16.h)
+struct __align__(8) half4 {
+    half x, y, z, w;
+};
+
 // Warp reductions
 __device__ __forceinline__ float warp_reduce_max(float v){
     #pragma unroll
