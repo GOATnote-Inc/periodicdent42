@@ -10,7 +10,10 @@ from torch.utils.cpp_extension import load
 def build_ext():
     """Build CUDA extension from kernels/sdpa_fused.cu"""
     kernel_dir = os.path.join(os.path.dirname(__file__), "..", "kernels")
-    srcs = [os.path.join(kernel_dir, "sdpa_fused.cu")]
+    srcs = [
+        os.path.join(kernel_dir, "sdpa_fused.cu"),
+        os.path.join(kernel_dir, "sdpa_fused_bindings.cpp")
+    ]
     
     return load(
         name="sdpa_fused_ext",
