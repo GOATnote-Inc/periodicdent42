@@ -40,9 +40,9 @@ def build_fp8_sdpa():
     
     extra_cflags = ['-std=c++17']
     
-    # Kernel source (baseline for Cycle 1)
-    kernel_path = Path(__file__).parent.parent / 'cudadent42' / 'bench' / 'kernels' / 'sdpa_fp8_baseline.cu'
-    bindings_path = Path(__file__).parent.parent / 'cudadent42' / 'bench' / 'kernels' / 'sdpa_fp8_baseline_bindings.cpp'
+    # Kernel source (V2 with fixed quantization)
+    kernel_path = Path(__file__).parent.parent / 'cudadent42' / 'bench' / 'kernels' / 'sdpa_fp8_baseline_v2.cu'
+    bindings_path = Path(__file__).parent.parent / 'cudadent42' / 'bench' / 'kernels' / 'sdpa_fp8_baseline_v2_bindings.cpp'
     
     if not kernel_path.exists():
         print(f"❌ Kernel not found: {kernel_path}")
@@ -53,7 +53,7 @@ def build_fp8_sdpa():
     
     try:
         module = load(
-            name='sdpa_fp8_baseline',
+            name='sdpa_fp8_baseline_v2',
             sources=[str(kernel_path), str(bindings_path)],
             extra_cflags=extra_cflags,
             extra_cuda_cflags=extra_cuda_cflags,

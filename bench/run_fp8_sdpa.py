@@ -50,6 +50,9 @@ def quantize_to_fp8(tensor, per_channel=True):
         # Return per-head scale (shape: [H])
         scale_per_head = scale[0, :, 0, 0]  # [H]
         
+        # Ensure scale is float32 and on CUDA
+        scale_per_head = scale_per_head.to(dtype=torch.float32, device='cuda')
+        
         return tensor_uint8, scale_per_head
     else:
         raise NotImplementedError("Per-tensor quantization not implemented")
@@ -91,7 +94,7 @@ def benchmark_fp8_sdpa(B=1, H=8, S=512, D=64, warmup=10, iters=100):
     # Load module
     try:
         from build_fp8_sdpa import build_fp8_sdpa
-        sdpa_fp8_baseline = build_fp8_sdpa()
+        sdpa_fp8_baseline_v2 = build_fp8_sdpa()
     except Exception as e:
         print(f"❌ Module build/load failed: {e}")
         sys.exit(1)
@@ -99,7 +102,7 @@ def benchmark_fp8_sdpa(B=1, H=8, S=512, D=64, warmup=10, iters=100):
     # Warmup
     print(f"Warmup ({warmup} iterations)...")
     for _ in range(warmup):
-        _ = sdpa_fp8_baseline.forward(q_fp8, k_fp8, v_fp8, q_scale, k_scale, v_scale)
+        _ = sdpa_fp8_baseline_v2.forward(q_fp8, k_fp8, v_fp8, q_scale, k_scale, v_scale)
     torch.cuda.synchronize()
     print("  ✅ Done")
     print()
@@ -110,7 +113,7 @@ def benchmark_fp8_sdpa(B=1, H=8, S=512, D=64, warmup=10, iters=100):
     start = time.perf_counter()
     
     for _ in range(iters):
-        out_fp16 = sdpa_fp8_baseline.forward(q_fp8, k_fp8, v_fp8, q_scale, k_scale, v_scale)
+        out_fp16 = sdpa_fp8_baseline_v2.forward(q_fp8, k_fp8, v_fp8, q_scale, k_scale, v_scale)
     
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - start
