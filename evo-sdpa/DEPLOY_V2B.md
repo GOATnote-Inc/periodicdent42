@@ -328,3 +328,4 @@ Even if scalar compute is slow, the *structure* is right.
 **Next**: Deploy to GPU and run `test_v2b.py`
 
 
+

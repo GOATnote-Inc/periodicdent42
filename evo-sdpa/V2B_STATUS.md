@@ -365,3 +365,4 @@ if (lane == 0) { m_smem[r] = m_new; l_smem[r] = l_new; }
 **Status**: Awaiting GPU validation
 
 
+
