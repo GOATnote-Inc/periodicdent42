@@ -251,8 +251,8 @@ __global__ void sdpa_fused_v2b_kernel(
         }
         __syncthreads();
         
-        // INSIGHT: WMMA for Q@K^T (warps 0-6 compute)
-        if (warp_id < 7) {
+        // INSIGHT: WMMA for Q@K^T (ALL warps compute, warp 7 also produces)
+        if (my_num_rows > 0) {  // Only if this warp owns rows
             NVTX_RANGE_PUSH("QK_wmma");
             
             // Each warp processes its owned rows
