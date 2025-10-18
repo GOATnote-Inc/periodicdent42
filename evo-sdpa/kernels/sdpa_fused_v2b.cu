@@ -23,11 +23,11 @@
 using namespace nvcuda;
 
 // Tile configurations (tuned for 96 KB SMEM)
-// INSIGHT: tile(M,N,K) - d=64 uses larger N for better reuse
+// INSIGHT: tile(M,N,K) - d=64 uses larger N for better reuse; d=128 needs smaller tiles
 template<int HEAD_DIM>
 struct TileConfig {
-    static constexpr int M = 64;
-    static constexpr int N = (HEAD_DIM == 64) ? 64 : 64;  // Conservative for 96KB
+    static constexpr int M = (HEAD_DIM == 64) ? 64 : 48;  // d=128 needs smaller M for SMEM
+    static constexpr int N = (HEAD_DIM == 64) ? 64 : 32;  // d=128 needs smaller N for SMEM
     static constexpr int K = HEAD_DIM;  // Full head_dim
 };
 
