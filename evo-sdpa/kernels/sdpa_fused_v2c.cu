@@ -1,10 +1,14 @@
 /**
- * Child-V2c-Fixed: Simplified WMMA with SMEM temporaries
+ * Child-V2c-v3: Scalar Q@K^T validation (Iteration 3)
  * 
- * FIXES:
- * - Use SMEM for score materialization (not local arrays)
- * - Proper stride handling for all WMMA operations
- * - Simplified fragment handling (correctness-first)
+ * GOAL: Validate infrastructure (streaming softmax, SMEM layout) with scalar
+ * 
+ * CHANGES from v2:
+ * - Replaced WMMA Q@K^T with scalar (correctness-first)
+ * - Fixed double-scaling bug (score was scaled twice)
+ * - Keeping all other infrastructure intact
+ * 
+ * NEXT: Once 100% correct, add proper WMMA with K^T handling
  */
 
 #include <cuda_runtime.h>
@@ -197,47 +201,31 @@ __global__ void sdpa_fused_v2c_kernel(
         }
         __syncthreads();
         
-        // WMMA compute (all warps with rows participate)
+        // SCALAR Q @ K^T (Iteration 3: validate infrastructure)
+        // NOTE: Using scalar temporarily to validate softmax & memory layout
+        // Will replace with proper WMMA + K^T in next iteration
         if (my_num_rows > 0) {
-            // Each warp processes 16×16 WMMA tiles
-            int num_m_tiles = (my_num_rows + 15) / 16;
-            int num_n_tiles = (kv_len + 15) / 16;
-            
-            for (int mt = 0; mt < num_m_tiles; ++mt) {
-                int m0 = my_row_start + mt * 16;
-                if (m0 >= num_q_rows) break;
-                
-                for (int nt = 0; nt < num_n_tiles; ++nt) {
-                    int n0 = nt * 16;
-                    if (n0 >= kv_len) break;
+            for (int r = my_row_start; r < my_row_end; ++r) {
+                // Compute Q[r] @ K^T for all kv_len keys
+                for (int n = 0; n < kv_len; ++n) {
+                    float score = 0.0f;
                     
-                    // Q @ K^T using WMMA
-                    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> a_frag;
-                    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> b_frag;
-                    wmma::fragment<wmma::accumulator, 16, 16, 16, float> c_frag;
-                    
-                    wmma::fill_fragment(c_frag, 0.0f);
-                    
-                    // Loop over K dimension
-                    for (int k0 = 0; k0 < HEAD_DIM; k0 += 16) {
-                        // Load Q[m0:m0+16, k0:k0+16]
-                        const half* q_ptr = &sQ[m0 * HEAD_DIM_PADDED + k0];
-                        wmma::load_matrix_sync(a_frag, q_ptr, HEAD_DIM_PADDED);
-                        
-                        // Load K[n0:n0+16, k0:k0+16] as K^T (swap a/b)
-                        const half* k_ptr = &sK[(read_stage * N + n0) * HEAD_DIM_PADDED + k0];
-                        // For K^T, we load as if it's col-major by treating rows as cols
-                        // Actually, let's just load K row-major and use it as matrix_b row-major
-                        wmma::load_matrix_sync(b_frag, k_ptr, HEAD_DIM_PADDED);
-                        
-                        // MMA (will compute Q @ K, but we want Q @ K^T)
-                        // TODO: Fix this - need proper transpose handling
-                        wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+                    // Dot product: Q[r,:] @ K[n,:]^T
+                    for (int k = lane; k < HEAD_DIM; k += 32) {
+                        float q_val = __half2float(sQ[r * HEAD_DIM_PADDED + k]);
+                        float k_val = __half2float(sK[(read_stage * N + n) * HEAD_DIM_PADDED + k]);
+                        score += q_val * k_val;
                     }
                     
-                    // Store scores to SMEM
-                    float* scores_ptr = &S_scores[m0 * N + n0];
-                    wmma::store_matrix_sync(scores_ptr, c_frag, N, wmma::mem_row_major);
+                    // Warp reduction
+                    score = warp_reduce_sum(score);
+                    
+                    // Lane 0 writes, then broadcast
+                    if (lane == 0) {
+                        S_scores[r * N + n] = score * scale;
+                    }
+                    // Broadcast so all lanes have same score
+                    score = __shfl_sync(0xffffffff, score * scale, 0);
                 }
             }
             
@@ -245,10 +233,10 @@ __global__ void sdpa_fused_v2c_kernel(
             
             // Process each owned row (streaming softmax)
             for (int r = my_row_start; r < my_row_end; ++r) {
-                // Read scores for this row
+                // Read scores for this row (already scaled)
                 float row_max = -FLT_MAX;
                 for (int n = 0; n < kv_len; ++n) {
-                    float score = S_scores[r * N + n] * scale;
+                    float score = S_scores[r * N + n];  // Already scaled above
                     
                     // Causal mask
                     if (causal) {
