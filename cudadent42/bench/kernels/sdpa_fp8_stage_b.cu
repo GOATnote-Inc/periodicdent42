@@ -69,17 +69,10 @@ __global__ void sdpa_fp8_stage_b_kernel(
 
     const float q_s = Qs[h], k_s = Ks[h], v_s = Vs[h];
 
-    // --- Shared memory (reuse for uint8 and half to save space) ---
-    // Use union to overlay uint8 and half arrays
-    __shared__ alignas(16) union {
-        uint8_t u8[TILE_M][D_PAD];
-        half h[TILE_M][D_PAD];
-    } sQ;
-    
-    __shared__ alignas(16) union {
-        uint8_t u8[TILE_N][D_PAD];
-        half h[TILE_N][D_PAD];
-    } sK, sV;
+    // --- Shared memory (separate arrays for correctness) ---
+    __shared__ alignas(16) half sQ[TILE_M][D_PAD];   // 5.1 KB
+    __shared__ alignas(16) half sK[TILE_N][D_PAD];   // 5.1 KB (N=32)
+    __shared__ alignas(16) half sV[TILE_N][D_PAD];   // 5.1 KB
     
     __shared__ float kLUT[256];  // K dequant lookup
     __shared__ float vLUT[256];  // V dequant lookup
@@ -131,21 +124,13 @@ __global__ void sdpa_fp8_stage_b_kernel(
         const int kv_end   = min(kv_start + TILE_N, S);
         const int kv_len   = kv_end - kv_start;
 
-        // --- Load K/V tile (uint8) and convert to FP16 in-place ---
+        // --- Load K/V tile (uint8) and convert to FP16 ---
         for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
             int n = idx / D, d = idx % D;
-            sK.u8[n][d] = Kbh[(size_t)(kv_start + n) * D + d];
-            sV.u8[n][d] = Vbh[(size_t)(kv_start + n) * D + d];
-        }
-        __syncthreads();
-
-        // --- Convert K/V to FP16 using LUT (in-place) ---
-        for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
-            int n = idx / D, d = idx % D;
-            uint8_t k_u8 = sK.u8[n][d];
-            uint8_t v_u8 = sV.u8[n][d];
-            sK.h[n][d] = __float2half(kLUT[k_u8]);
-            sV.h[n][d] = __float2half(vLUT[v_u8]);
+            uint8_t k_u8 = Kbh[(size_t)(kv_start + n) * D + d];
+            uint8_t v_u8 = Vbh[(size_t)(kv_start + n) * D + d];
+            sK[n][d] = __float2half(kLUT[k_u8]);
+            sV[n][d] = __float2half(vLUT[v_u8]);
         }
         __syncthreads();
 
@@ -177,8 +162,8 @@ __global__ void sdpa_fp8_stage_b_kernel(
                         // Manual dot product across D (WMMA needs 16×16, but we have 1×64 @ 64×1)
                         // For now, keep scalar but with FP16 inputs
                         for (int d = lane; d < D; d += 32) {
-                            half q_h = sQ.h[r][d];
-                            half k_h = sK.h[n][d];
+                            half q_h = sQ[r][d];
+                            half k_h = sK[n][d];
                             score += __half2float(q_h) * __half2float(k_h);
                         }
                         
@@ -191,7 +176,7 @@ __global__ void sdpa_fp8_stage_b_kernel(
                     for (int n = 0; n < kv_len; ++n) {
                         float score = 0.f;
                         for (int d = lane; d < D; d += 32) {
-                            score += __half2float(sQ.h[r][d]) * __half2float(sK.h[n][d]);
+                            score += __half2float(sQ[r][d]) * __half2float(sK[n][d]);
                         }
                         score = warp_reduce_sum(score);
                         if (lane == 0) score *= softmax_scale;
@@ -224,7 +209,7 @@ __global__ void sdpa_fp8_stage_b_kernel(
                 for (int n = 0; n < kv_len; ++n) {
                     float p = S_row[n];
                     for (int d = lane; d < D; d += 32) {
-                        float v = __half2float(sV.h[n][d]);
+                        float v = __half2float(sV[n][d]);
                         U_smem[r][d] += p * v;
                     }
                 }
