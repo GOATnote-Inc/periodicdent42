@@ -217,15 +217,14 @@ __global__ void sdpa_fused_v2c_kernel(
                         score += q_val * k_val;
                     }
                     
-                    // Warp reduction
+                    // Warp reduction (only lane 0 has correct sum)
                     score = warp_reduce_sum(score);
                     
-                    // Lane 0 writes, then broadcast
+                    // Lane 0 writes scaled score to SMEM
                     if (lane == 0) {
                         S_scores[r * N + n] = score * scale;
                     }
-                    // Broadcast so all lanes have same score
-                    score = __shfl_sync(0xffffffff, score * scale, 0);
+                    // No need to broadcast - all lanes will read from S_scores later
                 }
             }
         }
@@ -251,8 +250,8 @@ __global__ void sdpa_fused_v2c_kernel(
                     row_max = fmaxf(row_max, score);
                 }
                 
-                // Warp reduce max
-                row_max = warp_reduce_max(row_max);
+                // BUG FIX: All lanes already have the SAME row_max (from reading shared S_scores)
+                // warp_reduce_max is unnecessary (max of identical values = that value)
                 
                 // Streaming softmax update
                 float m_old = m_smem[r];
@@ -267,7 +266,9 @@ __global__ void sdpa_fused_v2c_kernel(
                     l_add += p;
                 }
                 
-                l_add = warp_reduce_sum(l_add);
+                // BUG FIX: All lanes already have the SAME l_add (from reading shared S_scores)
+                // DO NOT warp_reduce_sum - that would multiply by 32!
+                // l_add is already correct in all lanes
                 
                 float rescale = __expf(m_old - m_new);
                 float l_new = l_old * rescale + l_add;
