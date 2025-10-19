@@ -36,8 +36,8 @@ torch::Tensor sdpa_fused_forward_py(
     params.scale = scale;
     params.causal = causal;
     
-    // Use V2c-v6 kernel (Full WMMA pipeline: Q@K^T + P@V)
-    cudaError_t err = sdpa_fused_forward_v2c_v6(params);
+    // Use V2c-v6a kernel (WMMA GREEN: store → softmax → rebuild)
+    cudaError_t err = sdpa_fused_forward_v2c_v6a(params);
     TORCH_CHECK(err == cudaSuccess, "CUDA error: ", cudaGetErrorString(err));
     
     return O;
