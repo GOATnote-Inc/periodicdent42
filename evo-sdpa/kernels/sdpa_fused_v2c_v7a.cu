@@ -445,7 +445,9 @@ template __global__ void sdpa_fused_v2c_v7a_kernel<half, 128, 3>(
 // Runtime dispatcher
 cudaError_t sdpa_fused_forward_v2c_v7a(const SdpaParams& params, cudaStream_t stream) {
     const int M = (params.d == 64) ? TileConfig<64>::M : TileConfig<128>::M;
-    const int STAGES = (params.L >= 2048) ? 3 : 2;  // ELITE-CHG: pipeline_depth
+    // ELITE-CHG: pipeline_depth
+    // Force STAGES=2 for d=128 to stay within 99 KB SMEM limit
+    const int STAGES = (params.d == 128) ? 2 : ((params.L >= 2048) ? 3 : 2);
     
     dim3 grid((params.L + M - 1) / M, params.B * params.H);
     dim3 block(THREADS_PER_BLOCK);
