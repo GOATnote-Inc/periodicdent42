@@ -1,47 +1,31 @@
-# Task: Fused Scaled Dot-Product Attention (SDPA) kernel, Ada (sm_89)
+# Task: Fused SDPA (Ada, sm_89) — Beat CUTLASS-style baselines
 
-**Objective:** Implement and tune a **single-pass, numerically-stable fused SDPA**:
-```
-O = softmax(Q · K^T / sqrt(d)) · V
-```
-with optional causal masking and dropout. **Fuse** QK^T, streaming softmax, and *Softmax·V* to avoid materializing logits or probabilities to HBM.
+**Objective.** A single-pass, numerically-stable fused SDPA:
+O = softmax(Q·Kᵀ / √d)·V with causal & optional dropout. Fuse QKᵀ, streaming softmax, and P·V to avoid HBM materialization.
 
-**Correctness gates:**
-- Relative/abs error vs PyTorch `scaled_dot_product_attention` ≤ 1e-3 (FP16/BF16) with FP32 accum.
-- Handles: causal flag, variable seq lengths, padding mask; d_head ∈ {64, 80, 96, 128}; L ∈ [128, 8192]; batch×head up to GPU memory.
-- Deterministic RNG path for dropout when enabled.
+**Correctness gates.**
+- ≤1e-3 abs/rel vs PyTorch SDPA (FP16/BF16) with FP32 accum
+- Handles: causal flag, variable L, padding; d∈{64,80,96,128}; L∈[128,8192]
+- Deterministic dropout path (when enabled)
 
-**Performance target:** ≥ 2× PyTorch reference and **beat CUTLASS GEMM+softmax piping** on the same shapes. Stretch: explore **≥60× vs naïve unfused** reference for long L, large B×H. (Realistic speedups depend on L, d, and memory BW ceilings.)
+**Targets.**
+- ≥2× PyTorch SDPA and **beat CUTLASS GEMM+softmax piping** on mission shapes
+- Stretch: ≥60× vs naïve unfused for long L, big B×H
 
-**Mission Critical Target (from project roadmap):**
-- **< 5 μs** for B=1, H=8, S=512, D=64 (current SDPA baseline: 25.94 μs)
-- This requires **5.2× faster than PyTorch SDPA** (not just 2×)
-- Standing on giants' shoulders (SDPA) to see further
+**Hardware/compile.**
+- RTX 4090 (sm_89, 24 GB, ~1008 GB/s), CUDA 12.4.1, PyTorch 2.4.0, Python 3.11
+- Flags: `-O3 -arch=sm_89 --use_fast_math -lineinfo -Xptxas -v`
+- Average over 100 runs; TF32 allowed for FP32 paths
 
-**Hardware/compilation:**
-- GPU: L4 (Ada, sm_89, 24 GB GDDR6, ~300 GB/s) - our actual test hardware
-- Alternative: RTX 4090 (Ada, 16,384 CUDA cores, 24 GB GDDR6X, ~1008 GB/s)
-- CUDA 12.4.1, PyTorch 2.1.0 (our environment)
-- Compilation: `-O3 -arch=sm_89 --use_fast_math -lineinfo`
-- Prefer **cp.async** multi-stage prefetch; **ldmatrix** + **mma.sync** tensor core paths (TF32/FP16/BF16), FP32 accum.
-- Shared memory budget target: ≤ 48–64 KiB/CTA to allow ≥2 CTAs/SM; registers ≤ 64 per thread initially.
+**Threadblock & budget.**
+- Grid: (ceil_div(L, M_tile), B*H); block: 128–256 threads (4–8 warps)
+- SMEM ≤ 64 KiB/CTA (aim 48–64 KiB), regs ≤ 64/thread initial (≤72 max)
 
-**Threadblock mapping (initial guess):**
-- CTA owns (M_tile × N_stream) rows of Q and a streaming panel of K,V (N_tile) with 2–3 stage cp.async pipeline.
-- Example: (M_tile,N_tile,K_tile) = (128, 64, 64) for d_head=64; adjust for 128.
+**Current baseline & lineage.**
+- v6a: WMMA QKᵀ + store→softmax→rebuild + WMMA PV; per‑warp scratch; **GREEN 100%**; ~1177 µs
+- v7a: cp.async overlap (producer warp, 2–3 stages); **GREEN**; ~1162 µs; minimal speedup → profile first
 
-**Numerical stability:**
-- Maintain row-wise `m_i` (max) and `l_i` (sum of exp) as you stream K panels; update with the log-sum-exp trick.
-- Accumulate **S·V** in FP32 across K-panels; write O in FP16/BF16.
-
-**Launch policy:**
-```
-grid = (ceil_div(L, M_tile), B*H) ; blockDim = 128–256 threads (4–8 warps).
-```
-
-**Context from previous work:**
-- We've achieved 1.25× speedup with partial WMMA (Q@K^T only)
-- Current: 1274 μs → Target: < 5 μs = **255× more speedup needed**
-- Key insight: Need FULL fusion (not just Q@K^T), streaming softmax, and optimal memory access patterns
-- Production libraries (xFormers: 24.22 μs) are the baseline to exceed
-
+**Design invariants.**
+- One warp owns 16 rows (mᵢ, lᵢ) for streaming softmax
+- FP32 accum everywhere; cast O at epilogue
+- Legal cp.async (Ada 16B minimum preferred; fall back to 8/4 only if supported)

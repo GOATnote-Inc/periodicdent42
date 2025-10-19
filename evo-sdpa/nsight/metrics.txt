@@ -1,33 +1,9 @@
-# Nsight Compute Metrics for SDPA Kernel Profiling
-
-## Tensor Core Utilization
-smsp__inst_executed_pipe_tensor.sum
 sm__pipe_tensor_active.avg.pct_of_peak_sustained_active
-
-## FP Operations
-smsp__sass_thread_inst_executed_op_fadd_pred_on.sum
-smsp__sass_thread_inst_executed_op_fmul_pred_on.sum
-
-## Memory Bandwidth
-lts__t_sectors_srcunit_tex_op_read.sum
-dram__throughput.avg.pct_of_peak_sustained_elapsed
-
-## Shared Memory
-shared_load_transactions
-shared_store_transactions
-l1tex__data_bank_conflicts_pipe_lsu_mem_shared.sum
-
-## Control Flow
-smsp__sass_average_branch_targets_threads_uniform.pct
-
-## Occupancy
-smsp__warps_active.avg.pct_of_peak_sustained_active
-
-## cp.async Overlap
+smsp__inst_executed_pipe_tensor.sum
 smsp__inst_executed_pipe_lsu.sum
 smsp__gmio_stall.avg.pct
-
-## Usage:
-# ncu --metrics-file nsight/metrics.txt --target-processes all \
-#     python bench/bench_sdpa.py
-
+dram__throughput.avg.pct_of_peak_sustained_elapsed
+lts__t_sectors_srcunit_tex_op_read.sum
+l1tex__data_bank_conflicts_pipe_lsu_mem_shared.sum
+smsp__warps_active.avg.pct_of_peak_sustained_active
+sm__cycles_elapsed.avg
