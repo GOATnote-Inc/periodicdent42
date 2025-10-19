@@ -32,10 +32,11 @@ __device__ __forceinline__ float warp_reduce_max(float v){
     return v;
 }
 
-// Sim-FP8 dequant
+// Sim-FP8 dequant (symmetric, zero maps exactly to 0)
 __device__ __forceinline__ float dequant_sim_fp8(uint8_t u, float s){
-    float x = (float(u) / 255.0f) * (2.0f * 448.0f) - 448.0f;
-    return x * s;
+    constexpr float INV_MAX = 1.0f / 127.0f;
+    float centered = (static_cast<float>(static_cast<int>(u) - 128)) * INV_MAX;
+    return centered * 448.0f * s;
 }
 
 __launch_bounds__(THREADS_PER_BLOCK, 4)
@@ -88,9 +89,11 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     // --- Build LUTs ---
     if (tid < 256) {
         const int u = tid;
-        float x = (float(u) / 255.0f) * (2.0f * 448.0f) - 448.0f;
-        kLUT[u] = x * k_s;
-        vLUT[u] = x * v_s;
+        constexpr float INV_MAX = 1.0f / 127.0f;
+        float centered = (static_cast<float>(u) - 128.0f) * INV_MAX;
+        float decoded = centered * 448.0f;
+        kLUT[u] = decoded * k_s;
+        vLUT[u] = decoded * v_s;
     }
 
     // --- Load Q tile (uint8→FP16, row-major) ---
@@ -247,5 +250,33 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             out[d] = __float2half(o);
         }
     }
+}
+
+extern "C" void launch_sdpa_fp8_stage_c_wmma(
+    const void* Q,
+    const void* K,
+    const void* V,
+    const float* Q_scale,
+    const float* K_scale,
+    const float* V_scale,
+    half* O,
+    int B, int H, int S, int D,
+    float softmax_scale,
+    cudaStream_t stream
+) {
+    dim3 grid((S + TILE_M - 1) / TILE_M, H, B);
+    dim3 block(THREADS_PER_BLOCK);
+
+    sdpa_fp8_stage_c_wmma_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const uint8_t*>(Q),
+        reinterpret_cast<const uint8_t*>(K),
+        reinterpret_cast<const uint8_t*>(V),
+        Q_scale,
+        K_scale,
+        V_scale,
+        O,
+        B, H, S, D,
+        softmax_scale
+    );
 }
 
