@@ -1,10 +1,9 @@
-# 📋 **CUDA Kernel Engineer Evaluation - PR #67**
+# 📋 **Technical Evaluation: PR #67 - FP8 WMMA Stage C Integration**
 
-**Candidate ID**: kr22tw  
 **Pull Request**: #67 - "Integrate FP8 WMMA stage C kernel bindings and tests"  
 **Date**: October 19, 2025  
-**Evaluator**: AI Agent (EvoEngineer Framework)  
-**Status**: ✅ **APPROVED WITH RECOMMENDATIONS**
+**Framework**: EvoEngineer Methodology  
+**Status**: ✅ **APPROVED WITH TECHNICAL TODO LIST**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -405,33 +404,66 @@ torch.cuda.synchronize()
 
 ### **Approve PR #67**: ✅ **YES**
 
-**Justification**:
+**Technical Justification**:
 - ✅ High code quality and clean architecture
 - ✅ Comprehensive testing with proper tolerances
 - ✅ Proper error handling and validation
 - ✅ Production-ready PyBind11 integration
 - ⚠️ Missing benchmarks can be addressed in follow-up
 
-### **Candidate Assessment**:
+**Excellence Gap Analysis**:
+- ✅ Correctness: Demonstrated via unit tests
+- ⚠️ Performance: No benchmarks or profiling evidence
+- ⚠️ Generalization: HEAD_DIM hardcoded, no causal masking
+- ⚠️ Optimization: Simulated FP8 vs native, unknown TC utilization
 
-**Strengths**:
-- Strong Python/CUDA integration skills
-- Understands quantization tradeoffs
-- Writes defensive, production-quality code
-- Follows testing best practices
+**Path to Excellence**: Complete Priority 1 TODO items (benchmarking + profiling)
 
-**Areas for Growth**:
-- Performance benchmarking discipline
-- Kernel profiling and optimization (NCU)
-- Tensor Core utilization analysis
-- Generalization (HEAD_DIM, causal masking)
+---
 
-### **Hiring Recommendation**: ✅ **HIRE** (Mid-Senior Level)
+## 📝 **Technical TODO List**
 
-**Role Fit**:
-- ✅ CUDA Performance Engineer (with mentorship on profiling)
-- ✅ ML Infrastructure Engineer (strong Python + CUDA)
-- ⚠️ Research Scientist (needs more algorithmic innovation)
+### **Priority 1: Performance Validation** (Required for Excellence)
+
+- [ ] **Benchmark latency** vs PyTorch SDPA on target shapes
+  - Mission shape: (1,8,512,64)
+  - Long sequence: (2,8,2048,64)
+  - Wide head: (2,8,512,128) - requires HEAD_DIM=128 support
+- [ ] **NCU profiling** to validate Tensor Core utilization
+  - Target: `sm__pipe_tensor_active` >50%
+  - Target: `dram__throughput` <70% (compute-bound)
+- [ ] **Document performance results** with evidence-based analysis
+
+### **Priority 2: Kernel Generalization**
+
+- [ ] **HEAD_DIM=128 support** (currently hardcoded to 64)
+  - Implement dispatcher for different tile configurations
+  - Add tests for d=128
+- [ ] **Variable sequence length** optimization
+  - Handle non-power-of-2 sequences efficiently
+- [ ] **Causal masking** implementation for autoregressive models
+
+### **Priority 3: Quantization Optimization**
+
+- [ ] **Native FP8 support** (E4M3/E5M2 on Ada/Hopper)
+  - Replace simulated FP8 (`uint8`) with native types
+  - Benchmark speedup vs simulated approach
+- [ ] **Per-tile quantization** (finer granularity than per-head)
+- [ ] **Dynamic range analysis** (clipping statistics, optimal scale selection)
+
+### **Priority 4: Advanced Optimization**
+
+- [ ] **cp.async pipelining** verification (if not already implemented)
+- [ ] **Persistent CTA** tuning for occupancy optimization
+- [ ] **Backward pass** implementation for training use cases
+- [ ] **Mixed precision** strategies (FP8 Q@K^T, FP16 P@V)
+
+### **Priority 5: Production Readiness**
+
+- [ ] **Error handling** for edge cases (empty sequences, NaN inputs)
+- [ ] **Memory efficiency** analysis (peak SMEM usage, register pressure)
+- [ ] **Multi-GPU support** (if applicable)
+- [ ] **Continuous benchmarking** integration (CI/CD)
 
 ---
 
@@ -446,10 +478,11 @@ torch.cuda.synchronize()
 ---
 
 **Evaluation Completed**: October 19, 2025  
-**Evaluator**: EvoEngineer AI Agent  
-**Next Action**: Run performance benchmarks on GPU using NCU profiling framework  
+**Methodology**: EvoEngineer Framework (Evidence-Based Performance Engineering)  
+**Next Action**: Execute Priority 1 TODOs (benchmarks + profiling)  
 
 ---
 
-**🔥 STATUS: APPROVED FOR MERGE** ✅
+**🔥 STATUS: APPROVED FOR MERGE** ✅  
+**PATH TO EXCELLENCE**: Complete technical TODO list for production-grade demonstration
 
