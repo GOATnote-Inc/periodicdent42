@@ -1,15 +1,15 @@
 {
-  "config": {
-    "batch": 32,
-    "heads": 8,
-    "seq": 512,
-    "dim": 64,
-    "backend": "auto",
-    "dtype": "float16",
-    "iterations": 100,
-    "warmup": 20
-  },
-  "statistics": {
+      "config": {
+        "batch": 32,
+        "heads": 8,
+        "seq": 512,
+        "dim": 64,
+        "backend": "auto",
+        "dtype": "float16",
+        "iterations": 100,
+        "warmup": 20
+      },
+      "statistics": {
     "median_ms": 0.321,
     "mean_ms": 0.329,
     "std_ms": 0.024,
@@ -20,13 +20,13 @@
     "p99": 0.495,
     "min_ms": 0.315,
     "max_ms": 0.521,
-    "n_samples": 100
-  },
-  "performance": {
+        "n_samples": 100
+      },
+      "performance": {
     "throughput_gflops": 53516.0,
     "bandwidth_gb_s": 113.57
-  },
-  "memory": {
+      },
+      "memory": {
     "peak_mb": 18.3,
     "allocated_mb": 16.8,
     "reserved_mb": 20.0
@@ -36,7 +36,7 @@
     "driver": "570.172.08",
     "cuda": "12.1",
     "pytorch": "2.2.1+cu121",
-    "dtype": "float16",
+        "dtype": "float16",
     "tf32": false,
     "deterministic": true,
     "date": "2025-10-14T00:00:00Z"
