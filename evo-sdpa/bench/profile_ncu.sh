@@ -14,6 +14,15 @@ source ~/venv/bin/activate
 # Navigate to evo-sdpa
 cd ~/periodicdent42/evo-sdpa
 
+# Ensure ncu is in PATH
+export PATH="/usr/local/cuda/bin:$PATH"
+
+# Check ncu availability
+if ! command -v ncu &> /dev/null; then
+    echo "❌ Error: ncu (Nsight Compute) not found in PATH"
+    exit 1
+fi
+
 # Output directory
 mkdir -p ncu_results
 OUTPUT_DIR="ncu_results"
