@@ -44,15 +44,17 @@ struct TileConfig {
 #define WMMA_N 16
 #define WMMA_K 16
 
-// Legal cp.async helper (reuse from v6a)
-__device__ __forceinline__ void cp_async_vec(void* smem, const void* gmem, int bytes) {
-    unsigned sm = __cvta_generic_to_shared(smem);
-    if ((bytes == 16) && (((uintptr_t)smem & 0xF) == 0) && (((uintptr_t)gmem & 0xF) == 0)) {
+// Legal cp.async helper for Ada (sm_89): ONLY 16B supported
+__device__ __forceinline__ void cp_async_16B_if_aligned(
+    void* smem, const void* gmem, bool use_async
+) {
+    if (use_async && (((uintptr_t)smem & 0xF) == 0) && (((uintptr_t)gmem & 0xF) == 0)) {
+        // Ada: only 16B cp.async allowed
+        unsigned sm = __cvta_generic_to_shared(smem);
         asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(sm), "l"(gmem));
-    } else if ((bytes == 8) && (((uintptr_t)smem & 0x7) == 0) && (((uintptr_t)gmem & 0x7) == 0)) {
-        asm volatile("cp.async.cg.shared.global [%0], [%1], 8;"  :: "r"(sm), "l"(gmem));
     } else {
-        asm volatile("cp.async.cg.shared.global [%0], [%1], 4;"  :: "r"(sm), "l"(gmem));
+        // Fallback: regular load (not cp.async 4/8B which Ada doesn't support)
+        *reinterpret_cast<int4*>(smem) = __ldg(reinterpret_cast<const int4*>(gmem));
     }
 }
 
@@ -214,24 +216,37 @@ sdpa_fused_v2c_v7a_kernel(
         half* sK0 = K_stage_ptr(sK, 0, N, Dpad);
         half* sV0 = V_stage_ptr(sV, 0, N, Dpad);
         
-        // Everyone participates in preload
-        for (int idx = tid; idx < kv_len0 * HEAD_DIM; idx += blockDim.x) {
-            int n = idx / HEAD_DIM;
-            int c = idx % HEAD_DIM;
+        // Everyone participates in preload (use 16B chunks)
+        const int elems_per_16B = 8;  // 8 halfs = 16 bytes
+        const int num_16B_chunks = (kv_len0 * HEAD_DIM + elems_per_16B - 1) / elems_per_16B;
+        
+        for (int chunk_idx = tid; chunk_idx < num_16B_chunks; chunk_idx += blockDim.x) {
+            int elem_offset = chunk_idx * elems_per_16B;
+            int n = elem_offset / HEAD_DIM;
+            int c = elem_offset % HEAD_DIM;
             
-            if (kv_start0 + n < L) {
-                // K: col-major storage [col=n, row=c]
+            if (n < kv_len0 && c + elems_per_16B <= HEAD_DIM) {
+                // Full 16B chunk: use cp.async
                 int k_idx = n * Dpad + c;
                 int v_idx = n * Dpad + c;
-                
-                // Use 16B when aligned, else fallback
-                int bytes = ((c % 8 == 0) && (c + 8 <= HEAD_DIM)) ? 16 : 4;
-                cp_async_vec(&sK0[k_idx], &K_bh[(kv_start0 + n) * d + c], bytes);
-                cp_async_vec(&sV0[v_idx], &V_bh[(kv_start0 + n) * d + c], bytes);
+                bool use_async = (kv_start0 + n < L);
+                cp_async_16B_if_aligned(&sK0[k_idx], &K_bh[(kv_start0 + n) * d + c], use_async);
+                cp_async_16B_if_aligned(&sV0[v_idx], &V_bh[(kv_start0 + n) * d + c], use_async);
             } else {
-                int k_idx = n * Dpad + c;
-                sK0[k_idx] = __float2half(0.0f);
-                sV0[k_idx] = __float2half(0.0f);
+                // Tail elements: scalar fallback
+                for (int i = 0; i < elems_per_16B && (elem_offset + i) < kv_len0 * HEAD_DIM; ++i) {
+                    int idx = elem_offset + i;
+                    int nn = idx / HEAD_DIM;
+                    int cc = idx % HEAD_DIM;
+                    int k_idx = nn * Dpad + cc;
+                    if (kv_start0 + nn < L) {
+                        sK0[k_idx] = __ldg(&K_bh[(kv_start0 + nn) * d + cc]);
+                        sV0[k_idx] = __ldg(&V_bh[(kv_start0 + nn) * d + cc]);
+                    } else {
+                        sK0[k_idx] = __float2half(0.0f);
+                        sV0[k_idx] = __float2half(0.0f);
+                    }
+                }
             }
         }
         cp_async_commit_group();
@@ -256,24 +271,37 @@ sdpa_fused_v2c_v7a_kernel(
                 half* sKw = K_stage_ptr(sK, write_stage, N, Dpad);
                 half* sVw = V_stage_ptr(sV, write_stage, N, Dpad);
                 
-                // Stride by lane for coalesced async copies
-                for (int idx = lane; idx < kv_len_next * HEAD_DIM; idx += 32) {
-                    int n = idx / HEAD_DIM;
-                    int c = idx % HEAD_DIM;
+                // Stride by 16B chunks (8 halfs) per lane
+                const int elems_per_16B = 8;
+                const int total_chunks = (kv_len_next * HEAD_DIM + elems_per_16B - 1) / elems_per_16B;
+                
+                for (int chunk_idx = lane; chunk_idx < total_chunks; chunk_idx += 32) {
+                    int elem_offset = chunk_idx * elems_per_16B;
+                    int n = elem_offset / HEAD_DIM;
+                    int c = elem_offset % HEAD_DIM;
                     
-                    if (kv_next + n < L) {
-                        int k_idx = n * Dpad + c;  // col-major
-                        int v_idx = n * Dpad + c;
-                        
-                        // 16B when aligned, else 4B
-                        int bytes = ((c % 8 == 0) && (c + 8 <= HEAD_DIM)) ? 16 : 4;
-                        cp_async_vec(&sKw[k_idx], &K_bh[(kv_next + n) * d + c], bytes);
-                        cp_async_vec(&sVw[v_idx], &V_bh[(kv_next + n) * d + c], bytes);
-                    } else {
-                        // Pad OOB with zeros
+                    if (n < kv_len_next && c + elems_per_16B <= HEAD_DIM) {
+                        // Full 16B chunk: use cp.async
                         int k_idx = n * Dpad + c;
-                        sKw[k_idx] = __float2half(0.0f);
-                        sVw[k_idx] = __float2half(0.0f);
+                        int v_idx = n * Dpad + c;
+                        bool use_async = (kv_next + n < L);
+                        cp_async_16B_if_aligned(&sKw[k_idx], &K_bh[(kv_next + n) * d + c], use_async);
+                        cp_async_16B_if_aligned(&sVw[v_idx], &V_bh[(kv_next + n) * d + c], use_async);
+                    } else {
+                        // Tail elements: scalar fallback
+                        for (int i = 0; i < elems_per_16B && (elem_offset + i) < kv_len_next * HEAD_DIM; ++i) {
+                            int idx = elem_offset + i;
+                            int nn = idx / HEAD_DIM;
+                            int cc = idx % HEAD_DIM;
+                            int k_idx = nn * Dpad + cc;
+                            if (kv_next + nn < L) {
+                                sKw[k_idx] = __ldg(&K_bh[(kv_next + nn) * d + cc]);
+                                sVw[k_idx] = __ldg(&V_bh[(kv_next + nn) * d + cc]);
+                            } else {
+                                sKw[k_idx] = __float2half(0.0f);
+                                sVw[k_idx] = __float2half(0.0f);
+                            }
+                        }
                     }
                 }
                 cp_async_commit_group();  // Enqueue next-tile group
