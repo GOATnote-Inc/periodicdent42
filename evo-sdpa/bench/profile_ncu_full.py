@@ -10,23 +10,12 @@ def build_ext():
     """Build the extension with all kernel variants"""
     from torch.utils.cpp_extension import load
     
-    kernel_dir = Path(__file__).parent.parent / "kernels"
-    srcs = [
-        kernel_dir / "sdpa_fused_v2c_v6a.cu",
-        kernel_dir / "sdpa_fused_v2c_v7a.cu",
-        kernel_dir / "sdpa_fused_bindings.cpp",
-        kernel_dir / "runtime.hpp",
-    ]
+    # Use the existing bench_sdpa build (already tested)
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from bench_sdpa import build_ext as build_sdpa_ext
     
-    return load(
-        name="sdpa_fused_ext",
-        sources=[str(s) for s in srcs if s.exists()],
-        extra_cuda_cflags=[
-            "-O3", "--generate-code=arch=compute_89,code=sm_89",
-            "--use_fast_math", "-lineinfo", "-Xptxas", "-v", "-std=c++17"
-        ],
-        verbose=True
-    )
+    return build_sdpa_ext()
 
 def ref_sdpa(q, k, v, causal, dropout_p=0.0):
     """Reference PyTorch SDPA"""
