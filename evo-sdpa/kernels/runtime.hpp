@@ -25,4 +25,5 @@ cudaError_t sdpa_fused_forward_v2c_v4(const SdpaParams& params, cudaStream_t str
 cudaError_t sdpa_fused_forward_v2c_v5(const SdpaParams& params, cudaStream_t stream = 0);
 cudaError_t sdpa_fused_forward_v2c_v6(const SdpaParams& params, cudaStream_t stream = 0);
 cudaError_t sdpa_fused_forward_v2c_v6a(const SdpaParams& params, cudaStream_t stream = 0);
+cudaError_t sdpa_fused_forward_v2c_v7a(const SdpaParams& params, cudaStream_t stream = 0);
 
