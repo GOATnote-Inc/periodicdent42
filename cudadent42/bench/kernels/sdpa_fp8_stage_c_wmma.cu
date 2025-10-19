@@ -188,16 +188,13 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         // =========================================
         // Each warp handles 32/4 = 8 rows
         for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
-            // Load scores for this row
+            // PRIORITY 1 FIX: Each lane loads ALL scores (no stride, no broadcast)
+            // Previous bug: Only lane N loaded S_row[N], leaving most elements uninitialized
+            // Correct: Each lane loads full S_row[] sequentially → all lanes see same data
             float S_row[TILE_N];
-            for (int n = lane; n < kv_len; n += 32) {
-                float score = __half2float(sS[r][n]) * softmax_scale;
-                S_row[n] = score;
-            }
-            // Broadcast to all lanes in warp
             #pragma unroll
             for (int n = 0; n < kv_len; ++n) {
-                S_row[n] = __shfl_sync(0xffffffff, S_row[n], n % 32);
+                S_row[n] = __half2float(sS[r][n]) * softmax_scale;
             }
 
             // Online softmax update

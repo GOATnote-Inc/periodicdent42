@@ -81,20 +81,27 @@ def quantize_sim_fp8_per_head(tensor: torch.Tensor) -> Tuple[torch.Tensor, torch
     fp8_max = 448.0
 
     abs_max = tensor.abs().to(torch.float32).amax(dim=(0, 2, 3), keepdim=True)
-    safe_abs_max = torch.where(
+    
+    # PRIORITY 1 FIX: For zero/near-zero tensors, use scale=1.0 (not 1.0/448.0)
+    # This ensures quantization maps zeros to midpoint (128) with correct scale
+    scales = torch.where(
         abs_max > 1e-6,
-        abs_max,
+        abs_max / fp8_max,
         torch.ones_like(abs_max)
-    )
-
-    scales = (safe_abs_max / fp8_max).to(torch.float32)
+    ).to(torch.float32)
+    
+    # Compute denominator for quantization: scale * fp8_max
+    # For zero tensors: scale=1.0 → denom=448.0 → input/denom=0 → encoded=128 ✓
     denom = (scales * fp8_max).to(torch.float32)
 
+    # Quantize: map [-denom, +denom] → [0, 255] with midpoint at 128
     encoded = torch.round(
         tensor.to(torch.float32) / denom * 127.0 + 128.0
     )
     encoded = torch.clamp(encoded, 0.0, 255.0)
 
+    # For zero/near-zero heads, explicitly set encoded to midpoint (128)
+    # This redundantly ensures correct handling even if numerical precision fails
     zero_mask = abs_max <= 1e-6
     if zero_mask.any():
         encoded = torch.where(
