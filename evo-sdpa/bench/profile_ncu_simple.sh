@@ -24,19 +24,12 @@ echo "📊 Profiling V2c-v7a kernel (mission shape: 1,8,512,64)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Run with essential metrics only (much faster than --set full)
+# NOTE: --metrics must be comma-separated, not multiple flags
 sudo /usr/local/cuda/bin/ncu \
     --target-processes all \
     --kernel-name-base function \
     --kernel-name regex:"sdpa_fused_v2c_v7a" \
-    --metrics sm__pipe_tensor_active.avg.pct_of_peak_sustained_active \
-    --metrics dram__throughput.avg.pct_of_peak_sustained_elapsed \
-    --metrics smsp__inst_executed_op_cp_async.sum \
-    --metrics l1tex__data_bank_conflicts_pipe_lsu_mem_shared.sum \
-    --metrics smsp__warps_active.avg.pct_of_peak_sustained_active \
-    --metrics launch__registers_per_thread \
-    --metrics launch__shared_mem_per_block_dynamic \
-    --metrics smsp__warp_issue_stalled_long_scoreboard_per_warp_active.pct \
-    --metrics smsp__warp_issue_stalled_barrier_per_warp_active.pct \
+    --metrics sm__pipe_tensor_active.avg.pct_of_peak_sustained_active,dram__throughput.avg.pct_of_peak_sustained_elapsed,smsp__inst_executed_op_cp_async.sum,l1tex__data_bank_conflicts_pipe_lsu_mem_shared.sum,smsp__warps_active.avg.pct_of_peak_sustained_active,launch__registers_per_thread,launch__shared_mem_per_block_dynamic,smsp__warp_issue_stalled_long_scoreboard_per_warp_active.pct,smsp__warp_issue_stalled_barrier_per_warp_active.pct \
     --csv \
     python3 -c "
 from bench.bench_sdpa import build_ext, run_case
