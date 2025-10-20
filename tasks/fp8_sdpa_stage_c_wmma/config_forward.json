@@ -31,7 +31,7 @@
     "atol": 0.05,
     "rtol": 0.05,
     "pct_bad_max": 1.0,
-    "description": "Gates: max_abs_err ≤ 0.05, mean_abs_err ≤ 0.01, %(|err|>0.05) ≤ 1%"
+    "description": "Gates: max_abs_err ≤ 0.05, mean_abs_err ≤ 0.02 (FP8), %(|err|>0.05) ≤ 1%"
   },
   "timing": {
     "warmup_iters": 100,
