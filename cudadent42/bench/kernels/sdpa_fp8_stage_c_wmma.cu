@@ -99,6 +99,14 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         kLUT[u] = decoded * k_s;
         vLUT[u] = decoded * v_s;
     }
+    __syncthreads();  // Ensure all threads see complete LUT before usage
+
+#ifdef DEBUG_PRINT
+    if (tid == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+        printf("[DEBUG] Scales: q_s=%.6f k_s=%.6f v_s=%.6f\n", q_s, k_s, v_s);
+        printf("[DEBUG] Sample LUT: kLUT[133]=%.4f vLUT[171]=%.4f\n", kLUT[133], vLUT[171]);
+    }
+#endif
 
     // --- Load Q tile (uint8→FP16, row-major) ---
     for (int idx = tid; idx < rows_in_tile * D; idx += blockDim.x) {
