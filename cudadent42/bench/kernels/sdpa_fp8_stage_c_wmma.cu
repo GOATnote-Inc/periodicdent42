@@ -10,6 +10,11 @@ using namespace nvcuda;
 // Debug flag: enable with -DDEBUG_PRINT during compilation
 // #define DEBUG_PRINT 1
 
+// K/V dequantization strategy: 0 = direct (safe, default), 1 = LUT (fast, risky)
+#ifndef USE_KV_LUT
+#define USE_KV_LUT 0
+#endif
+
 // --- Tunables (L4 sm_89, full WMMA) ---
 #define HEAD_DIM 64
 #define TILE_M   32      // Q rows per block (2 WMMA tiles)
@@ -82,16 +87,19 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     __shared__ alignas(16) half sKT[D_PAD][TILE_N];    // 4 KB (transposed!)
     __shared__ alignas(16) half sV[TILE_N][D_PAD];     // 4 KB
     
+#if USE_KV_LUT
     __shared__ float kLUT[256];  // K dequant lookup (1 KB)
     __shared__ float vLUT[256];  // V dequant lookup (1 KB)
+#endif
     __shared__ alignas(16) half sS[TILE_M][TILE_N];  // Scores for softmax (2 KB) - MUST be outer scope!
     __shared__ float m_smem[TILE_M];
     __shared__ float l_smem[TILE_M];
     __shared__ alignas(16) float U_smem[TILE_M][D_PAD];  // 8 KB
 
-    // Total SMEM: 1+1+2+4+4+4+0.25+0.25+8 = 24.5 KB < 48 KB ✅
+    // Total SMEM: USE_KV_LUT ? 24.5 KB : 22.5 KB (direct dequant saves 2 KB)
 
-    // --- Build LUTs ---
+#if USE_KV_LUT
+    // --- Build LUTs (legacy path, requires debugging) ---
     if (tid < 256) {
         const int u = tid;
         constexpr float INV_MAX = 1.0f / 127.0f;
@@ -104,7 +112,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
 #ifdef DEBUG_PRINT
     if (tid == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
-        // Manual recomputation for verification
+        printf("[DEBUG] USE_KV_LUT=1 (legacy path)\n");
+        printf("[DEBUG] LUT addrs: kLUT=%p vLUT=%p sS=%p\n", kLUT, vLUT, sS);
         constexpr float INV_MAX = 1.0f / 127.0f;
         float centered_133 = (133.0f - 128.0f) * INV_MAX;
         float decoded_133 = centered_133 * 448.0f;
@@ -115,12 +124,18 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         float expected_v171 = decoded_171 * v_s;
         
         printf("[DEBUG] Scales: q_s=%.6f k_s=%.6f v_s=%.6f\n", q_s, k_s, v_s);
-        printf("[DEBUG] Manual calc: centered_133=%.4f decoded_133=%.2f expected_k133=%.4f\n",
-               centered_133, decoded_133, expected_k133);
-        printf("[DEBUG] Manual calc: centered_171=%.4f decoded_171=%.2f expected_v171=%.4f\n",
-               centered_171, decoded_171, expected_v171);
-        printf("[DEBUG] Actual LUT: kLUT[133]=%.4f vLUT[171]=%.4f\n", kLUT[133], vLUT[171]);
+        printf("[DEBUG] Expected: kLUT[133]=%.4f vLUT[171]=%.4f\n", expected_k133, expected_v171);
+        printf("[DEBUG] Actual:   kLUT[133]=%.4f vLUT[171]=%.4f\n", kLUT[133], vLUT[171]);
     }
+#endif
+#else
+    // --- Direct dequant (safe default, no LUT) ---
+#ifdef DEBUG_PRINT
+    if (tid == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+        printf("[DEBUG] USE_KV_LUT=0 (direct dequant - safe path)\n");
+        printf("[DEBUG] Scales: q_s=%.6f k_s=%.6f v_s=%.6f\n", q_s, k_s, v_s);
+    }
+#endif
 #endif
 
     // --- Load Q tile (uint8→FP16, row-major) ---
@@ -168,7 +183,12 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             int n = idx / D;
             int d = idx % D;
             uint8_t k_u8 = Kbh[(size_t)(kv_start + n) * D + d];
-            sKT[d][n] = __float2half(kLUT[k_u8]);  // Transposed!
+#if USE_KV_LUT
+            sKT[d][n] = __float2half(kLUT[k_u8]);  // LUT path
+#else
+            float k_f = dequant_sim_fp8(k_u8, k_s);  // Direct dequant (safe)
+            sKT[d][n] = __float2half(k_f);
+#endif
         }
 
         // --- Load V tile (uint8→FP16, row-major) ---
@@ -176,7 +196,12 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             int n = idx / D;
             int d = idx % D;
             uint8_t v_u8 = Vbh[(size_t)(kv_start + n) * D + d];
-            sV[n][d] = __float2half(vLUT[v_u8]);
+#if USE_KV_LUT
+            sV[n][d] = __float2half(vLUT[v_u8]);  // LUT path
+#else
+            float v_f = dequant_sim_fp8(v_u8, v_s);  // Direct dequant (safe)
+            sV[n][d] = __float2half(v_f);
+#endif
         }
         
         // Zero-pad K^T/V for partial tiles (kv_len < TILE_N)
