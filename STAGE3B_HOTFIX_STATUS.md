@@ -161,6 +161,37 @@ results/fp8_wmma_baseline/20251020-201033/  # Stage-3B (stale fix)
 
 ---
 
-**Last Updated**: 2025-10-20 20:15 UTC  
-**Next Session**: Debug cross-warp sync + WMMA LUT verification
+### Fix #3: Cross-Warp Sync After Online Softmax (Commit `a16f199`)
+**Hypothesis**: Lane 0 writes `m_smem`, all lanes read it → needs `__syncthreads()`  
+**Changes**:
+- Added `__syncthreads()` after step 2 (online softmax update)
+- Ensures all warps see updated `m_smem`/`l_smem` before step 3 (materialize P)
+
+**Result**: ❌ FAILED — Same error magnitudes (max_err 1.4-4.1)
+
+---
+
+## ⚖️ Decision: Revert to Stage-2 Baseline
+
+After 3 systematic fix attempts with **no improvement**, Stage-3B fused softmax has a deep algorithmic bug requiring > 4 hours additional debugging. Per EvoEngineer "fail fast" principle:
+
+**Action**: Document as **"Valid Negative Result"** and revert to Stage-2.
+
+**Rationale**:
+- Stage-2 (`cp.async` + WMMA P·V): **656 μs baseline** ✅
+- Stage-2 already merged to `main` and tagged `v2.0-stage2-wmma-pv` ✅
+- Stage-3B provides **−2 KB SMEM** but **0/6 correctness** ❌
+- Debugging ROI: Low (3 attempts, 0 progress)
+
+**Next Steps**:
+1. Merge hotfix commits to feature branch (for future reference)
+2. Checkout `main` for next stage development
+3. Stage-4 Option: 3-stage `cp.async` (lower risk, +5-10% target)
+4. Stage-5 Option: Return to fused softmax with clean-slate redesign
+
+---
+
+**Last Updated**: 2025-10-20 20:22 UTC  
+**Status**: ❌ **ABANDONED** (3 fixes, 0 progress)  
+**Recommendation**: Proceed to Stage-4 or close Stage-3 feature branch
 
