@@ -122,9 +122,16 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     __shared__ alignas(16) half sV[TILE_N][D_PAD];     // 4 KB, row-major
     
 #if USE_CP_ASYNC
-    // Double-buffering for cp.async prefetch (uint8 staging)
-    __shared__ alignas(16) uint8_t sK_u8[2][TILE_N][D_PAD];  // 8 KB (2 buffers)
-    __shared__ alignas(16) uint8_t sV_u8[2][TILE_N][D_PAD];  // 8 KB (2 buffers)
+    // Multi-stage buffering for cp.async prefetch (uint8 staging)
+    #if USE_CP_ASYNC_3STAGE
+        #define NUM_STAGES 3
+        __shared__ alignas(16) uint8_t sK_u8[3][TILE_N][D_PAD];  // 12 KB (3 buffers)
+        __shared__ alignas(16) uint8_t sV_u8[3][TILE_N][D_PAD];  // 12 KB (3 buffers)
+    #else
+        #define NUM_STAGES 2
+        __shared__ alignas(16) uint8_t sK_u8[2][TILE_N][D_PAD];  // 8 KB (2 buffers)
+        __shared__ alignas(16) uint8_t sV_u8[2][TILE_N][D_PAD];  // 8 KB (2 buffers)
+    #endif
 #endif
     
 #if USE_KV_LUT
@@ -146,8 +153,11 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 #endif
 
     // Total SMEM: 
-    //   USE_WMMA_PV=0: USE_KV_LUT ? 24.5 KB : 22.5 KB (direct dequant saves 2 KB)
-    //   USE_WMMA_PV=1: adds +6 KB → ~44.5 KB (still safe for 2 CTAs/SM)
+    //   2-stage cp.async (NUM_STAGES=2):
+    //     USE_WMMA_PV=0: USE_KV_LUT ? 24.5 KB : 22.5 KB (direct dequant saves 2 KB)
+    //     USE_WMMA_PV=1: adds +6 KB → ~44.5 KB (still safe for 2 CTAs/SM)
+    //   3-stage cp.async (NUM_STAGES=3):
+    //     Adds +8 KB for 3rd stage → ~52.5 KB (within 64 KB limit, occupancy: 1 CTA/SM)
 
 #if USE_KV_LUT
     // --- Build LUTs (legacy path, requires debugging) ---
@@ -225,7 +235,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
 #if USE_CP_ASYNC
     // ==========================================
-    // cp.async Double-Buffered Pipeline
+    // cp.async Multi-Stage Pipeline (2 or 3 stages)
     // ==========================================
     NVTX_RANGE("KV_loop_cp_async");
     
@@ -263,22 +273,32 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         __pipeline_commit();
     };
     
-    // Prefetch tile 0 into stage 0
-    cp_async_tile_u8(0, 0);
+    // Prefetch initial tiles
+    #if USE_CP_ASYNC_3STAGE
+        // 3-stage: prefetch tiles 0 and 1
+        if (nTiles > 0) cp_async_tile_u8(0, 0);
+        if (nTiles > 1) cp_async_tile_u8(1, 1);
+    #else
+        // 2-stage: prefetch tile 0 only
+        if (nTiles > 0) cp_async_tile_u8(0, 0);
+    #endif
     
     for (int t = 0; t < nTiles; ++t) {
-        const int read_stage  = t & 1;
-        const int write_stage = (t + 1) & 1;
+        // Ring-buffer indexing for multi-stage pipeline
+        const int read_stage  = t % NUM_STAGES;
+        const int write_stage = (t + (NUM_STAGES - 1)) % NUM_STAGES;
         
         NVTX_RANGE("tile_iter");
         
         // Prefetch next tile (overlaps with compute below)
-        if (t + 1 < nTiles) {
-            cp_async_tile_u8(t + 1, write_stage);
+        // For 2-stage: prefetch t+1; for 3-stage: prefetch t+2
+        if (t + (NUM_STAGES - 1) < nTiles) {
+            cp_async_tile_u8(t + (NUM_STAGES - 1), write_stage);
         }
         
         // Wait for current tile data (read_stage) to be visible
-        __pipeline_wait_prior(1);
+        // For 2-stage: wait_prior(0) waits for all; for 3-stage: wait_prior(1) allows one outstanding
+        __pipeline_wait_prior(NUM_STAGES - 2);
         __syncthreads();
         
         // Compute tile bounds
