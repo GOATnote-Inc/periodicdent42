@@ -12,19 +12,20 @@ sys.path.insert(0, str(repo_root))
 def generate_lut():
     from torch.utils.cpp_extension import load
     
-    src = repo_root / "cudadent42/bench/kernels/wmma16x16_accum_lut_gen.cu"
-    print(f"Building introspection kernel from {src}...")
+    src_cu = repo_root / "cudadent42/bench/kernels/wmma16x16_accum_lut_gen.cu"
+    src_cpp = repo_root / "cudadent42/bench/kernels/wmma16x16_accum_lut_bindings.cpp"
+    print(f"Building introspection kernel...")
     
     mod = load(
         name="wmma_lut_gen",
-        sources=[str(src)],
+        sources=[str(src_cu), str(src_cpp)],
         extra_cuda_cflags=["-O3", "-arch=sm_89"],
-        verbose=False
+        verbose=True
     )
     
     print("Running introspection kernel...")
     out = torch.empty((16, 16), device="cuda", dtype=torch.float32)
-    mod.wmma_accum_introspect_kernel((1,), (32,), (out,))
+    mod.wmma_accum_introspect_kernel(out)
     m = out.cpu().numpy()
     
     # Invert mapping -> for each lane slot (8), find (r,c)
