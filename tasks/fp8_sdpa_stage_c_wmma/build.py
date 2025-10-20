@@ -19,7 +19,10 @@ from torch.utils.cpp_extension import load
 USE_KV_LUT   = int(os.environ.get("USE_KV_LUT", "0"))
 DEBUG_PRINT  = int(os.environ.get("DEBUG_PRINT", "0"))
 USE_CP_ASYNC = int(os.environ.get("USE_CP_ASYNC", "1"))
-USE_WMMA_PV  = int(os.environ.get("USE_WMMA_PV", "0"))
+USE_WMMA_PV  = int(os.environ.get("USE_WMMA_PV", "1"))  # Default ON (Stage-2 merged)
+USE_FUSED_SOFTMAX = int(os.environ.get("USE_FUSED_SOFTMAX", "0"))  # Stage-3: fused softmax in registers (OFF until Step-3 lands)
+USE_SMEM_SWIZZLE_XOR = int(os.environ.get("USE_SMEM_SWIZZLE_XOR", "0"))  # Stage-3: XOR swizzle (OFF, Step-2 regressed +6%)
+USE_CP_ASYNC_3STAGE = int(os.environ.get("USE_CP_ASYNC_3STAGE", "0"))  # Stage-3: 3-stage pipeline (long seq)
 ARCH_LIST = os.environ.get("TORCH_CUDA_ARCH_LIST", "8.9")
 
 # Paths
@@ -49,16 +52,25 @@ def build_extension(name="sdpa_fp8_stage_c_wmma", verbose=True):
         extra_cuda_cflags.append("-DUSE_CP_ASYNC=1")
     if USE_WMMA_PV:
         extra_cuda_cflags.append("-DUSE_WMMA_PV=1")
+    if USE_FUSED_SOFTMAX:
+        extra_cuda_cflags.append("-DUSE_FUSED_SOFTMAX=1")
+    if USE_SMEM_SWIZZLE_XOR:
+        extra_cuda_cflags.append("-DUSE_SMEM_SWIZZLE_XOR=1")
+    if USE_CP_ASYNC_3STAGE:
+        extra_cuda_cflags.append("-DUSE_CP_ASYNC_3STAGE=1")
     
     print(f"\n{'='*80}")
     print("FP8 SDPA Stage-C WMMA Kernel Build")
     print(f"{'='*80}")
-    print(f"  USE_KV_LUT:   {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
-    print(f"  DEBUG_PRINT:  {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
-    print(f"  USE_CP_ASYNC: {USE_CP_ASYNC} ({'double-buffer K/V' if USE_CP_ASYNC else 'direct load'})")
-    print(f"  USE_WMMA_PV:  {USE_WMMA_PV} ({'WMMA P·V' if USE_WMMA_PV else 'scalar P·V ✓'})")
-    print(f"  Architecture: sm_{ARCH_LIST.replace('.', '')}")
-    print(f"  Flags:        {' '.join(extra_cuda_cflags)}")
+    print(f"  USE_KV_LUT:          {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
+    print(f"  DEBUG_PRINT:         {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
+    print(f"  USE_CP_ASYNC:        {USE_CP_ASYNC} ({'double-buffer K/V' if USE_CP_ASYNC else 'direct load'})")
+    print(f"  USE_WMMA_PV:         {USE_WMMA_PV} ({'WMMA P·V' if USE_WMMA_PV else 'scalar P·V'})")
+    print(f"  USE_FUSED_SOFTMAX:   {USE_FUSED_SOFTMAX} ({'fused softmax (no sS)' if USE_FUSED_SOFTMAX else 'Stage-2 baseline'})")
+    print(f"  USE_SMEM_SWIZZLE_XOR: {USE_SMEM_SWIZZLE_XOR} ({'XOR swizzle' if USE_SMEM_SWIZZLE_XOR else 'no swizzle'})")
+    print(f"  USE_CP_ASYNC_3STAGE: {USE_CP_ASYNC_3STAGE} ({'3-stage pipeline' if USE_CP_ASYNC_3STAGE else '2-stage'})")
+    print(f"  Architecture:        sm_{ARCH_LIST.replace('.', '')}")
+    print(f"  Flags:               {' '.join(extra_cuda_cflags)}")
     print(f"{'='*80}\n")
     
     # Build
@@ -109,6 +121,9 @@ def capture_build_metadata(output_dir=None):
             "DEBUG_PRINT": DEBUG_PRINT,
             "USE_CP_ASYNC": USE_CP_ASYNC,
             "USE_WMMA_PV": USE_WMMA_PV,
+            "USE_FUSED_SOFTMAX": USE_FUSED_SOFTMAX,
+            "USE_SMEM_SWIZZLE_XOR": USE_SMEM_SWIZZLE_XOR,
+            "USE_CP_ASYNC_3STAGE": USE_CP_ASYNC_3STAGE,
             "arch": f"sm_{ARCH_LIST.replace('.', '')}",
             "flags": ["-O3", "--use_fast_math", "-lineinfo"],
         },

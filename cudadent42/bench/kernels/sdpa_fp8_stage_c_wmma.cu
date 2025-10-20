@@ -26,6 +26,16 @@ using namespace nvcuda;
 #define USE_WMMA_PV 0
 #endif
 
+// Fused softmax in registers: 0 = Stage-2 (materialize sS), 1 = Stage-3B (register-level)
+#ifndef USE_FUSED_SOFTMAX
+#define USE_FUSED_SOFTMAX 0
+#endif
+
+// Include WMMA accumulator LUT for fused softmax path
+#if USE_FUSED_SOFTMAX
+#include "wmma16x16_accum_lut.h"
+#endif
+
 // NVTX profiling ranges (optional)
 #ifdef ENABLE_NVTX
 #include <nvToolsExt.h>
@@ -277,20 +287,67 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         
         NVTX_RANGE("u8_to_half_dequant");
         // Dequantize from u8 staging buffer → half working buffers (sKT, sV)
-        for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
-            int n = idx / D;
-            int d = idx % D;
-            uint8_t ku = sK_u8[read_stage][n][d];
-            uint8_t vu = sV_u8[read_stage][n][d];
+        // Vectorized shared reads + write-coalescing swizzle by lane group.
+        // This preserves the final [n][d] order so WMMA loads remain contiguous.
+        const int lanes_per_vec = 4;        // 4 lanes form a 16B vector read
+        const int lane_group    = lane / lanes_per_vec; // 0..7
+        const int lane_in_group = lane % lanes_per_vec; // 0..3
+        const int vec_width     = 16;       // bytes per uint4
+        const int elems_per_vec = 16;       // 16 u8 per vector
+
+        // Each lane-group walks d in 16B vectors; lanes split the 16 bytes
+        for (int n = warp_id; n < kv_len; n += NUM_WARPS) {
+            for (int d0 = lane_group * elems_per_vec; d0 < D; d0 += (32/lanes_per_vec)*elems_per_vec) {
+                // Bounds-safe tail handling
+                int valid = min(D - d0, elems_per_vec);
+                // Vector load from shared u8 staging
+                uint4 vK = {0,0,0,0}, vV = {0,0,0,0};
+                const uint4* pK = reinterpret_cast<const uint4*>(&sK_u8[read_stage][n][d0]);
+                const uint4* pV = reinterpret_cast<const uint4*>(&sV_u8[read_stage][n][d0]);
+                // Aligned region only if valid==16; otherwise scalar fallback
+                if (valid == elems_per_vec && ((reinterpret_cast<uintptr_t>(pK) % 16) == 0)) {
+                    vK = *pK; vV = *pV;
+                }
+                // Scatter 4 bytes per lane within the 16B vector
+                #pragma unroll
+                for (int i = 0; i < 4 && (lane_in_group*4 + i) < valid; ++i) {
+                    int d = d0 + lane_in_group*4 + i;
+                    if (d < D) {
+                        // Extract byte i for this lane from uint4
+                        uint32_t packK = reinterpret_cast<uint32_t*>(&vK)[lane_in_group];
+                        uint32_t packV = reinterpret_cast<uint32_t*>(&vV)[lane_in_group];
+                        uint8_t ku = (packK >> (i*8)) & 0xFF;
+                        uint8_t vu = (packV >> (i*8)) & 0xFF;
 #if USE_KV_LUT
-            sKT[n][d] = __float2half(kLUT[ku]);
-            sV[n][d]  = __float2half(vLUT[vu]);
+                        sKT[n][d] = __float2half(kLUT[ku]);
+                        sV[n][d]  = __float2half(vLUT[vu]);
 #else
-            float kf = dequant_sim_fp8(ku, k_s);
-            float vf = dequant_sim_fp8(vu, v_s);
-            sKT[n][d] = __float2half(kf);
-            sV[n][d]  = __float2half(vf);
+                        float kf = dequant_sim_fp8(ku, k_s);
+                        float vf = dequant_sim_fp8(vu, v_s);
+                        sKT[n][d] = __float2half(kf);
+                        sV[n][d]  = __float2half(vf);
 #endif
+                    }
+                }
+                // Scalar cleanup for tails <16B (rare)
+                if (valid < elems_per_vec) {
+                    for (int d = d0 + lane; d < d0 + valid; d += 32) {
+                        if (d < D) {
+                            uint8_t ku = sK_u8[read_stage][n][d];
+                            uint8_t vu = sV_u8[read_stage][n][d];
+#if USE_KV_LUT
+                            sKT[n][d] = __float2half(kLUT[ku]);
+                            sV[n][d]  = __float2half(vLUT[vu]);
+#else
+                            float kf = dequant_sim_fp8(ku, k_s);
+                            float vf = dequant_sim_fp8(vu, v_s);
+                            sKT[n][d] = __float2half(kf);
+                            sV[n][d]  = __float2half(vf);
+#endif
+                        }
+                    }
+                }
+            }
         }
         
         // Zero-pad for partial tiles
@@ -382,18 +439,120 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
             }
 
-            // Convert FP32 accumulator to FP16 for storage
+            #if !USE_FUSED_SOFTMAX
+            // Stage-2 path: store c_frag to sS for later softmax
             wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> c_frag_fp16;
             #pragma unroll
             for (int i = 0; i < c_frag.num_elements; i++) {
                 c_frag_fp16.x[i] = __float2half(c_frag.x[i]);
             }
-            
-            // Store result to shared memory
             wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag_fp16, TILE_N, wmma::mem_row_major);
+            
+            #else
+            // Stage-3B fused path: keep c_frag in registers, do softmax inline
+            // Key fixes:
+            //  - mask partial KV columns in max/sum using (cc < kv_local)
+            //  - pre-zero the entire 16x16 sP tile to avoid stale values
+            //  - dynamic fragment size (no hardcoded 8)
+            //  - ensure sync before WMMA(P,V)
+
+            // Local #cols for this 16-wide tile (may be < 16 on the last KV tile)
+            int kv_local = kv_len - warp_n;
+            kv_local = kv_local < 0 ? 0 : (kv_local > WMMA_N ? WMMA_N : kv_local);
+
+            // Dynamic fragment size
+            const int FRAG_ELEMS = c_frag.num_elements;
+            float scores_local[8];  // c_frag.num_elements is typically 8 for FP32 16x16x16
+            #pragma unroll
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
+                scores_local[i] = c_frag.x[i] * softmax_scale;
+            }
+
+            // Pre-zero this warp's ENTIRE 16x16 sP tile to avoid stale data from previous KV tiles
+            for (int lin = lane; lin < WMMA_M * WMMA_N; lin += 32) {
+                int rr = lin / WMMA_N;
+                int cc = lin % WMMA_N;
+                int r_glob = warp_m + rr;
+                int c_glob = warp_n + cc;
+                if (r_glob < rows_in_tile) {
+                    sP[r_glob][c_glob] = __float2half(0.f);
+                }
+            }
+            __syncwarp();
+
+            // 1) Per-row max across valid columns only
+            float m_row[WMMA_M];
+            #pragma unroll
+            for (int r = 0; r < WMMA_M; ++r) {
+                float mymax = -INFINITY;
+                #pragma unroll
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
+                    int rr = WMMA_ACCUM_LUT[lane][i][0];
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        mymax = fmaxf(mymax, scores_local[i]);
+                    }
+                }
+                // warp reduce → lane0 holds the max
+                mymax = warp_reduce_max(mymax);
+                // broadcast lane0 to all lanes
+                m_row[r] = __shfl_sync(0xffffffff, mymax, 0);
+            }
+
+            // 2) Online softmax update (m,l) + rescale U
+            #pragma unroll
+            for (int r = 0; r < WMMA_M; ++r) {
+                int r_glob = warp_m + r;
+                if (r_glob >= rows_in_tile) continue;
+
+                float m_old = m_smem[r_glob];
+                float m_new = fmaxf(m_old, m_row[r]);
+                float rescale = __expf(m_old - m_new);
+
+                // Rescale U
+                for (int d = lane; d < D; d += 32) {
+                    U_smem[r_glob][d] *= rescale;
+                }
+
+                // Sum of exp(score - m_new) over VALID columns only
+                float l_add = 0.f;
+                #pragma unroll
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
+                    int rr = WMMA_ACCUM_LUT[lane][i][0];
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        l_add += __expf(scores_local[i] - m_new);
+                    }
+                }
+                l_add = warp_reduce_sum(l_add);
+
+                if (lane == 0) {
+                    float l_old = l_smem[r_glob];
+                    l_smem[r_glob] = l_old * rescale + l_add;
+                    m_smem[r_glob] = m_new;
+                }
+            }
+            __syncwarp();
+            // Block-wide sync to ensure all warps see updated m_smem/l_smem before reading in step 3
+            __syncthreads();
+
+            // 3) Materialize P only for VALID columns
+            #pragma unroll
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
+                int rr = WMMA_ACCUM_LUT[lane][i][0];
+                int cc = WMMA_ACCUM_LUT[lane][i][1];
+                int r_glob = warp_m + rr;
+                int c_glob = warp_n + cc;
+                if (r_glob < rows_in_tile && cc < kv_local) {
+                    float m_new = m_smem[r_glob];  // lane0 wrote it; same-warp read
+                    sP[r_glob][c_glob] = __float2half(__expf(scores_local[i] - m_new));
+                }
+            }
+            // Block-wide sync so that all warps see sP before WMMA(P,V)
+            __syncthreads();
+            #endif // USE_FUSED_SOFTMAX
         }
         NVTX_POP();  // WMMA_QK
-        __syncthreads();
 
 #ifdef DEBUG_PRINT
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
@@ -413,6 +572,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         // =========================================
         // ONLINE SOFTMAX (per row, scalar path)
         // =========================================
+        #if !USE_FUSED_SOFTMAX
+        // Stage-2 path: scalar softmax from sS → sP
         NVTX_RANGE("Softmax_PV");
         // Each warp handles 32/4 = 8 rows
         for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
@@ -487,6 +648,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             }
         }
         NVTX_POP();  // Softmax_PV
+        #endif // !USE_FUSED_SOFTMAX
+        // Stage-3B: P already materialized in WMMA section above, skip softmax
         
 #if USE_WMMA_PV
         // Synchronize to ensure sP is visible to all warps
@@ -653,15 +816,120 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 wmma::load_matrix_sync(b_frag, &sKT[warp_n][k], D_PAD);
                 wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
             }
+            #if !USE_FUSED_SOFTMAX
+            // Stage-2 path: store c_frag to sS for later softmax
             wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> c_frag_fp16;
             #pragma unroll
             for (int i = 0; i < c_frag.num_elements; i++) {
                 c_frag_fp16.x[i] = __float2half(c_frag.x[i]);
             }
             wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag_fp16, TILE_N, wmma::mem_row_major);
+            
+            #else
+            // Stage-3B fused path: keep c_frag in registers, do softmax inline
+            // Key fixes:
+            //  - mask partial KV columns in max/sum using (cc < kv_local)
+            //  - pre-zero the entire 16x16 sP tile to avoid stale values
+            //  - dynamic fragment size (no hardcoded 8)
+            //  - ensure sync before WMMA(P,V)
+
+            // Local #cols for this 16-wide tile (may be < 16 on the last KV tile)
+            int kv_local = kv_len - warp_n;
+            kv_local = kv_local < 0 ? 0 : (kv_local > WMMA_N ? WMMA_N : kv_local);
+
+            // Dynamic fragment size
+            const int FRAG_ELEMS = c_frag.num_elements;
+            float scores_local[8];  // c_frag.num_elements is typically 8 for FP32 16x16x16
+            #pragma unroll
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
+                scores_local[i] = c_frag.x[i] * softmax_scale;
+            }
+
+            // Pre-zero this warp's ENTIRE 16x16 sP tile to avoid stale data from previous KV tiles
+            for (int lin = lane; lin < WMMA_M * WMMA_N; lin += 32) {
+                int rr = lin / WMMA_N;
+                int cc = lin % WMMA_N;
+                int r_glob = warp_m + rr;
+                int c_glob = warp_n + cc;
+                if (r_glob < rows_in_tile) {
+                    sP[r_glob][c_glob] = __float2half(0.f);
+                }
+            }
+            __syncwarp();
+
+            // 1) Per-row max across valid columns only
+            float m_row[WMMA_M];
+            #pragma unroll
+            for (int r = 0; r < WMMA_M; ++r) {
+                float mymax = -INFINITY;
+                #pragma unroll
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
+                    int rr = WMMA_ACCUM_LUT[lane][i][0];
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        mymax = fmaxf(mymax, scores_local[i]);
+                    }
+                }
+                // warp reduce → lane0 holds the max
+                mymax = warp_reduce_max(mymax);
+                // broadcast lane0 to all lanes
+                m_row[r] = __shfl_sync(0xffffffff, mymax, 0);
+            }
+
+            // 2) Online softmax update (m,l) + rescale U
+            #pragma unroll
+            for (int r = 0; r < WMMA_M; ++r) {
+                int r_glob = warp_m + r;
+                if (r_glob >= rows_in_tile) continue;
+
+                float m_old = m_smem[r_glob];
+                float m_new = fmaxf(m_old, m_row[r]);
+                float rescale = __expf(m_old - m_new);
+
+                // Rescale U
+                for (int d = lane; d < D; d += 32) {
+                    U_smem[r_glob][d] *= rescale;
+                }
+
+                // Sum of exp(score - m_new) over VALID columns only
+                float l_add = 0.f;
+                #pragma unroll
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
+                    int rr = WMMA_ACCUM_LUT[lane][i][0];
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        l_add += __expf(scores_local[i] - m_new);
+                    }
+                }
+                l_add = warp_reduce_sum(l_add);
+
+                if (lane == 0) {
+                    float l_old = l_smem[r_glob];
+                    l_smem[r_glob] = l_old * rescale + l_add;
+                    m_smem[r_glob] = m_new;
+                }
+            }
+            __syncwarp();
+            // Block-wide sync to ensure all warps see updated m_smem/l_smem before reading in step 3
+            __syncthreads();
+
+            // 3) Materialize P only for VALID columns
+            #pragma unroll
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
+                int rr = WMMA_ACCUM_LUT[lane][i][0];
+                int cc = WMMA_ACCUM_LUT[lane][i][1];
+                int r_glob = warp_m + rr;
+                int c_glob = warp_n + cc;
+                if (r_glob < rows_in_tile && cc < kv_local) {
+                    float m_new = m_smem[r_glob];  // lane0 wrote it; same-warp read
+                    sP[r_glob][c_glob] = __float2half(__expf(scores_local[i] - m_new));
+                }
+            }
+            // Block-wide sync so that all warps see sP before WMMA(P,V)
+            __syncthreads();
+            #endif // USE_FUSED_SOFTMAX
         }
         NVTX_POP();  // WMMA_QK
-        __syncthreads();
 
 #ifdef DEBUG_PRINT
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
@@ -681,6 +949,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         // =========================================
         // ONLINE SOFTMAX (per row, scalar path)
         // =========================================
+        #if !USE_FUSED_SOFTMAX
+        // Stage-2 path: scalar softmax from sS → sP
         NVTX_RANGE("Softmax_PV");
         for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
             float S_row[TILE_N];
@@ -749,6 +1019,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             }
         }
         NVTX_POP();  // Softmax_PV
+        #endif // !USE_FUSED_SOFTMAX
+        // Stage-3B: P already materialized in WMMA section above, skip softmax
         
 #if USE_WMMA_PV
         // Synchronize to ensure sP is visible to all warps
@@ -859,4 +1131,7 @@ extern "C" void launch_sdpa_fp8_stage_c_wmma(
         softmax_scale
     );
 }
+
+
+
 
