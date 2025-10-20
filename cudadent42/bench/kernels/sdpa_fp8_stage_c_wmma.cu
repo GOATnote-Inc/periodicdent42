@@ -222,8 +222,15 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
             }
 
+            // Convert FP32 accumulator to FP16 for storage
+            wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> c_frag_fp16;
+            #pragma unroll
+            for (int i = 0; i < c_frag.num_elements; i++) {
+                c_frag_fp16.x[i] = __float2half(c_frag.x[i]);
+            }
+            
             // Store result to shared memory
-            wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag, TILE_N, wmma::mem_row_major);
+            wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag_fp16, TILE_N, wmma::mem_row_major);
         }
         __syncthreads();
 
