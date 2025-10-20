@@ -5,6 +5,11 @@ Build system for FP8 SDPA Stage-C WMMA kernel with toggles and metadata capture.
 Environment variables:
   USE_KV_LUT: 0 (default, direct dequant) or 1 (LUT path)
   DEBUG_PRINT: 0 (default, quiet) or 1 (verbose debug prints)
+  USE_CP_ASYNC: 1 (default, double-buffer K/V) or 0 (direct load)
+  USE_WMMA_PV: 1 (default, WMMA P·V) or 0 (scalar P·V)
+  USE_FUSED_SOFTMAX_PV: 0 (default, Stage-2), 1 (3A: reuse sS for P), 2 (3B: full fusion)
+  USE_XOR_SWIZZLE: 0 (default, no swizzle) or 1 (XOR swizzle sKT/sV)
+  USE_THREE_STAGE_PIPE: 0 (default, 2-stage) or 1 (3-stage pipeline)
   TORCH_CUDA_ARCH_LIST: Override default "8.9" for L4
 """
 
@@ -19,7 +24,10 @@ from torch.utils.cpp_extension import load
 USE_KV_LUT   = int(os.environ.get("USE_KV_LUT", "0"))
 DEBUG_PRINT  = int(os.environ.get("DEBUG_PRINT", "0"))
 USE_CP_ASYNC = int(os.environ.get("USE_CP_ASYNC", "1"))
-USE_WMMA_PV  = int(os.environ.get("USE_WMMA_PV", "0"))
+USE_WMMA_PV  = int(os.environ.get("USE_WMMA_PV", "1"))  # Changed default to 1 (Stage-2 merged)
+USE_FUSED_SOFTMAX_PV = int(os.environ.get("USE_FUSED_SOFTMAX_PV", "0"))  # 0=Stage-2, 1=3A, 2=3B
+USE_XOR_SWIZZLE = int(os.environ.get("USE_XOR_SWIZZLE", "0"))
+USE_THREE_STAGE_PIPE = int(os.environ.get("USE_THREE_STAGE_PIPE", "0"))
 ARCH_LIST = os.environ.get("TORCH_CUDA_ARCH_LIST", "8.9")
 
 # Paths
@@ -49,16 +57,32 @@ def build_extension(name="sdpa_fp8_stage_c_wmma", verbose=True):
         extra_cuda_cflags.append("-DUSE_CP_ASYNC=1")
     if USE_WMMA_PV:
         extra_cuda_cflags.append("-DUSE_WMMA_PV=1")
+    if USE_FUSED_SOFTMAX_PV:
+        extra_cuda_cflags.append(f"-DUSE_FUSED_SOFTMAX_PV={USE_FUSED_SOFTMAX_PV}")
+    if USE_XOR_SWIZZLE:
+        extra_cuda_cflags.append("-DUSE_XOR_SWIZZLE=1")
+    if USE_THREE_STAGE_PIPE:
+        extra_cuda_cflags.append("-DUSE_THREE_STAGE_PIPE=1")
+    
+    # Describe fusion level
+    fusion_desc = {
+        0: "Stage-2 (sP buffer)",
+        1: "Stage-3A (sS reused for P)",
+        2: "Stage-3B (full QK^T→softmax→P·V fusion)"
+    }.get(USE_FUSED_SOFTMAX_PV, "unknown")
     
     print(f"\n{'='*80}")
     print("FP8 SDPA Stage-C WMMA Kernel Build")
     print(f"{'='*80}")
-    print(f"  USE_KV_LUT:   {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
-    print(f"  DEBUG_PRINT:  {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
-    print(f"  USE_CP_ASYNC: {USE_CP_ASYNC} ({'double-buffer K/V' if USE_CP_ASYNC else 'direct load'})")
-    print(f"  USE_WMMA_PV:  {USE_WMMA_PV} ({'WMMA P·V' if USE_WMMA_PV else 'scalar P·V ✓'})")
-    print(f"  Architecture: sm_{ARCH_LIST.replace('.', '')}")
-    print(f"  Flags:        {' '.join(extra_cuda_cflags)}")
+    print(f"  USE_KV_LUT:           {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
+    print(f"  DEBUG_PRINT:          {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
+    print(f"  USE_CP_ASYNC:         {USE_CP_ASYNC} ({'double-buffer K/V' if USE_CP_ASYNC else 'direct load'})")
+    print(f"  USE_WMMA_PV:          {USE_WMMA_PV} ({'WMMA P·V' if USE_WMMA_PV else 'scalar P·V'})")
+    print(f"  USE_FUSED_SOFTMAX_PV: {USE_FUSED_SOFTMAX_PV} ({fusion_desc})")
+    print(f"  USE_XOR_SWIZZLE:      {USE_XOR_SWIZZLE} ({'XOR swizzle sKT/sV' if USE_XOR_SWIZZLE else 'no swizzle'})")
+    print(f"  USE_THREE_STAGE_PIPE: {USE_THREE_STAGE_PIPE} ({'3-stage pipeline' if USE_THREE_STAGE_PIPE else '2-stage'})")
+    print(f"  Architecture:         sm_{ARCH_LIST.replace('.', '')}")
+    print(f"  Flags:                {' '.join(extra_cuda_cflags)}")
     print(f"{'='*80}\n")
     
     # Build
@@ -109,6 +133,9 @@ def capture_build_metadata(output_dir=None):
             "DEBUG_PRINT": DEBUG_PRINT,
             "USE_CP_ASYNC": USE_CP_ASYNC,
             "USE_WMMA_PV": USE_WMMA_PV,
+            "USE_FUSED_SOFTMAX_PV": USE_FUSED_SOFTMAX_PV,
+            "USE_XOR_SWIZZLE": USE_XOR_SWIZZLE,
+            "USE_THREE_STAGE_PIPE": USE_THREE_STAGE_PIPE,
             "arch": f"sm_{ARCH_LIST.replace('.', '')}",
             "flags": ["-O3", "--use_fast_math", "-lineinfo"],
         },
