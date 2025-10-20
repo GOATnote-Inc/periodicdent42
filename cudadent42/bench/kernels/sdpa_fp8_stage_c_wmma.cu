@@ -127,8 +127,12 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     __shared__ alignas(16) float U_smem[TILE_M][D_PAD];  // 8 KB
     
 #if USE_WMMA_PV
+    #if !defined(USE_FUSED_SOFTMAX_PV) || USE_FUSED_SOFTMAX_PV == 0
     // P tile (unnormalized exp weights for current KV tile): [TILE_M][TILE_N], half
+    // Stage-2: Separate sP buffer
+    // Stage-3A+: Reuse sS for P (saves 2 KB)
     __shared__ alignas(16) half sP[TILE_M][TILE_N];     // +2 KB
+    #endif
     
     // Per-warp scratch to store 16x16 WMMA accumulator (float) before adding into U_smem
     // NUM_WARPS is 4; each 16x16x4B = 1 KB → total +4 KB
@@ -137,7 +141,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
     // Total SMEM: 
     //   USE_WMMA_PV=0: USE_KV_LUT ? 24.5 KB : 22.5 KB (direct dequant saves 2 KB)
-    //   USE_WMMA_PV=1: adds +6 KB → ~44.5 KB (still safe for 2 CTAs/SM)
+    //   USE_WMMA_PV=1 + Stage-2: adds +6 KB (sP+sPV_frag) → ~44.5 KB
+    //   USE_WMMA_PV=1 + Stage-3A: adds +4 KB (sPV_frag only, sS reused) → ~42.5 KB (saves 2 KB!)
 
 #if USE_KV_LUT
     // --- Build LUTs (legacy path, requires debugging) ---
@@ -463,12 +468,22 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
 #if USE_WMMA_PV
             // Store unnormalized P to shared memory for WMMA P·V
+            // Stage-2: sP (separate buffer)
+            // Stage-3A+: sS (reuse score buffer, saves 2 KB SMEM)
             for (int n = 0; n < kv_len; ++n) {
-                sP[r][n] = __float2half(S_row[n]);
+                #if defined(USE_FUSED_SOFTMAX_PV) && USE_FUSED_SOFTMAX_PV >= 1
+                sS[r][n] = __float2half(S_row[n]);  // Stage-3A: Reuse sS for P
+                #else
+                sP[r][n] = __float2half(S_row[n]);  // Stage-2: Separate sP
+                #endif
             }
             // Zero-pad for partial tiles
             for (int n = kv_len; n < TILE_N; ++n) {
+                #if defined(USE_FUSED_SOFTMAX_PV) && USE_FUSED_SOFTMAX_PV >= 1
+                sS[r][n] = __float2half(0.f);
+                #else
                 sP[r][n] = __float2half(0.f);
+                #endif
             }
 #else
             // Scalar P·V accumulation (Stage-1 path)
@@ -511,8 +526,13 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 // Guard partial kv_len with zero padding already done for sV and sP
 
                 // A = P[pv_warp_m:pv_warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
+                // Stage-2: Load from sP; Stage-3A+: Load from sS
                 wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
-                wmma::load_matrix_sync(a_frag, &sP[pv_warp_m][kTile], TILE_N);
+                #if defined(USE_FUSED_SOFTMAX_PV) && USE_FUSED_SOFTMAX_PV >= 1
+                wmma::load_matrix_sync(a_frag, &sS[pv_warp_m][kTile], TILE_N);  // Stage-3A: Load from sS
+                #else
+                wmma::load_matrix_sync(a_frag, &sP[pv_warp_m][kTile], TILE_N);  // Stage-2: Load from sP
+                #endif
 
                 // B = V[kTile:kTile+16, dTile*16:(dTile+1)*16]  (row-major, ldm = D_PAD)
                 wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
@@ -725,12 +745,22 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
 #if USE_WMMA_PV
             // Store unnormalized P to shared memory for WMMA P·V
+            // Stage-2: sP (separate buffer)
+            // Stage-3A+: sS (reuse score buffer, saves 2 KB SMEM)
             for (int n = 0; n < kv_len; ++n) {
-                sP[r][n] = __float2half(S_row[n]);
+                #if defined(USE_FUSED_SOFTMAX_PV) && USE_FUSED_SOFTMAX_PV >= 1
+                sS[r][n] = __float2half(S_row[n]);  // Stage-3A: Reuse sS for P
+                #else
+                sP[r][n] = __float2half(S_row[n]);  // Stage-2: Separate sP
+                #endif
             }
             // Zero-pad for partial tiles
             for (int n = kv_len; n < TILE_N; ++n) {
+                #if defined(USE_FUSED_SOFTMAX_PV) && USE_FUSED_SOFTMAX_PV >= 1
+                sS[r][n] = __float2half(0.f);
+                #else
                 sP[r][n] = __float2half(0.f);
+                #endif
             }
 #else
             // Scalar P·V accumulation (Stage-1 path)
@@ -773,8 +803,13 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 // Guard partial kv_len with zero padding already done for sV and sP
 
                 // A = P[pv_warp_m:pv_warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
+                // Stage-2: Load from sP; Stage-3A+: Load from sS
                 wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
-                wmma::load_matrix_sync(a_frag, &sP[pv_warp_m][kTile], TILE_N);
+                #if defined(USE_FUSED_SOFTMAX_PV) && USE_FUSED_SOFTMAX_PV >= 1
+                wmma::load_matrix_sync(a_frag, &sS[pv_warp_m][kTile], TILE_N);  // Stage-3A: Load from sS
+                #else
+                wmma::load_matrix_sync(a_frag, &sP[pv_warp_m][kTile], TILE_N);  // Stage-2: Load from sP
+                #endif
 
                 // B = V[kTile:kTile+16, dTile*16:(dTile+1)*16]  (row-major, ldm = D_PAD)
                 wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
