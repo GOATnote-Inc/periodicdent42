@@ -196,8 +196,10 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             // Load A: Q[warp_m:warp_m+16, k:k+16] (row-major)
             wmma::load_matrix_sync(a_frag, &sQ[warp_m][k], D_PAD);
             
-            // Load B: K^T[k:k+16, warp_n:warp_n+16] (col-major)
-            wmma::load_matrix_sync(b_frag, &sKT[k][warp_n], TILE_N);
+            // PRIORITY 1 FIX: Correct leading dimension for col-major K^T
+            // For sKT[D_PAD][TILE_N] col-major, ldm = D_PAD (stride between columns)
+            // Previous bug: Used TILE_N, causing memory access pattern corruption
+            wmma::load_matrix_sync(b_frag, &sKT[k][warp_n], D_PAD);
             
             // MMA: C += A * B
             wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
