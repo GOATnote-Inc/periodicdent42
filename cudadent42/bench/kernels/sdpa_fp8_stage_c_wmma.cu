@@ -468,13 +468,13 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 scores_local[i] = c_frag.x[i] * softmax_scale;
             }
 
-            // Pre-zero this warp's 16x16 sP tile to avoid stale data
+            // Pre-zero this warp's ENTIRE 16x16 sP tile to avoid stale data from previous KV tiles
             for (int lin = lane; lin < WMMA_M * WMMA_N; lin += 32) {
                 int rr = lin / WMMA_N;
                 int cc = lin % WMMA_N;
                 int r_glob = warp_m + rr;
                 int c_glob = warp_n + cc;
-                if (r_glob < rows_in_tile && cc >= kv_local) {
+                if (r_glob < rows_in_tile) {
                     sP[r_glob][c_glob] = __float2half(0.f);
                 }
             }
@@ -843,13 +843,13 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 scores_local[i] = c_frag.x[i] * softmax_scale;
             }
 
-            // Pre-zero this warp's 16x16 sP tile to avoid stale data
+            // Pre-zero this warp's ENTIRE 16x16 sP tile to avoid stale data from previous KV tiles
             for (int lin = lane; lin < WMMA_M * WMMA_N; lin += 32) {
                 int rr = lin / WMMA_N;
                 int cc = lin % WMMA_N;
                 int r_glob = warp_m + rr;
                 int c_glob = warp_n + cc;
-                if (r_glob < rows_in_tile && cc >= kv_local) {
+                if (r_glob < rows_in_tile) {
                     sP[r_glob][c_glob] = __float2half(0.f);
                 }
             }
