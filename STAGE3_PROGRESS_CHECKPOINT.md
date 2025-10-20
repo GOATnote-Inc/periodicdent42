@@ -403,3 +403,50 @@ vim cudadent42/bench/kernels/sdpa_fp8_stage_c_wmma.cu
 - Files Changed: 7 (kernel, LUT, scripts, docs)
 - LOC: 192 kernel, 248 spec, 141 validation script
 - Status: ❌ **Blocked on correctness bug**
+
+---
+
+## Session 4: Hotfix Attempts (Oct 20, 2025, 4 hours)
+
+**Objective**: Debug Stage-3B fused softmax correctness failure (0/6 tests)
+
+### Attempts Made
+
+#### Fix #1: KV Mask + Dynamic Fragment Size (Commit `c374200`)
+**Hypothesis**: Invalid columns from partial KV tiles polluting max/sum  
+**Changes**:
+- Compute `kv_local = clamp(kv_len - warp_n, 0, WMMA_N)`
+- Mask: `if (rr == r && cc < kv_local)` in reductions
+- Dynamic `FRAG_ELEMS = c_frag.num_elements`
+- Block sync before WMMA(P,V)
+
+**Result**: ❌ max_err 4.1 → 4.1 (no change)
+
+#### Fix #2: Zero ENTIRE sP Tile (Commit `8130696`)
+**Hypothesis**: Stale data from previous KV tiles  
+**Changes**: Changed pre-zero from `if (cc >= kv_local)` to `if (true)` — zeros all 256 elements
+
+**Result**: ❌ max_err 4.1 → 4.1 (no change)
+
+#### Fix #3: Cross-Warp Sync (Commit `a16f199`)
+**Hypothesis**: Lane 0 writes `m_smem`, all warps read → race condition  
+**Changes**: Added `__syncthreads()` after online softmax update
+
+**Result**: ❌ max_err 4.1 → 2.4 (marginal improvement, still 40× too high)
+
+### Final Status: ❌ ABANDONED
+
+After 3 systematic attempts with **0 meaningful progress**, Stage-3B has a deep algorithmic bug requiring > 4 additional hours to diagnose.
+
+**Decision**: Revert to Stage-2 baseline per EvoEngineer "fail fast" principle.
+
+**Artifacts**:
+- Detailed analysis: `STAGE3B_HOTFIX_STATUS.md`
+- Commits: `c374200`, `8130696`, `a16f199`, `e7a23fe`
+- Logs: `.corr_s2.log`, `.corr_s3b.log`
+
+**Recommendation**: 
+- Close `feat/stage3-fusion-full` branch (for historical reference)
+- Checkout `main` (Stage-2 already merged as `v2.0-stage2-wmma-pv`)
+- Proceed to Stage-4 (3-stage cp.async) or Stage-5 (different approach)
+
