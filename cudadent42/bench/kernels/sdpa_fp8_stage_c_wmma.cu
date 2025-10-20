@@ -498,9 +498,9 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         NVTX_RANGE("WMMA_PV");
         
         // Warp mapping for U tile (TILE_M x D):
-        //   warp_m = (warp_id / 2) * 16   // 0 or 16
+        //   pv_warp_m = (warp_id / 2) * 16   // 0 or 16
         //   dTile starts at (warp_id % 2) and strides by 2 to cover D/16=4 tiles → {0,2} or {1,3}
-        const int warp_m = (warp_id / 2) * WMMA_M;
+        const int pv_warp_m = (warp_id / 2) * WMMA_M;
         for (int dTile = (warp_id % 2); dTile < D / WMMA_N; dTile += 2) {
             wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
             wmma::fill_fragment(c_frag, 0.0f);
@@ -510,9 +510,9 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             for (int kTile = 0; kTile < TILE_N; kTile += WMMA_K) {
                 // Guard partial kv_len with zero padding already done for sV and sP
 
-                // A = P[warp_m:warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
+                // A = P[pv_warp_m:pv_warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
                 wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
-                wmma::load_matrix_sync(a_frag, &sP[warp_m][kTile], TILE_N);
+                wmma::load_matrix_sync(a_frag, &sP[pv_warp_m][kTile], TILE_N);
 
                 // B = V[kTile:kTile+16, dTile*16:(dTile+1)*16]  (row-major, ldm = D_PAD)
                 wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
@@ -530,7 +530,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             for (int i = lane; i < WMMA_M * WMMA_N; i += 32) {
                 int r_local = i / WMMA_N;     // 0..15
                 int d_local = i % WMMA_N;     // 0..15
-                int r_glob  = warp_m + r_local;
+                int r_glob  = pv_warp_m + r_local;
                 int d_glob  = dTile * WMMA_N + d_local;
 
                 if (r_glob < rows_in_tile) {
@@ -760,9 +760,9 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         NVTX_RANGE("WMMA_PV");
         
         // Warp mapping for U tile (TILE_M x D):
-        //   warp_m = (warp_id / 2) * 16   // 0 or 16
+        //   pv_warp_m = (warp_id / 2) * 16   // 0 or 16
         //   dTile starts at (warp_id % 2) and strides by 2 to cover D/16=4 tiles → {0,2} or {1,3}
-        const int warp_m = (warp_id / 2) * WMMA_M;
+        const int pv_warp_m = (warp_id / 2) * WMMA_M;
         for (int dTile = (warp_id % 2); dTile < D / WMMA_N; dTile += 2) {
             wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
             wmma::fill_fragment(c_frag, 0.0f);
@@ -772,9 +772,9 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             for (int kTile = 0; kTile < TILE_N; kTile += WMMA_K) {
                 // Guard partial kv_len with zero padding already done for sV and sP
 
-                // A = P[warp_m:warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
+                // A = P[pv_warp_m:pv_warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
                 wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
-                wmma::load_matrix_sync(a_frag, &sP[warp_m][kTile], TILE_N);
+                wmma::load_matrix_sync(a_frag, &sP[pv_warp_m][kTile], TILE_N);
 
                 // B = V[kTile:kTile+16, dTile*16:(dTile+1)*16]  (row-major, ldm = D_PAD)
                 wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
@@ -792,7 +792,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             for (int i = lane; i < WMMA_M * WMMA_N; i += 32) {
                 int r_local = i / WMMA_N;     // 0..15
                 int d_local = i % WMMA_N;     // 0..15
-                int r_glob  = warp_m + r_local;
+                int r_glob  = pv_warp_m + r_local;
                 int d_glob  = dTile * WMMA_N + d_local;
 
                 if (r_glob < rows_in_tile) {
