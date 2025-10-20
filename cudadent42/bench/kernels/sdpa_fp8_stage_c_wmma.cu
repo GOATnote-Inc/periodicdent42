@@ -277,20 +277,67 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         
         NVTX_RANGE("u8_to_half_dequant");
         // Dequantize from u8 staging buffer → half working buffers (sKT, sV)
-        for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
-            int n = idx / D;
-            int d = idx % D;
-            uint8_t ku = sK_u8[read_stage][n][d];
-            uint8_t vu = sV_u8[read_stage][n][d];
+        // Vectorized shared reads + write-coalescing swizzle by lane group.
+        // This preserves the final [n][d] order so WMMA loads remain contiguous.
+        const int lanes_per_vec = 4;        // 4 lanes form a 16B vector read
+        const int lane_group    = lane / lanes_per_vec; // 0..7
+        const int lane_in_group = lane % lanes_per_vec; // 0..3
+        const int vec_width     = 16;       // bytes per uint4
+        const int elems_per_vec = 16;       // 16 u8 per vector
+
+        // Each lane-group walks d in 16B vectors; lanes split the 16 bytes
+        for (int n = warp_id; n < kv_len; n += NUM_WARPS) {
+            for (int d0 = lane_group * elems_per_vec; d0 < D; d0 += (32/lanes_per_vec)*elems_per_vec) {
+                // Bounds-safe tail handling
+                int valid = min(D - d0, elems_per_vec);
+                // Vector load from shared u8 staging
+                uint4 vK = {0,0,0,0}, vV = {0,0,0,0};
+                const uint4* pK = reinterpret_cast<const uint4*>(&sK_u8[read_stage][n][d0]);
+                const uint4* pV = reinterpret_cast<const uint4*>(&sV_u8[read_stage][n][d0]);
+                // Aligned region only if valid==16; otherwise scalar fallback
+                if (valid == elems_per_vec && ((reinterpret_cast<uintptr_t>(pK) % 16) == 0)) {
+                    vK = *pK; vV = *pV;
+                }
+                // Scatter 4 bytes per lane within the 16B vector
+                #pragma unroll
+                for (int i = 0; i < 4 && (lane_in_group*4 + i) < valid; ++i) {
+                    int d = d0 + lane_in_group*4 + i;
+                    if (d < D) {
+                        // Extract byte i for this lane from uint4
+                        uint32_t packK = reinterpret_cast<uint32_t*>(&vK)[lane_in_group];
+                        uint32_t packV = reinterpret_cast<uint32_t*>(&vV)[lane_in_group];
+                        uint8_t ku = (packK >> (i*8)) & 0xFF;
+                        uint8_t vu = (packV >> (i*8)) & 0xFF;
 #if USE_KV_LUT
-            sKT[n][d] = __float2half(kLUT[ku]);
-            sV[n][d]  = __float2half(vLUT[vu]);
+                        sKT[n][d] = __float2half(kLUT[ku]);
+                        sV[n][d]  = __float2half(vLUT[vu]);
 #else
-            float kf = dequant_sim_fp8(ku, k_s);
-            float vf = dequant_sim_fp8(vu, v_s);
-            sKT[n][d] = __float2half(kf);
-            sV[n][d]  = __float2half(vf);
+                        float kf = dequant_sim_fp8(ku, k_s);
+                        float vf = dequant_sim_fp8(vu, v_s);
+                        sKT[n][d] = __float2half(kf);
+                        sV[n][d]  = __float2half(vf);
 #endif
+                    }
+                }
+                // Scalar cleanup for tails <16B (rare)
+                if (valid < elems_per_vec) {
+                    for (int d = d0 + lane; d < d0 + valid; d += 32) {
+                        if (d < D) {
+                            uint8_t ku = sK_u8[read_stage][n][d];
+                            uint8_t vu = sV_u8[read_stage][n][d];
+#if USE_KV_LUT
+                            sKT[n][d] = __float2half(kLUT[ku]);
+                            sV[n][d]  = __float2half(vLUT[vu]);
+#else
+                            float kf = dequant_sim_fp8(ku, k_s);
+                            float vf = dequant_sim_fp8(vu, v_s);
+                            sKT[n][d] = __float2half(kf);
+                            sV[n][d]  = __float2half(vf);
+#endif
+                        }
+                    }
+                }
+            }
         }
         
         // Zero-pad for partial tiles
