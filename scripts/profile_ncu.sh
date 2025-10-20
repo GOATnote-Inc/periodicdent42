@@ -1,43 +1,70 @@
-#!/bin/bash
-# Nsight Compute profiling wrapper with standard metrics
-# Usage: ./scripts/profile_ncu.sh <kernel_binary> <output_name>
+#!/usr/bin/env bash
+#
+# NCU one-touch profiling for FP8 SDPA Stage-C WMMA kernel
+#
+# Usage:
+#   scripts/profile_ncu.sh small
+#   scripts/profile_ncu.sh mission
+#
 
-set -e
+set -euo pipefail
 
-export PATH="/usr/local/cuda/bin:$PATH"
+# Parse arguments
+SHAPE="${1:-mission}"
+SEED="${2:-0}"
+ITERS="${3:-3}"
 
-KERNEL_CMD="${1:-python bench/run_attn.py --shape S512_D64}"
-OUTPUT_NAME="${2:-ncu_profile}"
-EVIDENCE_DIR="evidence"
+# Output directory
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+OUT_DIR="results/fp8_wmma_baseline/${TIMESTAMP}-${SHAPE}-ncu"
+mkdir -p "$OUT_DIR"
 
-mkdir -p "$EVIDENCE_DIR"
-
-echo "🔬 Profiling with Nsight Compute..."
-echo "   Command: $KERNEL_CMD"
-echo "   Output: $EVIDENCE_DIR/${OUTPUT_NAME}.csv"
+echo ""
+echo "================================================================================"
+echo "NCU Profiling: FP8 SDPA Stage-C WMMA"
+echo "================================================================================"
+echo "  Shape:      $SHAPE"
+echo "  Seed:       $SEED"
+echo "  Iterations: $ITERS"
+echo "  Output:     $OUT_DIR"
+echo "================================================================================"
 echo ""
 
-# Brief, fast metrics (minimal overhead)
-ncu --target-processes all \
-  --replay-mode kernel \
-  --metrics \
-sm__warps_active.avg.pct_of_peak_sustained_active,\
-sm__pipe_tensor_active.avg.pct_of_peak_sustained_active,\
-dram__throughput.avg.pct_of_peak_sustained_elapsed,\
+# NCU metrics (Tensor Core focus)
+METRICS="sm__warps_active.avg.pct_of_peak_sustained_active,\
+smsp__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_active,\
+smsp__inst_executed_pipe_tensor.sum,\
+smsp__sass_thread_inst_executed_op_hmma_pred_on.sum,\
+l1tex__t_bytes.sum,\
+lts__t_bytes.sum,\
+dram__bytes.sum,\
+smsp__sass_average_data_bytes_per_sector_mem_global_load.pct,\
 sm__throughput.avg.pct_of_peak_sustained_elapsed,\
-l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum,\
-l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum \
-  --csv \
-  --log-file "$EVIDENCE_DIR/${OUTPUT_NAME}.txt" \
-  --export "$EVIDENCE_DIR/${OUTPUT_NAME}" \
-  $KERNEL_CMD
+smsp__sass_inst_executed_op_memory_32bit.sum,\
+smsp__sass_inst_executed_op_memory_64bit.sum,\
+smsp__sass_inst_executed_op_memory_128bit.sum"
+
+# Run NCU
+ncu --target-processes all \
+    --set full \
+    --metrics "$METRICS" \
+    --export "$OUT_DIR/profile" \
+    --profile-from-start off \
+    --force-overwrite \
+    python -m tasks.fp8_sdpa_stage_c_wmma.runner \
+      --shapes "$SHAPE" \
+      --seeds "$SEED" \
+      --iters "$ITERS" \
+      --no-build
+
+# Save metadata
+echo "$OUT_DIR/profile.ncu-rep" > "$OUT_DIR/profile_path.txt"
 
 echo ""
-echo "✅ Profile saved to: $EVIDENCE_DIR/${OUTPUT_NAME}.*"
+echo "================================================================================"
+echo "✅ Profiling complete!"
+echo "================================================================================"
+echo "  Report: $OUT_DIR/profile.ncu-rep"
+echo "  View:   ncu-ui $OUT_DIR/profile.ncu-rep"
+echo "================================================================================"
 echo ""
-echo "📊 Key Metrics:"
-echo "   - sm__warps_active: Warp occupancy (target >60%)"
-echo "   - sm__pipe_tensor_active: Tensor Core utilization"
-echo "   - dram__throughput: Memory bandwidth usage"
-echo "   - sm__throughput: Compute utilization"
-

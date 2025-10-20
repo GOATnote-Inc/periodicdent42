@@ -1,0 +1,42 @@
+{
+  "arch": "sm_89",
+  "seeds": [0, 1, 2],
+  "shapes": [
+    {
+      "name": "small",
+      "B": 1,
+      "H": 1,
+      "S": 32,
+      "D": 64,
+      "description": "Tiny shape for quick correctness check"
+    },
+    {
+      "name": "mission",
+      "B": 1,
+      "H": 8,
+      "S": 512,
+      "D": 64,
+      "description": "Primary target shape for L4 optimization"
+    },
+    {
+      "name": "long",
+      "B": 1,
+      "H": 8,
+      "S": 2048,
+      "D": 64,
+      "description": "Long sequence for scaling validation"
+    }
+  ],
+  "tolerance": {
+    "atol": 0.05,
+    "rtol": 0.05,
+    "pct_bad_max": 1.0,
+    "description": "Gates: max_abs_err ≤ 0.05, mean_abs_err ≤ 0.01, %(|err|>0.05) ≤ 1%"
+  },
+  "timing": {
+    "warmup_iters": 100,
+    "timed_iters": 500,
+    "description": "Warmup + timing for reproducible performance baseline"
+  }
+}
+

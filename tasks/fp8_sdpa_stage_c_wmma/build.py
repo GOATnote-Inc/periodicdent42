@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""
+Build system for FP8 SDPA Stage-C WMMA kernel with toggles and metadata capture.
+
+Environment variables:
+  USE_KV_LUT: 0 (default, direct dequant) or 1 (LUT path)
+  DEBUG_PRINT: 0 (default, quiet) or 1 (verbose debug prints)
+  TORCH_CUDA_ARCH_LIST: Override default "8.9" for L4
+"""
+
+import os
+import subprocess
+import json
+import datetime
+from pathlib import Path
+from torch.utils.cpp_extension import load
+
+# Toggles from environment
+USE_KV_LUT = int(os.environ.get("USE_KV_LUT", "0"))
+DEBUG_PRINT = int(os.environ.get("DEBUG_PRINT", "0"))
+ARCH_LIST = os.environ.get("TORCH_CUDA_ARCH_LIST", "8.9")
+
+# Paths
+REPO_ROOT = Path(__file__).parent.parent.parent
+KERNEL_DIR = REPO_ROOT / "cudadent42" / "bench" / "kernels"
+KERNEL_CU = KERNEL_DIR / "sdpa_fp8_stage_c_wmma.cu"
+KERNEL_CPP = KERNEL_DIR / "sdpa_fp8_stage_c_wmma_bindings.cpp"
+
+def build_extension(name="sdpa_fp8_stage_c_wmma", verbose=True):
+    """Build CUDA extension with current toggles."""
+    
+    # Compile flags
+    extra_cuda_cflags = [
+        "-O3",
+        f"-arch=sm_{ARCH_LIST.replace('.', '')}",
+        "--use_fast_math",
+        "-lineinfo",
+        "-Xptxas", "-v",  # Verbose PTXAS for regs/smem
+    ]
+    
+    # Add preprocessor defines
+    if USE_KV_LUT:
+        extra_cuda_cflags.append("-DUSE_KV_LUT=1")
+    if DEBUG_PRINT:
+        extra_cuda_cflags.append("-DDEBUG_PRINT=1")
+    
+    print(f"\n{'='*80}")
+    print("FP8 SDPA Stage-C WMMA Kernel Build")
+    print(f"{'='*80}")
+    print(f"  USE_KV_LUT:   {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
+    print(f"  DEBUG_PRINT:  {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
+    print(f"  Architecture: sm_{ARCH_LIST.replace('.', '')}")
+    print(f"  Flags:        {' '.join(extra_cuda_cflags)}")
+    print(f"{'='*80}\n")
+    
+    # Build
+    ext = load(
+        name=name,
+        sources=[str(KERNEL_CU), str(KERNEL_CPP)],
+        extra_cuda_cflags=extra_cuda_cflags,
+        verbose=verbose,
+    )
+    
+    print(f"\n✅ Extension '{name}' built successfully!\n")
+    return ext
+
+def capture_build_metadata(output_dir=None):
+    """Capture build metadata for reproducibility."""
+    
+    # Get git info
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True
+        ).strip()
+        git_branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=REPO_ROOT, text=True
+        ).strip()
+        git_dirty = subprocess.call(
+            ["git", "diff-index", "--quiet", "HEAD"], cwd=REPO_ROOT
+        ) != 0
+    except Exception:
+        git_sha = "unknown"
+        git_branch = "unknown"
+        git_dirty = False
+    
+    # Get device info (requires torch+cuda)
+    try:
+        import torch
+        device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "N/A"
+        cuda_version = torch.version.cuda or "N/A"
+        sm_version = torch.cuda.get_device_capability(0) if torch.cuda.is_available() else (0, 0)
+    except Exception:
+        device_name = "N/A"
+        cuda_version = "N/A"
+        sm_version = (0, 0)
+    
+    metadata = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "build": {
+            "USE_KV_LUT": USE_KV_LUT,
+            "DEBUG_PRINT": DEBUG_PRINT,
+            "arch": f"sm_{ARCH_LIST.replace('.', '')}",
+            "flags": ["-O3", "--use_fast_math", "-lineinfo"],
+        },
+        "git": {
+            "sha": git_sha,
+            "branch": git_branch,
+            "dirty": git_dirty,
+        },
+        "device": {
+            "name": device_name,
+            "cuda_version": cuda_version,
+            "sm_version": f"{sm_version[0]}.{sm_version[1]}",
+        },
+    }
+    
+    if output_dir:
+        output_path = Path(output_dir) / "build_meta.json"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        print(f"✅ Build metadata saved to {output_path}")
+    
+    return metadata
+
+if __name__ == "__main__":
+    # Build extension
+    ext = build_extension(verbose=True)
+    
+    # Capture metadata
+    meta = capture_build_metadata()
+    
+    print("\n" + "="*80)
+    print("Build Summary:")
+    print("="*80)
+    print(f"  Device:   {meta['device']['name']}")
+    print(f"  SM:       {meta['device']['sm_version']}")
+    print(f"  Git SHA:  {meta['git']['sha'][:8]}")
+    print(f"  Branch:   {meta['git']['branch']}")
+    print(f"  Dirty:    {meta['git']['dirty']}")
+    print("="*80 + "\n")
+
