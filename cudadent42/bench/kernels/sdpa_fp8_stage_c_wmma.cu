@@ -82,10 +82,13 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     // --- Shared memory ---
     // Q: row-major [TILE_M][D]
     // K: col-major [D][TILE_N] (transposed for WMMA)
-    // V: row-major [TILE_N][D]
-    __shared__ alignas(16) half sQ[TILE_M][D_PAD];     // 4 KB
-    __shared__ alignas(16) half sKT[D_PAD][TILE_N];    // 4 KB (transposed!)
-    __shared__ alignas(16) half sV[TILE_N][D_PAD];     // 4 KB
+    // SMEM layout for WMMA:
+    // - Q: row-major [TILE_M][D_PAD] for matrix_a
+    // - K^T: stored as [TILE_N][D_PAD] so elements along D are contiguous (col-major for WMMA matrix_b)
+    // - V: row-major [TILE_N][D_PAD]
+    __shared__ alignas(16) half sQ[TILE_M][D_PAD];     // 4 KB, row-major
+    __shared__ alignas(16) half sKT[TILE_N][D_PAD];    // 4 KB, stored [n][d] for col-major WMMA
+    __shared__ alignas(16) half sV[TILE_N][D_PAD];     // 4 KB, row-major
     
 #if USE_KV_LUT
     __shared__ float kLUT[256];  // K dequant lookup (1 KB)
@@ -177,17 +180,17 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         const int kv_end   = min(kv_start + TILE_N, S);
         const int kv_len   = kv_end - kv_start;
 
-        // --- Load K tile (uint8→FP16, TRANSPOSED to col-major) ---
-        // sKT[d][n] = K[n][d] (transposed for WMMA B matrix)
+        // --- Load K tile (uint8→FP16, stored as [n][d] for col-major WMMA) ---
+        // Store K[n][d] directly to sKT[n][d] - elements along d contiguous = col-major view
         for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
             int n = idx / D;
             int d = idx % D;
             uint8_t k_u8 = Kbh[(size_t)(kv_start + n) * D + d];
 #if USE_KV_LUT
-            sKT[d][n] = __float2half(kLUT[k_u8]);  // LUT path
+            sKT[n][d] = __float2half(kLUT[k_u8]);  // LUT path
 #else
             float k_f = dequant_sim_fp8(k_u8, k_s);  // Direct dequant (safe)
-            sKT[d][n] = __float2half(k_f);
+            sKT[n][d] = __float2half(k_f);
 #endif
         }
 
@@ -208,15 +211,37 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         for (int idx = tid + kv_len * D; idx < TILE_N * D; idx += blockDim.x) {
             int n = idx / D;
             int d = idx % D;
-            sKT[d][n] = __float2half(0.f);
+            sKT[n][d] = __float2half(0.f);  // Match new [n][d] layout
             sV[n][d]  = __float2half(0.f);
         }
         __syncthreads();
 
 #ifdef DEBUG_PRINT
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
-            printf("[DEBUG] V tile loaded (row 0, d=0:5): ");
-            for (int d = 0; d < 5; d++) {
+            // Print sQ (Q row 0)
+            printf("[DEBUG] sQ[0][0:8]: ");
+            for (int d = 0; d < 8; d++) {
+                printf("%.4f ", __half2float(sQ[0][d]));
+            }
+            printf("\n");
+            
+            // Print sKT (K row 0, stored as sKT[0][d])
+            printf("[DEBUG] sKT[0][0:8] (K[0] in col-major view): ");
+            for (int d = 0; d < 8; d++) {
+                printf("%.4f ", __half2float(sKT[0][d]));
+            }
+            printf("\n");
+            
+            // Manual dot product Q[0] @ K[0]
+            float manual_dot = 0.0f;
+            for (int d = 0; d < D; d++) {
+                manual_dot += __half2float(sQ[0][d]) * __half2float(sKT[0][d]);
+            }
+            printf("[DEBUG] Manual Q[0]@K[0] raw=%.4f (expect ~6.06)\n", manual_dot);
+            
+            // Print V for reference
+            printf("[DEBUG] sV[0][0:8]: ");
+            for (int d = 0; d < 8; d++) {
                 printf("%.4f ", __half2float(sV[0][d]));
             }
             printf("\n");
@@ -258,10 +283,12 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 // Load A: Q[warp_m:warp_m+16, k:k+16] (row-major)
                 wmma::load_matrix_sync(a_frag, &sQ[warp_m][k], D_PAD);
                 
-                // PRIORITY 1 FIX: Correct leading dimension for col-major K^T
-                // For sKT[D_PAD][TILE_N] col-major, ldm = D_PAD (stride between columns)
-                // Previous bug: Used TILE_N, causing memory access pattern corruption
-                wmma::load_matrix_sync(b_frag, &sKT[k][warp_n], D_PAD);
+                // Load B: K^T for col-major WMMA
+                // sKT stored as [n][d], so &sKT[col][row] with ldm=D_PAD gives col-major addressing
+                // Pointer: &sKT[warp_n][k] = base + warp_n*D_PAD + k
+                // WMMA col-major expects: element(row,col) = ptr[row + col*ldm]
+                // With ptr=&sKT[warp_n][k], element(r,c) = ptr[r + c*D_PAD] = sKT[warp_n + c][k + r] ✓
+                wmma::load_matrix_sync(b_frag, &sKT[warp_n][k], D_PAD);
                 
                 // MMA: C += A * B
                 wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
