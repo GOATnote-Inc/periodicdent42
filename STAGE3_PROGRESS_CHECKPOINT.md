@@ -330,6 +330,76 @@ vim cudadent42/bench/kernels/sdpa_fp8_stage_c_wmma.cu
 
 ---
 
-**Session 3 Duration**: ~2 hours (infrastructure)  
-**Commits**: 7 (safety, LUT gen, spec)  
-**Status**: Ready for kernel implementation in fresh context
+**Session 3 Duration**: ~4 hours (infrastructure + implementation)  
+**Commits**: 13 (safety, LUT gen, spec, kernel impl, validation)  
+**Status**: Implementation complete, ❌ correctness gate failed, debugging needed
+
+---
+
+## Session 3 Final Status
+
+### What Was Accomplished ✅
+
+**1. Infrastructure** (2 hours)
+- Safety defaults (XOR swizzle OFF)
+- WMMA accumulator LUT generation (introspection kernel + PyBind11)
+- LUT verified on L4 (32 lanes × 8 elements)
+- Comprehensive implementation spec (248 lines)
+
+**2. Kernel Implementation** (2 hours)
+- Added wmma16x16_accum_lut.h include with conditional compilation
+- Modified 2 WMMA Q@K^T sections (192 LOC changes)
+- Wrapped 2 scalar softmax sections with #if !USE_FUSED_SOFTMAX
+- Stage-2 fallback path intact (USE_FUSED_SOFTMAX=0 by default)
+
+**3. Validation Infrastructure**
+- Comprehensive validation script (PTXAS, correctness, perf)
+- Full validation run on L4
+
+### Validation Results 🔬
+
+**✅ Gate 1: PTXAS PASSED** (surprisingly good!)
+- Stage-2: 96 regs, 37.1 KB SMEM, 0 spills
+- Stage-3B: **73 regs** (↓23!), 35.1 KB SMEM (↓2 KB), 0 spills
+- **Verdict**: Resource usage improved
+
+**❌ Gate 2: Correctness FAILED** (fundamental bug)
+- Stage-2: 6/6 tests PASS ✅
+- Stage-3B: **0/6 tests PASS** ❌
+- Errors: max_err=1.2-3.6 (100× tolerance), 37-85% bad elements
+- **Verdict**: Implementation has critical bug
+
+**⏸️ Gate 3: Performance** (not run due to correctness failure)
+
+### Root Cause Hypotheses 🔍
+
+1. **Missing __syncthreads()**: After P write, before WMMA P·V load
+2. **Warp reduction broadcast**: Lane 0 may not have final reduced value
+3. **Fragment size assumption**: Hardcoded `scores[8]` may be wrong
+4. **LUT indexing**: Off-by-one or incorrect mapping
+5. **Online softmax math**: `l_add` reduction incomplete
+
+### Next Session: Debugging (2-3 hours) 🛠️
+
+**Priority Fixes** (ranked by likelihood):
+1. Add `__syncthreads()` after P materialization (easiest, high impact)
+2. Fix warp reduction broadcast (ensure lane 0 has reduced value)
+3. Verify `c_frag.num_elements` at runtime (likely 8, but confirm)
+
+**Debugging Steps**:
+1. Add debug prints (compare scores, m_row, l_add with Stage-2)
+2. Verify LUT values (print sample, check mapping)
+3. Test with single warp/tile first (simplify)
+4. Apply fixes based on debug output
+5. Revalidate (full 6-test suite)
+
+**Expected**: Fix likely trivial (missing sync, wrong broadcast), 1-2 hours to resolve
+
+---
+
+**Session 3 Metrics**:
+- Duration: 4 hours
+- Commits: 13
+- Files Changed: 7 (kernel, LUT, scripts, docs)
+- LOC: 192 kernel, 248 spec, 141 validation script
+- Status: ❌ **Blocked on correctness bug**
