@@ -82,13 +82,14 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     __shared__ alignas(16) half sKT[D_PAD][TILE_N];    // 4 KB (transposed!)
     __shared__ alignas(16) half sV[TILE_N][D_PAD];     // 4 KB
     
-    __shared__ float kLUT[256];  // K dequant lookup
-    __shared__ float vLUT[256];  // V dequant lookup
+    __shared__ float kLUT[256];  // K dequant lookup (1 KB)
+    __shared__ float vLUT[256];  // V dequant lookup (1 KB)
+    __shared__ alignas(16) half sS[TILE_M][TILE_N];  // Scores for softmax (2 KB) - MUST be outer scope!
     __shared__ float m_smem[TILE_M];
     __shared__ float l_smem[TILE_M];
     __shared__ alignas(16) float U_smem[TILE_M][D_PAD];  // 8 KB
 
-    // Total SMEM: 4+4+4+8+3 = 23 KB < 48 KB ✅
+    // Total SMEM: 1+1+2+4+4+4+0.25+0.25+8 = 24.5 KB < 48 KB ✅
 
     // --- Build LUTs ---
     if (tid < 256) {
@@ -224,10 +225,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         // Zero accumulator
         wmma::fill_fragment(c_frag, 0.0f);
 
-        // Store S to shared memory temporarily for softmax
-        __shared__ alignas(16) half sS[TILE_M][TILE_N];
-        
-        // Compute Q@K^T only for valid tiles
+        // Compute Q@K^T only for valid tiles (sS now in outer scope to avoid SMEM aliasing)
         if (warp_m_valid && warp_n_valid) {
             // Compute Q@K^T in 16×16×16 chunks (4 chunks for D=64)
             #pragma unroll
