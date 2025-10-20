@@ -204,5 +204,69 @@ vim cudadent42/bench/kernels/sdpa_fp8_stage_c_wmma.cu
 
 ---
 
-**Updated**: October 20, 2025  
-**Status**: Step 1 complete ✅, Step 2 ready to implement
+**Updated**: October 20, 2025 (Session 2)  
+**Status**: Step 1 ✅, Step 2 ❌ (valid negative), Step 3 ready
+
+---
+
+## Session 2 Summary (October 20, 2025)
+
+### Completed ✅
+
+**1. Safety Guardrail**
+- Set `USE_FUSED_SOFTMAX=0` by default (Stage-2 behavior until Step-3 lands)
+
+**2. Step-2 Implementation**
+- Vectorized u8→half dequantization with lane-group scatter
+- Goal: Reduce SMEM bank conflicts via uint4 loads + XOR pattern
+
+**3. Validation (all on L4 GPU)**
+- PTXAS: 96 regs, 37 KB SMEM, 0 spills ✅
+- Correctness: 6/6 PASS (all errors ≤ 0.06) ✅
+- Performance: 696 μs (+6.1% regression) ❌
+
+### Key Finding: Valid Negative Result
+
+**Hypothesis**: Bank conflicts limited K/V dequantization performance.
+
+**Reality**: Vectorization added overhead (84→96 regs) without performance gain.
+
+**Metrics**:
+- Baseline (Stage-2): ~656 μs (from earlier runs)
+- Step-2 (XOR swizzle): 696 μs
+- **Regression: +40 μs (+6.1%)**
+
+**Root Cause**:
+1. Original scalar loop already well-optimized by NVCC
+2. Bank conflicts not a bottleneck (cp.async prefetch hides latency)
+3. Vectorization complexity dominated any conflict reduction
+
+**Recommendation**: **Revert Step-2** or set `USE_SMEM_SWIZZLE_XOR=0` by default.
+
+### Artifacts Created
+
+- `STAGE3_STEP2_VALID_NEGATIVE.md`: Comprehensive analysis
+- `STAGE3_FUSED_SOFTMAX_NOTES.md`: Step-3 design (introspection LUT, register-level softmax)
+- `scripts/validate_step2*.sh`: Build, correctness, perf validation scripts
+- `results/2025-Stage3-Fusion-Full/step2-xor/`: All logs and summaries
+
+### Next Session: Step-3 (Fused Softmax)
+
+**Goal**: Eliminate sS buffer by computing softmax from WMMA `c_frag` in registers.
+
+**Expected Savings**: -60 μs (sS write + read elimination)
+
+**Approach**:
+1. Generate WMMA accumulator layout LUT (introspection kernel)
+2. Implement register-level softmax (row-wise max/sum, online update)
+3. Validate incrementally (compare each phase with Stage-2)
+4. Full validation (PTXAS, 6/6 correctness, performance)
+
+**Estimated Time**: 3-4 hours
+
+**Target**: ≤557 μs (+15% from 656 μs baseline)
+
+---
+
+**Session 2 Duration**: ~2 hours  
+**Commits**: 8 (safety, impl, scripts, docs, artifacts)
