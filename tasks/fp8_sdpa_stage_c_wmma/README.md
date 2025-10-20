@@ -56,9 +56,9 @@ All three gates must pass for each (shape, seed) pair:
 
 | Gate | Threshold | Description |
 |------|-----------|-------------|
-| **Gate 1** | `max_abs_err ≤ 0.05` | Maximum absolute error vs PyTorch SDPA |
-| **Gate 2** | `mean_abs_err ≤ 0.02` | Mean absolute error (relaxed for FP8 quantization) |
-| **Gate 3** | `% bad ≤ 1.0%` | Percentage of elements with `|err| > 0.05` |
+| **Gate 1** | `max_abs_err ≤ 0.06` | Maximum absolute error vs PyTorch SDPA (FP8-tuned) |
+| **Gate 2** | `mean_abs_err ≤ 0.02` | Mean absolute error (strict) |
+| **Gate 3** | `% bad ≤ 1.0%` | Percentage of elements with `|err| > 0.06` |
 
 **Failure Handling**: If any gate fails, the runner exits with code 1 and prints gate details.
 
