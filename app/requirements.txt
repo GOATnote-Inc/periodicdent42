@@ -20,7 +20,7 @@ alembic==1.12.1
 python-dotenv==1.0.0
 python-multipart==0.0.20
 pint==0.23
-numpy==1.26.2  # Required by pint and scientific computing modules
+numpy==2.3.4  # Required by pint and scientific computing modules
 
 # Testing
 pytest==8.4.2
