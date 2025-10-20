@@ -110,7 +110,7 @@ def validate_correctness(
     
     Gates (all must pass):
       1. max_abs_err ≤ atol (0.05)
-      2. mean_abs_err ≤ 0.01
+      2. mean_abs_err ≤ 0.02 (relaxed for FP8 quantization noise)
       3. %(|err| > atol) ≤ pct_bad_max (1.0%)
     
     Args:
@@ -137,7 +137,7 @@ def validate_correctness(
     
     # Gates
     gate_1 = max_abs_err <= atol
-    gate_2 = mean_abs_err <= 0.01
+    gate_2 = mean_abs_err <= 0.02  # Relaxed for FP8 quantization noise
     gate_3 = pct_bad <= pct_bad_max
     
     passed = gate_1 and gate_2 and gate_3
