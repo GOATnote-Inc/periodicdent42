@@ -533,6 +533,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 }
             }
             __syncwarp();
+            // Block-wide sync to ensure all warps see updated m_smem/l_smem before reading in step 3
+            __syncthreads();
 
             // 3) Materialize P only for VALID columns
             #pragma unroll
@@ -908,6 +910,8 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 }
             }
             __syncwarp();
+            // Block-wide sync to ensure all warps see updated m_smem/l_smem before reading in step 3
+            __syncthreads();
 
             // 3) Materialize P only for VALID columns
             #pragma unroll
