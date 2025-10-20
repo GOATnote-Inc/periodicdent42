@@ -40,8 +40,8 @@ print("\n" + "=" * 80)
 print("Kernel compiled successfully!")
 print("=" * 80)
 
-# Import Python wrapper
-from bench.sdpa_fp8_stage_c_wmma import sdpa_fp8_stage_c_wmma_forward, quantize_sim_fp8_per_head
+# Import Python wrapper for quantization helper
+from bench.sdpa_fp8_stage_c_wmma import quantize_sim_fp8_per_head
 
 # Test with small shape
 torch.manual_seed(42)
@@ -88,7 +88,7 @@ print(f"Reference output[0,0,0,0:5]: {ref[0,0,0,:5].cpu().tolist()}")
 print("\n" + "=" * 80)
 print("RUNNING FP8 KERNEL (check debug prints above)...")
 print("=" * 80)
-out = ext.sdpa_fp8_stage_c_wmma_forward(Q_q, K_q, V_q, Q_s, K_s, V_s, 1.0 / math.sqrt(D))
+out = ext.forward(Q_q, K_q, V_q, Q_s, K_s, V_s, 1.0 / math.sqrt(D))
 
 print("\n" + "=" * 80)
 print("FP8 KERNEL OUTPUT")
