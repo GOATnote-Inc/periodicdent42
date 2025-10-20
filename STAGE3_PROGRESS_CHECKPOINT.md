@@ -270,3 +270,66 @@ vim cudadent42/bench/kernels/sdpa_fp8_stage_c_wmma.cu
 
 **Session 2 Duration**: ~2 hours  
 **Commits**: 8 (safety, impl, scripts, docs, artifacts)
+
+---
+
+## Session 3 Summary (October 20, 2025) 🔄 IN PROGRESS
+
+### Completed ✅
+
+**1. Safety Defaults**
+- Set `USE_SMEM_SWIZZLE_XOR=0` by default (Step-2 regressed +6.1%)
+
+**2. WMMA Accumulator LUT Generation**
+- Created introspection kernel (`wmma16x16_accum_lut_gen.cu`)
+- Added PyBind11 bindings for proper module export
+- Generated LUT header on L4: 32 lanes × 8 (row, col) pairs
+- Pattern verified: Each lane owns distributed 2×2 sub-blocks
+
+**3. Implementation Specification**
+- Comprehensive guide for fused softmax kernel changes
+- Register budget: ~112 regs (target ≤128) ✅
+- Conditional compilation strategy (USE_FUSED_SOFTMAX)
+- Validation plan (build, correctness, perf)
+
+### In Progress 🔄
+
+**4. Kernel Implementation** (Next: ~2-3 hours)
+- Modify WMMA Q@K^T section (keep c_frag in registers)
+- Implement LUT-based register-level softmax
+- Update softmax section (skip when fused)
+- Fix P materialization for WMMA P·V
+- Add conditional branches for Stage-2 fallback
+
+**Estimated LOC**: ~200 lines of kernel modifications
+
+### Artifacts
+
+- `cudadent42/bench/kernels/wmma16x16_accum_lut.h`: Auto-generated LUT (37 lines)
+- `cudadent42/bench/kernels/wmma16x16_accum_lut_gen.cu`: Introspection kernel
+- `cudadent42/bench/kernels/wmma16x16_accum_lut_bindings.cpp`: PyBind11 wrapper
+- `scripts/generate_wmma_lut.py`: Python LUT generator
+- `scripts/generate_lut_on_l4.sh`: L4 execution wrapper
+- `STAGE3B_IMPLEMENTATION_SPEC.md`: 248-line implementation guide
+
+### Next Session: Complete Kernel Implementation
+
+**Tasks**:
+1. Add `#include "wmma16x16_accum_lut.h"` with USE_FUSED_SOFTMAX guard
+2. Modify WMMA Q@K^T section (~80 LOC)
+3. Wrap softmax section with `#if !USE_FUSED_SOFTMAX` (~10 LOC)
+4. Fix P materialization conditional (~20 LOC)
+5. Build & PTXAS validation on L4
+6. Correctness: 6/6 tests (Stage-2 vs Stage-3B)
+7. Performance: Mission shape, 500 iters (target ≤557 μs)
+8. Merge to main if all gates pass
+
+**Estimated Time**: 2-3 hours  
+**Complexity**: High (multi-section kernel modifications, warp reductions)  
+**Risk**: Medium (well-specified, incremental validation possible)
+
+---
+
+**Session 3 Duration**: ~2 hours (infrastructure)  
+**Commits**: 7 (safety, LUT gen, spec)  
+**Status**: Ready for kernel implementation in fresh context
