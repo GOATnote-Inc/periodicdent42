@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
+#include <cuda_pipeline_primitives.h>
 
 using namespace nvcuda;
 
@@ -13,6 +14,21 @@ using namespace nvcuda;
 // K/V dequantization strategy: 0 = direct (safe, default), 1 = LUT (fast, risky)
 #ifndef USE_KV_LUT
 #define USE_KV_LUT 0
+#endif
+
+// cp.async double-buffering: 0 = direct load (baseline), 1 = async prefetch (Stage-1)
+#ifndef USE_CP_ASYNC
+#define USE_CP_ASYNC 0
+#endif
+
+// NVTX profiling ranges (optional)
+#ifdef ENABLE_NVTX
+#include <nvToolsExt.h>
+#define NVTX_RANGE(name) nvtxRangePushA(name)
+#define NVTX_POP() nvtxRangePop()
+#else
+#define NVTX_RANGE(name)
+#define NVTX_POP()
 #endif
 
 // --- Tunables (L4 sm_89, full WMMA) ---
@@ -89,6 +105,12 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     __shared__ alignas(16) half sQ[TILE_M][D_PAD];     // 4 KB, row-major
     __shared__ alignas(16) half sKT[TILE_N][D_PAD];    // 4 KB, stored [n][d] for col-major WMMA
     __shared__ alignas(16) half sV[TILE_N][D_PAD];     // 4 KB, row-major
+    
+#if USE_CP_ASYNC
+    // Double-buffering for cp.async prefetch (uint8 staging)
+    __shared__ alignas(16) uint8_t sK_u8[2][TILE_N][D_PAD];  // 8 KB (2 buffers)
+    __shared__ alignas(16) uint8_t sV_u8[2][TILE_N][D_PAD];  // 8 KB (2 buffers)
+#endif
     
 #if USE_KV_LUT
     __shared__ float kLUT[256];  // K dequant lookup (1 KB)
@@ -175,45 +197,94 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
     const int nTiles = (S + TILE_N - 1) / TILE_N;
 
-    for (int t = 0; t < nTiles; ++t) {
-        const int kv_start = t * TILE_N;
-        const int kv_end   = min(kv_start + TILE_N, S);
-        const int kv_len   = kv_end - kv_start;
-
-        // --- Load K tile (uint8→FP16, stored as [n][d] for col-major WMMA) ---
-        // Store K[n][d] directly to sKT[n][d] - elements along d contiguous = col-major view
-        for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
-            int n = idx / D;
-            int d = idx % D;
-            uint8_t k_u8 = Kbh[(size_t)(kv_start + n) * D + d];
-#if USE_KV_LUT
-            sKT[n][d] = __float2half(kLUT[k_u8]);  // LUT path
-#else
-            float k_f = dequant_sim_fp8(k_u8, k_s);  // Direct dequant (safe)
-            sKT[n][d] = __float2half(k_f);
-#endif
+#if USE_CP_ASYNC
+    // ==========================================
+    // cp.async Double-Buffered Pipeline
+    // ==========================================
+    NVTX_RANGE("KV_loop_cp_async");
+    
+    // Helper: async copy one tile of K/V (uint8) from gmem to smem staging buffer
+    auto cp_async_tile_u8 = [&](int tile_idx, int stage) {
+        if (tile_idx >= nTiles) return;
+        
+        const int kv_start = tile_idx * TILE_N;
+        const int kv_len = min(TILE_N, S - kv_start);
+        
+        constexpr int BYTES = 16;  // 16B chunks for cp.async
+        const size_t elems = (size_t)kv_len * D;
+        const size_t bytes = elems * sizeof(uint8_t);
+        
+        uint8_t* __restrict__ dstK = &sK_u8[stage][0][0];
+        uint8_t* __restrict__ dstV = &sV_u8[stage][0][0];
+        const uint8_t* __restrict__ srcK = Kbh + (size_t)kv_start * D;
+        const uint8_t* __restrict__ srcV = Vbh + (size_t)kv_start * D;
+        
+        // Copy in 16B chunks (safe for cp.async alignment)
+        for (size_t off = threadIdx.x * BYTES; off + BYTES <= bytes; off += blockDim.x * BYTES) {
+            __pipeline_memcpy_async(dstK + off, srcK + off, BYTES);
+            __pipeline_memcpy_async(dstV + off, srcV + off, BYTES);
         }
-
-        // --- Load V tile (uint8→FP16, row-major) ---
+        
+        // Handle tail bytes with scalar copy (fallback for unaligned remainder)
+        size_t tail = bytes % BYTES;
+        if (tail && threadIdx.x == 0) {
+            size_t off_tail = bytes - tail;
+            for (size_t i = 0; i < tail; ++i) {
+                dstK[off_tail + i] = srcK[off_tail + i];
+                dstV[off_tail + i] = srcV[off_tail + i];
+            }
+        }
+        __pipeline_commit();
+    };
+    
+    // Prefetch tile 0 into stage 0
+    cp_async_tile_u8(0, 0);
+    
+    for (int t = 0; t < nTiles; ++t) {
+        const int read_stage  = t & 1;
+        const int write_stage = (t + 1) & 1;
+        
+        NVTX_RANGE("tile_iter");
+        
+        // Prefetch next tile (overlaps with compute below)
+        if (t + 1 < nTiles) {
+            cp_async_tile_u8(t + 1, write_stage);
+        }
+        
+        // Wait for current tile data (read_stage) to be visible
+        __pipeline_wait_prior(1);
+        __syncthreads();
+        
+        // Compute tile bounds
+        const int kv_start = t * TILE_N;
+        const int kv_len   = min(TILE_N, S - kv_start);
+        
+        NVTX_RANGE("u8_to_half_dequant");
+        // Dequantize from u8 staging buffer → half working buffers (sKT, sV)
         for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
             int n = idx / D;
             int d = idx % D;
-            uint8_t v_u8 = Vbh[(size_t)(kv_start + n) * D + d];
+            uint8_t ku = sK_u8[read_stage][n][d];
+            uint8_t vu = sV_u8[read_stage][n][d];
 #if USE_KV_LUT
-            sV[n][d] = __float2half(vLUT[v_u8]);  // LUT path
+            sKT[n][d] = __float2half(kLUT[ku]);
+            sV[n][d]  = __float2half(vLUT[vu]);
 #else
-            float v_f = dequant_sim_fp8(v_u8, v_s);  // Direct dequant (safe)
-            sV[n][d] = __float2half(v_f);
+            float kf = dequant_sim_fp8(ku, k_s);
+            float vf = dequant_sim_fp8(vu, v_s);
+            sKT[n][d] = __float2half(kf);
+            sV[n][d]  = __float2half(vf);
 #endif
         }
         
-        // Zero-pad K^T/V for partial tiles (kv_len < TILE_N)
+        // Zero-pad for partial tiles
         for (int idx = tid + kv_len * D; idx < TILE_N * D; idx += blockDim.x) {
             int n = idx / D;
             int d = idx % D;
-            sKT[n][d] = __float2half(0.f);  // Match new [n][d] layout
+            sKT[n][d] = __float2half(0.f);
             sV[n][d]  = __float2half(0.f);
         }
+        NVTX_POP();  // u8_to_half_dequant
         __syncthreads();
 
 #ifdef DEBUG_PRINT
@@ -251,6 +322,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         // =========================================
         // WMMA COMPUTE: Q @ K^T → S (32×32)
         // =========================================
+        NVTX_RANGE("WMMA_QK");
         // Each warp handles one 16×16 output tile
         // 4 warps cover 2×2 = 32×32 output
         
@@ -304,6 +376,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             // Store result to shared memory
             wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag_fp16, TILE_N, wmma::mem_row_major);
         }
+        NVTX_POP();  // WMMA_QK
         __syncthreads();
 
 #ifdef DEBUG_PRINT
@@ -324,6 +397,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         // =========================================
         // ONLINE SOFTMAX (per row, scalar path)
         // =========================================
+        NVTX_RANGE("Softmax_PV");
         // Each warp handles 32/4 = 8 rows
         for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
             // PRIORITY 1 FIX: Each lane loads ALL scores (no stride, no broadcast)
@@ -385,8 +459,206 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 l_smem[r] = l_new;
             }
         }
+        NVTX_POP();  // Softmax_PV
+        NVTX_POP();  // tile_iter
         __syncthreads();
     }
+    
+    // Ensure all outstanding cp.async operations are complete
+    __pipeline_wait_prior(0);
+    __syncthreads();
+    NVTX_POP();  // KV_loop_cp_async
+
+#else
+    // ==========================================
+    // Baseline: Direct Load (no cp.async)
+    // ==========================================
+    NVTX_RANGE("KV_loop_direct");
+    
+    for (int t = 0; t < nTiles; ++t) {
+        const int kv_start = t * TILE_N;
+        const int kv_end   = min(kv_start + TILE_N, S);
+        const int kv_len   = kv_end - kv_start;
+
+        NVTX_RANGE("load_KV");
+        // --- Load K tile (uint8→FP16, stored as [n][d] for col-major WMMA) ---
+        // Store K[n][d] directly to sKT[n][d] - elements along d contiguous = col-major view
+        for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
+            int n = idx / D;
+            int d = idx % D;
+            uint8_t k_u8 = Kbh[(size_t)(kv_start + n) * D + d];
+#if USE_KV_LUT
+            sKT[n][d] = __float2half(kLUT[k_u8]);  // LUT path
+#else
+            float k_f = dequant_sim_fp8(k_u8, k_s);  // Direct dequant (safe)
+            sKT[n][d] = __float2half(k_f);
+#endif
+        }
+
+        // --- Load V tile (uint8→FP16, row-major) ---
+        for (int idx = tid; idx < kv_len * D; idx += blockDim.x) {
+            int n = idx / D;
+            int d = idx % D;
+            uint8_t v_u8 = Vbh[(size_t)(kv_start + n) * D + d];
+#if USE_KV_LUT
+            sV[n][d] = __float2half(vLUT[v_u8]);  // LUT path
+#else
+            float v_f = dequant_sim_fp8(v_u8, v_s);  // Direct dequant (safe)
+            sV[n][d] = __float2half(v_f);
+#endif
+        }
+        
+        // Zero-pad K^T/V for partial tiles (kv_len < TILE_N)
+        for (int idx = tid + kv_len * D; idx < TILE_N * D; idx += blockDim.x) {
+            int n = idx / D;
+            int d = idx % D;
+            sKT[n][d] = __float2half(0.f);  // Match new [n][d] layout
+            sV[n][d]  = __float2half(0.f);
+        }
+        NVTX_POP();  // load_KV
+        __syncthreads();
+
+#ifdef DEBUG_PRINT
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
+            // Print sQ (Q row 0)
+            printf("[DEBUG] sQ[0][0:8]: ");
+            for (int d = 0; d < 8; d++) {
+                printf("%.4f ", __half2float(sQ[0][d]));
+            }
+            printf("\n");
+            
+            // Print sKT (K row 0, stored as sKT[0][d])
+            printf("[DEBUG] sKT[0][0:8] (K[0] in col-major view): ");
+            for (int d = 0; d < 8; d++) {
+                printf("%.4f ", __half2float(sKT[0][d]));
+            }
+            printf("\n");
+            
+            // Manual dot product Q[0] @ K[0]
+            float manual_dot = 0.0f;
+            for (int d = 0; d < D; d++) {
+                manual_dot += __half2float(sQ[0][d]) * __half2float(sKT[0][d]);
+            }
+            printf("[DEBUG] Manual Q[0]@K[0] raw=%.4f (expect ~6.06)\n", manual_dot);
+            
+            // Print V for reference
+            printf("[DEBUG] sV[0][0:8]: ");
+            for (int d = 0; d < 8; d++) {
+                printf("%.4f ", __half2float(sV[0][d]));
+            }
+            printf("\n");
+        }
+#endif
+
+        // =========================================
+        // WMMA COMPUTE: Q @ K^T → S (32×32)
+        // =========================================
+        NVTX_RANGE("WMMA_QK");
+        const int warp_m = (warp_id / 2) * WMMA_M;
+        const int warp_n = (warp_id % 2) * WMMA_N;
+        const bool warp_m_valid = warp_m < rows_in_tile;
+        const bool warp_n_valid = warp_n < kv_len;
+
+        wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
+        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
+        wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
+        wmma::fill_fragment(c_frag, 0.0f);
+
+        if (warp_m_valid && warp_n_valid) {
+            #pragma unroll
+            for (int k = 0; k < D; k += WMMA_K) {
+                wmma::load_matrix_sync(a_frag, &sQ[warp_m][k], D_PAD);
+                wmma::load_matrix_sync(b_frag, &sKT[warp_n][k], D_PAD);
+                wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+            }
+            wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> c_frag_fp16;
+            #pragma unroll
+            for (int i = 0; i < c_frag.num_elements; i++) {
+                c_frag_fp16.x[i] = __float2half(c_frag.x[i]);
+            }
+            wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag_fp16, TILE_N, wmma::mem_row_major);
+        }
+        NVTX_POP();  // WMMA_QK
+        __syncthreads();
+
+#ifdef DEBUG_PRINT
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
+            printf("[DEBUG] Q@K^T raw scores (row 0, n=0:5): ");
+            for (int n = 0; n < 5; n++) {
+                printf("%.4f ", __half2float(sS[0][n]));
+            }
+            printf("\n");
+            printf("[DEBUG] Q@K^T after scale (row 0, n=0:5, scale=%.6f): ", softmax_scale);
+            for (int n = 0; n < 5; n++) {
+                printf("%.4f ", __half2float(sS[0][n]) * softmax_scale);
+            }
+            printf("\n");
+        }
+#endif
+
+        // =========================================
+        // ONLINE SOFTMAX (per row, scalar path)
+        // =========================================
+        NVTX_RANGE("Softmax_PV");
+        for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
+            float S_row[TILE_N];
+            #pragma unroll
+            for (int n = 0; n < kv_len; ++n) {
+                S_row[n] = __half2float(sS[r][n]) * softmax_scale;
+            }
+
+            float m_old = m_smem[r];
+            float m_new = m_old;
+            #pragma unroll
+            for (int n = 0; n < kv_len; ++n) {
+                m_new = fmaxf(m_new, S_row[n]);
+            }
+
+            float l_old = l_smem[r];
+            float l_add = 0.f;
+            #pragma unroll
+            for (int n = 0; n < kv_len; ++n) {
+                S_row[n] = __expf(S_row[n] - m_new);
+                l_add += S_row[n];
+            }
+
+            float rescale = __expf(m_old - m_new);
+            float l_new = l_old * rescale + l_add;
+
+#ifdef DEBUG_PRINT
+            if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && r == 0 && warp_id == 0 && lane == 0 && t == 0) {
+                printf("[DEBUG] Softmax (row 0): m_old=%.4f m_new=%.4f l_old=%.4f l_add=%.4f rescale=%.4f\n",
+                       m_old, m_new, l_old, l_add, rescale);
+                printf("[DEBUG] Attention weights P[0:5]: ");
+                for (int n = 0; n < 5; n++) {
+                    printf("%.4f ", S_row[n]);
+                }
+                printf("\n");
+            }
+#endif
+
+            for (int d = lane; d < D; d += 32) {
+                U_smem[r][d] *= rescale;
+            }
+
+            for (int n = 0; n < kv_len; ++n) {
+                float p = S_row[n];
+                for (int d = lane; d < D; d += 32) {
+                    float v = __half2float(sV[n][d]);
+                    U_smem[r][d] += p * v;
+                }
+            }
+
+            if (lane == 0) {
+                m_smem[r] = m_new;
+                l_smem[r] = l_new;
+            }
+        }
+        NVTX_POP();  // Softmax_PV
+        __syncthreads();
+    }
+    NVTX_POP();  // KV_loop_direct
+#endif
 
     // --- Write O = U / l ---
     for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
