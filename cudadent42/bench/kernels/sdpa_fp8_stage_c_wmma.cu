@@ -155,6 +155,14 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             uint8_t v_u8 = Vbh[(size_t)(kv_start + n) * D + d];
             sV[n][d] = __float2half(vLUT[v_u8]);
         }
+        
+        // Zero-pad K^T/V for partial tiles (kv_len < TILE_N)
+        for (int idx = tid + kv_len * D; idx < TILE_N * D; idx += blockDim.x) {
+            int n = idx / D;
+            int d = idx % D;
+            sKT[d][n] = __float2half(0.f);
+            sV[n][d]  = __float2half(0.f);
+        }
         __syncthreads();
 
 #ifdef DEBUG_PRINT
@@ -181,33 +189,42 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         
         const int warp_m = (warp_id / 2) * WMMA_M;  // 0 or 16
         const int warp_n = (warp_id % 2) * WMMA_N;  // 0 or 16
+        
+        // Guard partial tiles: skip out-of-range WMMA work
+        const bool warp_m_valid = warp_m < rows_in_tile;
+        const bool warp_n_valid = warp_n < kv_len;
 
-        // WMMA fragments
+        // WMMA fragments (FP32 accumulator for better numeric stability)
         wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
         wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
-        wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> c_frag;
+        wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;  // FP32 accumulator
 
         // Zero accumulator
-        wmma::fill_fragment(c_frag, __float2half(0.0f));
-
-        // Compute Q@K^T in 16×16×16 chunks (4 chunks for D=64)
-        #pragma unroll
-        for (int k = 0; k < D; k += WMMA_K) {
-            // Load A: Q[warp_m:warp_m+16, k:k+16] (row-major)
-            wmma::load_matrix_sync(a_frag, &sQ[warp_m][k], D_PAD);
-            
-            // PRIORITY 1 FIX: Correct leading dimension for col-major K^T
-            // For sKT[D_PAD][TILE_N] col-major, ldm = D_PAD (stride between columns)
-            // Previous bug: Used TILE_N, causing memory access pattern corruption
-            wmma::load_matrix_sync(b_frag, &sKT[k][warp_n], D_PAD);
-            
-            // MMA: C += A * B
-            wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
-        }
+        wmma::fill_fragment(c_frag, 0.0f);
 
         // Store S to shared memory temporarily for softmax
         __shared__ alignas(16) half sS[TILE_M][TILE_N];
-        wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag, TILE_N, wmma::mem_row_major);
+        
+        // Compute Q@K^T only for valid tiles
+        if (warp_m_valid && warp_n_valid) {
+            // Compute Q@K^T in 16×16×16 chunks (4 chunks for D=64)
+            #pragma unroll
+            for (int k = 0; k < D; k += WMMA_K) {
+                // Load A: Q[warp_m:warp_m+16, k:k+16] (row-major)
+                wmma::load_matrix_sync(a_frag, &sQ[warp_m][k], D_PAD);
+                
+                // PRIORITY 1 FIX: Correct leading dimension for col-major K^T
+                // For sKT[D_PAD][TILE_N] col-major, ldm = D_PAD (stride between columns)
+                // Previous bug: Used TILE_N, causing memory access pattern corruption
+                wmma::load_matrix_sync(b_frag, &sKT[k][warp_n], D_PAD);
+                
+                // MMA: C += A * B
+                wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+            }
+
+            // Store result to shared memory
+            wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag, TILE_N, wmma::mem_row_major);
+        }
         __syncthreads();
 
 #ifdef DEBUG_PRINT
