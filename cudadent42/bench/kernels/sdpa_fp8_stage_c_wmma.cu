@@ -450,66 +450,82 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             
             #else
             // Stage-3B fused path: keep c_frag in registers, do softmax inline
-            
-            // 1. Scale scores in-place
-            float scores[8];  // c_frag.num_elements == 8 for FP32 accumulator
+            // Key fixes:
+            //  - mask partial KV columns in max/sum using (cc < kv_local)
+            //  - pre-zero the entire 16x16 sP tile to avoid stale values
+            //  - dynamic fragment size (no hardcoded 8)
+            //  - ensure sync before WMMA(P,V)
+
+            // Local #cols for this 16-wide tile (may be < 16 on the last KV tile)
+            int kv_local = kv_len - warp_n;
+            kv_local = kv_local < 0 ? 0 : (kv_local > WMMA_N ? WMMA_N : kv_local);
+
+            // Dynamic fragment size
+            const int FRAG_ELEMS = c_frag.num_elements;
+            float scores_local[8];  // c_frag.num_elements is typically 8 for FP32 16x16x16
             #pragma unroll
-            for (int i = 0; i < 8; i++) {
-                scores[i] = c_frag.x[i] * softmax_scale;
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
+                scores_local[i] = c_frag.x[i] * softmax_scale;
             }
-            
-            // 2. Per-row max (16 rows) using LUT + warp reduction
-            float m_row[WMMA_M];  // 16 elements
+
+            // Pre-zero this warp's 16x16 sP tile to avoid stale data
+            for (int lin = lane; lin < WMMA_M * WMMA_N; lin += 32) {
+                int rr = lin / WMMA_N;
+                int cc = lin % WMMA_N;
+                int r_glob = warp_m + rr;
+                int c_glob = warp_n + cc;
+                if (r_glob < rows_in_tile && cc >= kv_local) {
+                    sP[r_glob][c_glob] = __float2half(0.f);
+                }
+            }
+            __syncwarp();
+
+            // 1) Per-row max across valid columns only
+            float m_row[WMMA_M];
             #pragma unroll
-            for (int r = 0; r < WMMA_M; r++) {
+            for (int r = 0; r < WMMA_M; ++r) {
                 float mymax = -INFINITY;
                 #pragma unroll
-                for (int i = 0; i < 8; i++) {
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
                     int rr = WMMA_ACCUM_LUT[lane][i][0];
-                    if (rr == r) {
-                        mymax = fmaxf(mymax, scores[i]);
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        mymax = fmaxf(mymax, scores_local[i]);
                     }
                 }
-                // Warp reduce max across lanes (covers 16 cols)
-                #pragma unroll
-                for (int offs = 16; offs > 0; offs >>= 1) {
-                    mymax = fmaxf(mymax, __shfl_down_sync(0xffffffff, mymax, offs));
-                }
-                // Broadcast result to all lanes
+                // warp reduce → lane0 holds the max
+                mymax = warp_reduce_max(mymax);
+                // broadcast lane0 to all lanes
                 m_row[r] = __shfl_sync(0xffffffff, mymax, 0);
             }
-            
-            // 3. Online softmax: update m/l, rescale U
+
+            // 2) Online softmax update (m,l) + rescale U
             #pragma unroll
-            for (int r = 0; r < WMMA_M; r++) {
+            for (int r = 0; r < WMMA_M; ++r) {
                 int r_glob = warp_m + r;
                 if (r_glob >= rows_in_tile) continue;
-                
+
                 float m_old = m_smem[r_glob];
                 float m_new = fmaxf(m_old, m_row[r]);
                 float rescale = __expf(m_old - m_new);
-                
-                // Rescale U (each warp lane handles subset of D)
+
+                // Rescale U
                 for (int d = lane; d < D; d += 32) {
                     U_smem[r_glob][d] *= rescale;
                 }
-                
-                // Compute l_add (sum of exp(score - m_new) for this row)
+
+                // Sum of exp(score - m_new) over VALID columns only
                 float l_add = 0.f;
                 #pragma unroll
-                for (int i = 0; i < 8; i++) {
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
                     int rr = WMMA_ACCUM_LUT[lane][i][0];
-                    if (rr == r) {
-                        l_add += __expf(scores[i] - m_new);
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        l_add += __expf(scores_local[i] - m_new);
                     }
                 }
-                // Warp reduce sum
-                #pragma unroll
-                for (int offs = 16; offs > 0; offs >>= 1) {
-                    l_add += __shfl_down_sync(0xffffffff, l_add, offs);
-                }
-                
-                // Lane 0 updates global m/l
+                l_add = warp_reduce_sum(l_add);
+
                 if (lane == 0) {
                     float l_old = l_smem[r_glob];
                     l_smem[r_glob] = l_old * rescale + l_add;
@@ -517,24 +533,24 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 }
             }
             __syncwarp();
-            
-            // 4. Materialize P (half) for WMMA P·V
-            //    Each lane writes its 8 elements using LUT
+
+            // 3) Materialize P only for VALID columns
             #pragma unroll
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
                 int rr = WMMA_ACCUM_LUT[lane][i][0];
                 int cc = WMMA_ACCUM_LUT[lane][i][1];
                 int r_glob = warp_m + rr;
                 int c_glob = warp_n + cc;
-                if (r_glob < rows_in_tile && c_glob < kv_len) {
-                    float m_new = m_smem[r_glob];
-                    sP[r_glob][c_glob] = __float2half(__expf(scores[i] - m_new));
+                if (r_glob < rows_in_tile && cc < kv_local) {
+                    float m_new = m_smem[r_glob];  // lane0 wrote it; same-warp read
+                    sP[r_glob][c_glob] = __float2half(__expf(scores_local[i] - m_new));
                 }
             }
+            // Block-wide sync so that all warps see sP before WMMA(P,V)
+            __syncthreads();
             #endif // USE_FUSED_SOFTMAX
         }
         NVTX_POP();  // WMMA_QK
-        __syncthreads();
 
 #ifdef DEBUG_PRINT
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
@@ -809,66 +825,82 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             
             #else
             // Stage-3B fused path: keep c_frag in registers, do softmax inline
-            
-            // 1. Scale scores in-place
-            float scores[8];  // c_frag.num_elements == 8 for FP32 accumulator
+            // Key fixes:
+            //  - mask partial KV columns in max/sum using (cc < kv_local)
+            //  - pre-zero the entire 16x16 sP tile to avoid stale values
+            //  - dynamic fragment size (no hardcoded 8)
+            //  - ensure sync before WMMA(P,V)
+
+            // Local #cols for this 16-wide tile (may be < 16 on the last KV tile)
+            int kv_local = kv_len - warp_n;
+            kv_local = kv_local < 0 ? 0 : (kv_local > WMMA_N ? WMMA_N : kv_local);
+
+            // Dynamic fragment size
+            const int FRAG_ELEMS = c_frag.num_elements;
+            float scores_local[8];  // c_frag.num_elements is typically 8 for FP32 16x16x16
             #pragma unroll
-            for (int i = 0; i < 8; i++) {
-                scores[i] = c_frag.x[i] * softmax_scale;
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
+                scores_local[i] = c_frag.x[i] * softmax_scale;
             }
-            
-            // 2. Per-row max (16 rows) using LUT + warp reduction
-            float m_row[WMMA_M];  // 16 elements
+
+            // Pre-zero this warp's 16x16 sP tile to avoid stale data
+            for (int lin = lane; lin < WMMA_M * WMMA_N; lin += 32) {
+                int rr = lin / WMMA_N;
+                int cc = lin % WMMA_N;
+                int r_glob = warp_m + rr;
+                int c_glob = warp_n + cc;
+                if (r_glob < rows_in_tile && cc >= kv_local) {
+                    sP[r_glob][c_glob] = __float2half(0.f);
+                }
+            }
+            __syncwarp();
+
+            // 1) Per-row max across valid columns only
+            float m_row[WMMA_M];
             #pragma unroll
-            for (int r = 0; r < WMMA_M; r++) {
+            for (int r = 0; r < WMMA_M; ++r) {
                 float mymax = -INFINITY;
                 #pragma unroll
-                for (int i = 0; i < 8; i++) {
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
                     int rr = WMMA_ACCUM_LUT[lane][i][0];
-                    if (rr == r) {
-                        mymax = fmaxf(mymax, scores[i]);
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        mymax = fmaxf(mymax, scores_local[i]);
                     }
                 }
-                // Warp reduce max across lanes (covers 16 cols)
-                #pragma unroll
-                for (int offs = 16; offs > 0; offs >>= 1) {
-                    mymax = fmaxf(mymax, __shfl_down_sync(0xffffffff, mymax, offs));
-                }
-                // Broadcast result to all lanes
+                // warp reduce → lane0 holds the max
+                mymax = warp_reduce_max(mymax);
+                // broadcast lane0 to all lanes
                 m_row[r] = __shfl_sync(0xffffffff, mymax, 0);
             }
-            
-            // 3. Online softmax: update m/l, rescale U
+
+            // 2) Online softmax update (m,l) + rescale U
             #pragma unroll
-            for (int r = 0; r < WMMA_M; r++) {
+            for (int r = 0; r < WMMA_M; ++r) {
                 int r_glob = warp_m + r;
                 if (r_glob >= rows_in_tile) continue;
-                
+
                 float m_old = m_smem[r_glob];
                 float m_new = fmaxf(m_old, m_row[r]);
                 float rescale = __expf(m_old - m_new);
-                
-                // Rescale U (each warp lane handles subset of D)
+
+                // Rescale U
                 for (int d = lane; d < D; d += 32) {
                     U_smem[r_glob][d] *= rescale;
                 }
-                
-                // Compute l_add (sum of exp(score - m_new) for this row)
+
+                // Sum of exp(score - m_new) over VALID columns only
                 float l_add = 0.f;
                 #pragma unroll
-                for (int i = 0; i < 8; i++) {
+                for (int i = 0; i < FRAG_ELEMS; ++i) {
                     int rr = WMMA_ACCUM_LUT[lane][i][0];
-                    if (rr == r) {
-                        l_add += __expf(scores[i] - m_new);
+                    int cc = WMMA_ACCUM_LUT[lane][i][1];
+                    if (rr == r && cc < kv_local) {
+                        l_add += __expf(scores_local[i] - m_new);
                     }
                 }
-                // Warp reduce sum
-                #pragma unroll
-                for (int offs = 16; offs > 0; offs >>= 1) {
-                    l_add += __shfl_down_sync(0xffffffff, l_add, offs);
-                }
-                
-                // Lane 0 updates global m/l
+                l_add = warp_reduce_sum(l_add);
+
                 if (lane == 0) {
                     float l_old = l_smem[r_glob];
                     l_smem[r_glob] = l_old * rescale + l_add;
@@ -876,24 +908,24 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 }
             }
             __syncwarp();
-            
-            // 4. Materialize P (half) for WMMA P·V
-            //    Each lane writes its 8 elements using LUT
+
+            // 3) Materialize P only for VALID columns
             #pragma unroll
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < FRAG_ELEMS; ++i) {
                 int rr = WMMA_ACCUM_LUT[lane][i][0];
                 int cc = WMMA_ACCUM_LUT[lane][i][1];
                 int r_glob = warp_m + rr;
                 int c_glob = warp_n + cc;
-                if (r_glob < rows_in_tile && c_glob < kv_len) {
-                    float m_new = m_smem[r_glob];
-                    sP[r_glob][c_glob] = __float2half(__expf(scores[i] - m_new));
+                if (r_glob < rows_in_tile && cc < kv_local) {
+                    float m_new = m_smem[r_glob];  // lane0 wrote it; same-warp read
+                    sP[r_glob][c_glob] = __float2half(__expf(scores_local[i] - m_new));
                 }
             }
+            // Block-wide sync so that all warps see sP before WMMA(P,V)
+            __syncthreads();
             #endif // USE_FUSED_SOFTMAX
         }
         NVTX_POP();  // WMMA_QK
-        __syncthreads();
 
 #ifdef DEBUG_PRINT
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
@@ -1095,4 +1127,7 @@ extern "C" void launch_sdpa_fp8_stage_c_wmma(
         softmax_scale
     );
 }
+
+
+
 
