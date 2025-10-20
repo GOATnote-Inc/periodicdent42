@@ -45,7 +45,8 @@ def quantize_sim_fp8_per_head(tensor: torch.Tensor) -> Tuple[torch.Tensor, torch
     quantized = ((normalized + 1.0) * 127.5).round().clamp(0, 255).to(torch.uint8)
     
     # Return quantized tensor and per-head scales [H]
-    return quantized, scales.squeeze(0).squeeze(1).squeeze(2)  # [H]
+    # scales shape: [1, H, 1, 1] → squeeze to [H]
+    return quantized, scales.squeeze()  # [H]
 
 def forward_ref(
     Q: torch.Tensor,  # [B, H, S, D] FP16
