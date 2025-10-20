@@ -98,21 +98,27 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         float decoded = centered * 448.0f;
         kLUT[u] = decoded * k_s;
         vLUT[u] = decoded * v_s;
-        
-#ifdef DEBUG_PRINT
-        // Debug specific LUT entries during construction
-        if ((u == 133 || u == 171) && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
-            printf("[DEBUG] LUT[%d]: centered=%.4f decoded=%.4f k_s=%.6f v_s=%.6f → kLUT=%.4f vLUT=%.4f\n",
-                   u, centered, decoded, k_s, v_s, kLUT[u], vLUT[u]);
-        }
-#endif
     }
     __syncthreads();  // Ensure all threads see complete LUT before usage
 
 #ifdef DEBUG_PRINT
     if (tid == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+        // Manual recomputation for verification
+        constexpr float INV_MAX = 1.0f / 127.0f;
+        float centered_133 = (133.0f - 128.0f) * INV_MAX;
+        float decoded_133 = centered_133 * 448.0f;
+        float expected_k133 = decoded_133 * k_s;
+        
+        float centered_171 = (171.0f - 128.0f) * INV_MAX;
+        float decoded_171 = centered_171 * 448.0f;
+        float expected_v171 = decoded_171 * v_s;
+        
         printf("[DEBUG] Scales: q_s=%.6f k_s=%.6f v_s=%.6f\n", q_s, k_s, v_s);
-        printf("[DEBUG] Sample LUT after sync: kLUT[133]=%.4f vLUT[171]=%.4f\n", kLUT[133], vLUT[171]);
+        printf("[DEBUG] Manual calc: centered_133=%.4f decoded_133=%.2f expected_k133=%.4f\n",
+               centered_133, decoded_133, expected_k133);
+        printf("[DEBUG] Manual calc: centered_171=%.4f decoded_171=%.2f expected_v171=%.4f\n",
+               centered_171, decoded_171, expected_v171);
+        printf("[DEBUG] Actual LUT: kLUT[133]=%.4f vLUT[171]=%.4f\n", kLUT[133], vLUT[171]);
     }
 #endif
 
