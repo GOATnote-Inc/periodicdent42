@@ -130,7 +130,7 @@ jobs:
     
     - name: Attest build provenance (SLSA Level 3)
       if: steps.check-secrets.outputs.configured == 'true' && steps.build.outputs.digest != ''
-      uses: actions/attest-build-provenance@v1
+      uses: actions/attest-build-provenance@v3
       with:
         subject-name: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}
         subject-digest: ${{ steps.build.outputs.digest }}
