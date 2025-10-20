@@ -281,9 +281,14 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
 #ifdef DEBUG_PRINT
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
-            printf("[DEBUG] Q@K^T scores (row 0, n=0:5): ");
+            printf("[DEBUG] Q@K^T raw scores (row 0, n=0:5): ");
             for (int n = 0; n < 5; n++) {
                 printf("%.4f ", __half2float(sS[0][n]));
+            }
+            printf("\n");
+            printf("[DEBUG] Q@K^T after scale (row 0, n=0:5, scale=%.6f): ", softmax_scale);
+            for (int n = 0; n < 5; n++) {
+                printf("%.4f ", __half2float(sS[0][n]) * softmax_scale);
             }
             printf("\n");
         }
