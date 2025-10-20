@@ -21,6 +21,11 @@ using namespace nvcuda;
 #define USE_CP_ASYNC 0
 #endif
 
+// WMMA for P·V: 0 = scalar accumulation (Stage-1), 1 = WMMA (Stage-2)
+#ifndef USE_WMMA_PV
+#define USE_WMMA_PV 0
+#endif
+
 // NVTX profiling ranges (optional)
 #ifdef ENABLE_NVTX
 #include <nvToolsExt.h>
@@ -120,8 +125,19 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     __shared__ float m_smem[TILE_M];
     __shared__ float l_smem[TILE_M];
     __shared__ alignas(16) float U_smem[TILE_M][D_PAD];  // 8 KB
+    
+#if USE_WMMA_PV
+    // P tile (unnormalized exp weights for current KV tile): [TILE_M][TILE_N], half
+    __shared__ alignas(16) half sP[TILE_M][TILE_N];     // +2 KB
+    
+    // Per-warp scratch to store 16x16 WMMA accumulator (float) before adding into U_smem
+    // NUM_WARPS is 4; each 16x16x4B = 1 KB → total +4 KB
+    __shared__ alignas(16) float sPV_frag[NUM_WARPS][WMMA_M][WMMA_N]; // +4 KB
+#endif
 
-    // Total SMEM: USE_KV_LUT ? 24.5 KB : 22.5 KB (direct dequant saves 2 KB)
+    // Total SMEM: 
+    //   USE_WMMA_PV=0: USE_KV_LUT ? 24.5 KB : 22.5 KB (direct dequant saves 2 KB)
+    //   USE_WMMA_PV=1: adds +6 KB → ~44.5 KB (still safe for 2 CTAs/SM)
 
 #if USE_KV_LUT
     // --- Build LUTs (legacy path, requires debugging) ---
@@ -445,7 +461,17 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 U_smem[r][d] *= rescale;
             }
 
-            // Accumulate P·V (unnormalized)
+#if USE_WMMA_PV
+            // Store unnormalized P to shared memory for WMMA P·V
+            for (int n = 0; n < kv_len; ++n) {
+                sP[r][n] = __float2half(S_row[n]);
+            }
+            // Zero-pad for partial tiles
+            for (int n = kv_len; n < TILE_N; ++n) {
+                sP[r][n] = __float2half(0.f);
+            }
+#else
+            // Scalar P·V accumulation (Stage-1 path)
             for (int n = 0; n < kv_len; ++n) {
                 float p = S_row[n];
                 for (int d = lane; d < D; d += 32) {
@@ -453,6 +479,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                     U_smem[r][d] += p * v;
                 }
             }
+#endif
 
             if (lane == 0) {
                 m_smem[r] = m_new;
@@ -460,6 +487,61 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             }
         }
         NVTX_POP();  // Softmax_PV
+        
+#if USE_WMMA_PV
+        // Synchronize to ensure sP is visible to all warps
+        __syncthreads();
+        
+        // =========================================
+        // WMMA P·V ACCUMULATION (row-major × row-major)
+        // =========================================
+        NVTX_RANGE("WMMA_PV");
+        
+        // Warp mapping for U tile (TILE_M x D):
+        //   warp_m = (warp_id / 2) * 16   // 0 or 16
+        //   dTile starts at (warp_id % 2) and strides by 2 to cover D/16=4 tiles → {0,2} or {1,3}
+        const int warp_m = (warp_id / 2) * WMMA_M;
+        for (int dTile = (warp_id % 2); dTile < D / WMMA_N; dTile += 2) {
+            wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
+            wmma::fill_fragment(c_frag, 0.0f);
+
+            // Accumulate over KV dimension (TILE_N) in steps of 16
+            #pragma unroll 1  // Reduce register pressure
+            for (int kTile = 0; kTile < TILE_N; kTile += WMMA_K) {
+                // Guard partial kv_len with zero padding already done for sV and sP
+
+                // A = P[warp_m:warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
+                wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
+                wmma::load_matrix_sync(a_frag, &sP[warp_m][kTile], TILE_N);
+
+                // B = V[kTile:kTile+16, dTile*16:(dTile+1)*16]  (row-major, ldm = D_PAD)
+                wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
+                wmma::load_matrix_sync(b_frag, &sV[kTile][dTile * WMMA_N], D_PAD);
+
+                // C += A * B
+                wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+            }
+
+            // Store C (float) into per-warp scratch and add to U_smem (float), no overlap among warps
+            wmma::store_matrix_sync(&sPV_frag[warp_id][0][0], c_frag, WMMA_N, wmma::mem_row_major);
+            __syncwarp();
+
+            // Distribute the 16x16 add among lanes
+            for (int i = lane; i < WMMA_M * WMMA_N; i += 32) {
+                int r_local = i / WMMA_N;     // 0..15
+                int d_local = i % WMMA_N;     // 0..15
+                int r_glob  = warp_m + r_local;
+                int d_glob  = dTile * WMMA_N + d_local;
+
+                if (r_glob < rows_in_tile) {
+                    U_smem[r_glob][d_glob] += sPV_frag[warp_id][r_local][d_local];
+                }
+            }
+            __syncwarp();
+        }
+        NVTX_POP(); // WMMA_PV
+#endif
+        
         NVTX_POP();  // tile_iter
         __syncthreads();
     }
@@ -641,6 +723,17 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                 U_smem[r][d] *= rescale;
             }
 
+#if USE_WMMA_PV
+            // Store unnormalized P to shared memory for WMMA P·V
+            for (int n = 0; n < kv_len; ++n) {
+                sP[r][n] = __float2half(S_row[n]);
+            }
+            // Zero-pad for partial tiles
+            for (int n = kv_len; n < TILE_N; ++n) {
+                sP[r][n] = __float2half(0.f);
+            }
+#else
+            // Scalar P·V accumulation (Stage-1 path)
             for (int n = 0; n < kv_len; ++n) {
                 float p = S_row[n];
                 for (int d = lane; d < D; d += 32) {
@@ -648,6 +741,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
                     U_smem[r][d] += p * v;
                 }
             }
+#endif
 
             if (lane == 0) {
                 m_smem[r] = m_new;
@@ -655,6 +749,61 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             }
         }
         NVTX_POP();  // Softmax_PV
+        
+#if USE_WMMA_PV
+        // Synchronize to ensure sP is visible to all warps
+        __syncthreads();
+        
+        // =========================================
+        // WMMA P·V ACCUMULATION (row-major × row-major)
+        // =========================================
+        NVTX_RANGE("WMMA_PV");
+        
+        // Warp mapping for U tile (TILE_M x D):
+        //   warp_m = (warp_id / 2) * 16   // 0 or 16
+        //   dTile starts at (warp_id % 2) and strides by 2 to cover D/16=4 tiles → {0,2} or {1,3}
+        const int warp_m = (warp_id / 2) * WMMA_M;
+        for (int dTile = (warp_id % 2); dTile < D / WMMA_N; dTile += 2) {
+            wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
+            wmma::fill_fragment(c_frag, 0.0f);
+
+            // Accumulate over KV dimension (TILE_N) in steps of 16
+            #pragma unroll 1  // Reduce register pressure
+            for (int kTile = 0; kTile < TILE_N; kTile += WMMA_K) {
+                // Guard partial kv_len with zero padding already done for sV and sP
+
+                // A = P[warp_m:warp_m+16, kTile:kTile+16]  (row-major, ldm = TILE_N)
+                wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
+                wmma::load_matrix_sync(a_frag, &sP[warp_m][kTile], TILE_N);
+
+                // B = V[kTile:kTile+16, dTile*16:(dTile+1)*16]  (row-major, ldm = D_PAD)
+                wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
+                wmma::load_matrix_sync(b_frag, &sV[kTile][dTile * WMMA_N], D_PAD);
+
+                // C += A * B
+                wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+            }
+
+            // Store C (float) into per-warp scratch and add to U_smem (float), no overlap among warps
+            wmma::store_matrix_sync(&sPV_frag[warp_id][0][0], c_frag, WMMA_N, wmma::mem_row_major);
+            __syncwarp();
+
+            // Distribute the 16x16 add among lanes
+            for (int i = lane; i < WMMA_M * WMMA_N; i += 32) {
+                int r_local = i / WMMA_N;     // 0..15
+                int d_local = i % WMMA_N;     // 0..15
+                int r_glob  = warp_m + r_local;
+                int d_glob  = dTile * WMMA_N + d_local;
+
+                if (r_glob < rows_in_tile) {
+                    U_smem[r_glob][d_glob] += sPV_frag[warp_id][r_local][d_local];
+                }
+            }
+            __syncwarp();
+        }
+        NVTX_POP(); // WMMA_PV
+#endif
+        
         __syncthreads();
     }
     NVTX_POP();  // KV_loop_direct

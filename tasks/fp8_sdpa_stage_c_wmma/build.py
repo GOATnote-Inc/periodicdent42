@@ -19,6 +19,7 @@ from torch.utils.cpp_extension import load
 USE_KV_LUT   = int(os.environ.get("USE_KV_LUT", "0"))
 DEBUG_PRINT  = int(os.environ.get("DEBUG_PRINT", "0"))
 USE_CP_ASYNC = int(os.environ.get("USE_CP_ASYNC", "1"))
+USE_WMMA_PV  = int(os.environ.get("USE_WMMA_PV", "0"))
 ARCH_LIST = os.environ.get("TORCH_CUDA_ARCH_LIST", "8.9")
 
 # Paths
@@ -46,6 +47,8 @@ def build_extension(name="sdpa_fp8_stage_c_wmma", verbose=True):
         extra_cuda_cflags.append("-DDEBUG_PRINT=1")
     if USE_CP_ASYNC:
         extra_cuda_cflags.append("-DUSE_CP_ASYNC=1")
+    if USE_WMMA_PV:
+        extra_cuda_cflags.append("-DUSE_WMMA_PV=1")
     
     print(f"\n{'='*80}")
     print("FP8 SDPA Stage-C WMMA Kernel Build")
@@ -53,6 +56,7 @@ def build_extension(name="sdpa_fp8_stage_c_wmma", verbose=True):
     print(f"  USE_KV_LUT:   {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
     print(f"  DEBUG_PRINT:  {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
     print(f"  USE_CP_ASYNC: {USE_CP_ASYNC} ({'double-buffer K/V' if USE_CP_ASYNC else 'direct load'})")
+    print(f"  USE_WMMA_PV:  {USE_WMMA_PV} ({'WMMA P·V' if USE_WMMA_PV else 'scalar P·V ✓'})")
     print(f"  Architecture: sm_{ARCH_LIST.replace('.', '')}")
     print(f"  Flags:        {' '.join(extra_cuda_cflags)}")
     print(f"{'='*80}\n")
@@ -104,6 +108,7 @@ def capture_build_metadata(output_dir=None):
             "USE_KV_LUT": USE_KV_LUT,
             "DEBUG_PRINT": DEBUG_PRINT,
             "USE_CP_ASYNC": USE_CP_ASYNC,
+            "USE_WMMA_PV": USE_WMMA_PV,
             "arch": f"sm_{ARCH_LIST.replace('.', '')}",
             "flags": ["-O3", "--use_fast_math", "-lineinfo"],
         },
