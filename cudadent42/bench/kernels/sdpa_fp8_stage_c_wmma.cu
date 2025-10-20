@@ -3,8 +3,12 @@
 #include <mma.h>
 #include <cstdint>
 #include <cmath>
+#include <cstdio>
 
 using namespace nvcuda;
+
+// Debug flag: enable with -DDEBUG_PRINT during compilation
+// #define DEBUG_PRINT 1
 
 // --- Tunables (L4 sm_89, full WMMA) ---
 #define HEAD_DIM 64
@@ -105,6 +109,17 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         sQ[r][d] = __float2half(f);
     }
 
+#ifdef DEBUG_PRINT
+    __syncthreads();
+    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0) {
+        printf("[DEBUG] Q tile loaded (row 0, d=0:5): ");
+        for (int d = 0; d < 5; d++) {
+            printf("%.4f ", __half2float(sQ[0][d]));
+        }
+        printf("\n");
+    }
+#endif
+
     // Init stats and U
     for (int idx = tid; idx < rows_in_tile * D; idx += blockDim.x) {
         int r = idx / D;
@@ -141,6 +156,16 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             sV[n][d] = __float2half(vLUT[v_u8]);
         }
         __syncthreads();
+
+#ifdef DEBUG_PRINT
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
+            printf("[DEBUG] V tile loaded (row 0, d=0:5): ");
+            for (int d = 0; d < 5; d++) {
+                printf("%.4f ", __half2float(sV[0][d]));
+            }
+            printf("\n");
+        }
+#endif
 
         // =========================================
         // WMMA COMPUTE: Q @ K^T → S (32×32)
@@ -183,6 +208,16 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         wmma::store_matrix_sync(&sS[warp_m][warp_n], c_frag, TILE_N, wmma::mem_row_major);
         __syncthreads();
 
+#ifdef DEBUG_PRINT
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
+            printf("[DEBUG] Q@K^T scores (row 0, n=0:5): ");
+            for (int n = 0; n < 5; n++) {
+                printf("%.4f ", __half2float(sS[0][n]));
+            }
+            printf("\n");
+        }
+#endif
+
         // =========================================
         // ONLINE SOFTMAX (per row, scalar path)
         // =========================================
@@ -216,6 +251,18 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
             float rescale = __expf(m_old - m_new);
             float l_new = l_old * rescale + l_add;
 
+#ifdef DEBUG_PRINT
+            if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && r == 0 && warp_id == 0 && lane == 0 && t == 0) {
+                printf("[DEBUG] Softmax (row 0): m_old=%.4f m_new=%.4f l_old=%.4f l_add=%.4f rescale=%.4f\n",
+                       m_old, m_new, l_old, l_add, rescale);
+                printf("[DEBUG] Attention weights P[0:5]: ");
+                for (int n = 0; n < 5; n++) {
+                    printf("%.4f ", S_row[n]);
+                }
+                printf("\n");
+            }
+#endif
+
             // Scale U
             for (int d = lane; d < D; d += 32) {
                 U_smem[r][d] *= rescale;
@@ -242,6 +289,18 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     for (int r = warp_id; r < rows_in_tile; r += NUM_WARPS) {
         float l_final = l_smem[r];
         half* out = Obh + (size_t)(q_start + r) * D;
+        
+#ifdef DEBUG_PRINT
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && r == 0 && warp_id == 0 && lane == 0) {
+            printf("[DEBUG] Final output (row 0): l_final=%.4f\n", l_final);
+            printf("[DEBUG] U_smem[0][0:5] / l_final: ");
+            for (int d = 0; d < 5; d++) {
+                printf("%.4f ", U_smem[0][d] / l_final);
+            }
+            printf("\n");
+        }
+#endif
+        
         for (int d = lane; d < D; d += 32) {
             float o = U_smem[r][d] / l_final;
             out[d] = __float2half(o);
