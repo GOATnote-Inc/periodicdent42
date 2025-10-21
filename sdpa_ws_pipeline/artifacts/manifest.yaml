@@ -1,0 +1,45 @@
+# artifacts/manifest.yaml
+# Filled by scripts/repro.sh on the target machine.
+env:
+  created_utc: "2025-10-21T10:06:03.064570Z"
+  seeds: [0]
+  python: null
+  pytorch: null
+  cuda: null
+  cudnn: null
+  driver: null
+  gpu_name: null
+  sm: null
+  ncu_version: null
+  commit: null
+  repo_sha: "$GIT_SHA_IF_AVAILABLE"
+hardware:
+  gpu: "NVIDIA L4 (expected)"
+  memory_gb: null
+workload:
+  mission_shape: {B: 2, H: 8, S: 512, D: 64}
+  other_shapes:
+    - {name: small, B: 1, H: 8, S: 128, D: 64}
+    - {name: long,  B: 2, H: 8, S: 2048, D: 64}
+bench:
+  iters: 100
+  warmup: 20
+  ci: "95% CI on mean; p50/p90 reported"
+  baselines:
+    A: "PyTorch SDPA (default backend)"
+    B: "PyTorch SDPA (fastest available on platform: flash->mem_efficient->math)"
+artifacts:
+  ncu:
+    baseline: "artifacts/ncu/baseline.ncu-rep"
+    candidates:
+      - "artifacts/ncu/candidate_1.ncu-rep"
+      - "artifacts/ncu/candidate_2.ncu-rep"
+      - "artifacts/ncu/candidate_3.ncu-rep"
+    summary: "artifacts/ncu/summary.json"
+  tune:
+    log: "artifacts/tune/tune_log.csv"
+    topk: "artifacts/tune/topk.json"
+scripts:
+  bench: "scripts/bench.sh"
+  profile: "scripts/profile.sh"
+  repro: "scripts/repro.sh"
