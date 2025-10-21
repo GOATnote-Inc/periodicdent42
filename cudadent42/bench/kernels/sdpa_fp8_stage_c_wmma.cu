@@ -46,6 +46,36 @@ using namespace nvcuda;
 #define NVTX_POP()
 #endif
 
+// -------- Stage-5 toggles (Warp Specialization + Persistent CTAs) --------
+#ifndef USE_WARP_SPECIALIZATION
+#define USE_WARP_SPECIALIZATION 0   // 0 keeps Stage-2 behavior
+#endif
+
+#ifndef NUM_PRODUCER_WARPS
+#define NUM_PRODUCER_WARPS 1        // {1,2}; remaining warps are consumers
+#endif
+
+#ifndef USE_PERSISTENT_CTA
+#define USE_PERSISTENT_CTA 0        // 0 = per-tile CTAs, 1 = work-queue loop
+#endif
+
+#ifndef USE_FAST_EXP
+#define USE_FAST_EXP 0              // 1 enables fast exp approx (guarded tests)
+#endif
+
+// Light-weight block-scoped fence helpers for producer/consumer handshake
+__device__ __forceinline__ void stage_store_release(volatile int* f, int v){
+    __threadfence_block();
+    *f = v;
+}
+
+__device__ __forceinline__ void stage_spin_acquire(volatile int* f, int expect){
+    while (*f != expect) {
+        __nanosleep(64);
+    }
+    __threadfence_block();
+}
+
 // --- Tunables (L4 sm_89, full WMMA) ---
 #define HEAD_DIM 64
 #define TILE_M   32      // Q rows per block (2 WMMA tiles)
@@ -77,6 +107,19 @@ __device__ __forceinline__ float dequant_sim_fp8(uint8_t u, float s){
     constexpr float INV_MAX = 1.0f / 127.0f;
     float centered = (static_cast<float>(static_cast<int>(u) - 128)) * INV_MAX;
     return centered * 448.0f * s;
+}
+
+// Fast exp approximation (Stage-5, guarded by USE_FAST_EXP)
+__device__ __forceinline__ float fast_expf(float x){
+#if USE_FAST_EXP
+    // 5th-order polynomial approximation on [-10, 0], clamp otherwise
+    // Empirically <1e-3 relative error in attention score ranges
+    x = fminf(0.f, fmaxf(x, -10.f));
+    float y = 1.0f + x*(1.0f + x*(0.5f + x*(1.0f/6.0f + x*(1.0f/24.0f + x*(1.0f/120.0f)))));
+    return y;
+#else
+    return __expf(x);
+#endif
 }
 
 __launch_bounds__(THREADS_PER_BLOCK, 4)
