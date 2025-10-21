@@ -1,35 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# One‑click end‑to‑end: bench → tune → profile → report
-# Requires: CUDA GPU, PyTorch (2.1+ recommended), Triton (if using Triton candidates), Nsight Compute CLI
+echo "==== Stage 0: Capture Environment ===="
+python3 "$ROOT/scripts/capture_env.py"
 
-echo "== Repro start =="
-python3 - <<'PY'
-import platform, torch, json, subprocess, os, sys, pathlib, time
-env = {
-  "python": platform.python_version(),
-  "torch": getattr(torch, "__version__", "N/A"),
-  "cuda": getattr(torch.version, "cuda", None),
-  "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "N/A",
-  "sm": list(torch.cuda.get_device_capability(0)) if torch.cuda.is_available() else None,
-}
-pathlib.Path("artifacts").mkdir(exist_ok=True)
-with open("artifacts/ENV.json","w") as f: json.dump(env,f,indent=2)
-print(json.dumps(env, indent=2))
-PY
+echo ""
+echo "==== Stage 1: Benchmark Baselines & Candidates ===="
+bash "$ROOT/scripts/bench.sh"
 
-# 1) Bench baselines + default candidates
-bash scripts/bench.sh
+echo ""
+echo "==== Stage 2: EvoEngineer-Full Autotune ===="
+python3 "$ROOT/scripts/evo_tune.py" --shape "${SHAPE:-2,8,512,64}" --budget "${BUDGET:-128}" --elite_k 6
 
-# 2) EvoEngineer‑Full autotune
-python3 scripts/evo_tune.py || true
+echo ""
+echo "==== Stage 3: NCU Profiling ===="
+bash "$ROOT/scripts/profile.sh"
 
-# 3) Profile with Nsight Compute
-bash scripts/profile.sh || true
+echo ""
+echo "==== Stage 4: Generate Report ===="
+python3 "$ROOT/scripts/summarize.py"
 
-# 4) Build summary report
-python3 scripts/summarize.py
-
-echo "== Repro done =="
-echo "Artifacts: artifacts/*; Report: reports/summary.md"
+echo ""
+echo "✅ Repro complete. See reports/summary.md"

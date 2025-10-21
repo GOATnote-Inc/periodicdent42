@@ -1,71 +1,60 @@
 #!/usr/bin/env python3
-"""
-parse_ncu.py — Import .ncu-rep files and emit a compact JSON summary.
-Captures: SM %, TensorCore %, Achieved occupancy, Reg/thread, L2 hit rate,
-DRAM BW, warp stall breakdown, eligible warps/cycle, kernel time.
-
-Usage:
-  python scripts/parse_ncu.py --in artifacts/ncu/baseline.ncu-rep --name baseline --out artifacts/ncu/summary.json
-"""
-import argparse, json, subprocess, re, os, sys
+import argparse, json, subprocess, csv, io, re, pathlib
 from pathlib import Path
 
-def import_ncu(rep):
-    # Ask Nsight Compute CLI to emit CSV "raw" page for easy parsing
-    cmd = ["ncu", "--import", rep, "--page", "raw"]
-    try:
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        raise SystemExit(f"Failed to parse {rep}: {e.output[-400:]}")
-    return out
+def import_csv(rep:Path):
+    # ncu --import <rep> --csv
+    p = subprocess.run(["/usr/local/cuda/bin/ncu","--import",str(rep),"--csv"], capture_output=True, text=True, check=True)
+    return p.stdout
 
-def extract_metrics(raw):
-    # Heuristics: search for key metrics by counter name
-    # Note: metric names may vary by version; provide fallbacks.
-    def find(metric):
-        m = re.search(rf"^{re.escape(metric)},([0-9eE\.\-]+)", raw, re.MULTILINE)
-        return float(m.group(1)) if m else None
+def pick(metric_rows, key_regex):
+    # return first matching metric's value (float) or None
+    for row in metric_rows:
+        name = row.get("Metric Name","")
+        if re.search(key_regex, name): 
+            try: return float(row.get("Metric Value","").replace("%",""))
+            except: pass
+    return None
 
-    # Try multiple aliases for each metric
-    def first_of(names):
-        for n in names:
-            v = find(n)
-            if v is not None:
-                return v
-        return None
-
-    metrics = {
-        "sm_util_pct": first_of(["sm__throughput.avg.pct_of_peak_sustained_elapsed"]),
-        "tc_util_pct": first_of(["sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_active"]),
-        "achieved_occupancy_pct": first_of(["sm__warps_active.avg.pct_of_peak_sustained_active"]),
-        "reg_per_thread": first_of(["launch__registers_per_thread"]),
-        "l2_hit_rate_pct": first_of(["lts__t_sectors_srcunit_tex_op_read_lookup_hit_rate.pct"]),
-        "dram_bw_pct": first_of(["dram__throughput.avg.pct_of_peak_sustained_elapsed"]),
-        "eligible_warps_per_cycle": first_of(["smsp__warps_eligible_per_cycle_avg"]),
-        "kernel_time_ms": first_of(["gpu__time_duration.sum"]),
-        # Stall breakdown examples
-        "stall_memory_dependency_pct": first_of(["smsp__cycles_active.avg.per_second"]),  # placeholder if specific stall counters unavailable
+def parse_one(rep:Path):
+    csvtxt = import_csv(rep)
+    # NCU CSV contains multiple tables; pick "Summary" metrics rows
+    # We normalize to a list of dicts keyed by 'Metric Name'/'Metric Value'
+    metric_rows=[]
+    reader = csv.reader(io.StringIO(csvtxt))
+    headers=None
+    for r in reader:
+        if len(r)>=2 and r[0]=="Metric Name":
+            headers=r; continue
+        if headers and len(r)==len(headers) and r[0] and r[1]:
+            metric_rows.append(dict(zip(headers,r)))
+    # Derived metrics (best‑effort across arch versions)
+    out = {
+      "sm_util_pct": pick(metric_rows, r"sm__throughput.*pct_of_peak"),
+      "tensor_core_util_pct": pick(metric_rows, r"(hmma|tensor).*sum|tensor.*pct"),
+      "achieved_occupancy_pct": pick(metric_rows, r"achieved_occupancy|Occupancy"),
+      "eligible_warps_per_cycle": pick(metric_rows, r"warps_eligible.*per_cycle"),
+      "l2_hit_rate_pct": pick(metric_rows, r"L2.*hit.*rate|lts__t_sectors.*"),  # heuristic
+      "dram_bw_pct_of_peak": pick(metric_rows, r"dram|mem_global.*pct|sectors.*pct"),
+      "regs_per_thread": pick(metric_rows, r"registers per thread|Reg/Thr"),
+      "kernel_time_us": pick(metric_rows, r"Duration|Time"),
+      "warp_stall_breakdown": {}  # filled below from stall metrics if present
     }
-    return metrics
+    # Aggregate stall metrics (if available)
+    for row in metric_rows:
+        n = row.get("Metric Name","").lower()
+        if "stall" in n and "warp" in n and "pct" in row.get("Metric Value",""):
+            out["warp_stall_breakdown"][row["Metric Name"]] = float(row["Metric Value"].replace("%",""))
+    return out
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="inp", required=True)
-    ap.add_argument("--name", required=True)
+    ap.add_argument("--repdir", required=True)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
-
-    raw = import_ncu(args.inp)
-    m = extract_metrics(raw)
-    summary_path = Path(args.out)
-    if summary_path.exists():
-        data = json.loads(summary_path.read_text())
-    else:
-        data = {"entries": []}
-    data.setdefault("entries", []).append({"name": args.name, "metrics": m})
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(data, indent=2))
-    print(f"Wrote {summary_path}")
-
-if __name__ == "__main__":
+    repdir = Path(args.repdir); out = {}
+    for rep in repdir.glob("*.ncu-rep"):
+        out[rep.stem] = parse_one(rep)
+    Path(args.out).write_text(json.dumps(out, indent=2))
+if __name__=="__main__":
     main()

@@ -1,106 +1,103 @@
 #!/usr/bin/env python3
-"""
-Summarize bench + NCU into reports/summary.md
-- Table: baselines vs top‑3 candidates (latency, speedup×, mem GB (approx), peak GB/s (from NCU), occupancy, TC util)
-- NCU highlights & bottleneck analysis (textual)
-- Autotune search space and convergence (text)
-- Risks + next actions
-"""
-import json, glob, os, statistics, math, shutil
+import json, pathlib, math
 from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+B = ROOT/"artifacts"/"bench"
+N = ROOT/"artifacts"/"ncu"/"summary.json"
+R = ROOT/"reports"; R.mkdir(parents=True, exist_ok=True)
 
-def load_jsons(pat):
-    res = []
-    for p in glob.glob(pat):
-        try:
-            res.append(json.load(open(p)))
-        except Exception:
-            pass
-    return res
-
-def fmt(x, digits=2):
-    return ("%.2f" % x) if isinstance(x,(int,float)) and math.isfinite(x) else "-"
+def rd(p, k): return json.loads((B/p).read_text())[k]
+def exists(p): return (B/p).exists()
 
 def main():
-    Path("reports").mkdir(exist_ok=True)
-    bench = load_jsons("artifacts/bench/*.json")
-    ncu = json.load(open("artifacts/ncu/summary.json")) if os.path.exists("artifacts/ncu/summary.json") else {"entries":[]}
-    tune = json.load(open("artifacts/tune/topk.json")) if os.path.exists("artifacts/tune/topk.json") else {"topk":[]}
+    base_a = json.loads((B/"baseline_a.json").read_text())
+    base_b = json.loads((B/"baseline_b.json").read_text())
 
-    # Build a quick lookup for NCU metrics by name
-    ncu_map = {e["name"]: e["metrics"] for e in ncu.get("entries",[])}
+    rows=[]
+    for fn,tag in [("candidate_stage2.json","Stage2-Baseline"),
+                   ("candidate_ws_p1.json","Stage5-WS-P1"),
+                   ("candidate_ws_p2.json","Stage5-WS-P2")]:
+        if not exists(fn): continue
+        j = json.loads((B/fn).read_text())
+        rows.append({
+          "name": tag,
+          "p50": j["p50_us"],
+          "p90": j["p90_us"],
+          "speedup_a": j["speedup_vs_baseline_a"],
+          "speedup_b": j["speedup_vs_baseline_b"],
+          "mean_abs_err": j["mean_abs_err"],
+          "max_abs_err": j["max_abs_err"],
+          "status": "PASS" if j["max_abs_err"] <= j.get("atol",6e-2) else "FAIL"
+        })
 
-    lines = []
-    lines += ["# SDPA WS — Evaluation Summary", ""]
-    # Environment
-    if os.path.exists("artifacts/ENV.json"):
-        env = json.load(open("artifacts/ENV.json"))
-        lines += ["**Environment**",
-                  f"- Python: {env.get('python')}  |  PyTorch: {env.get('torch')}  |  CUDA: {env.get('cuda')}",
-                  f"- Device: {env.get('device')}  |  SM: {env.get('sm')}",
-                  ""]
-    # Table header
-    lines += ["## Baselines vs Top‑3 Candidates (mission shape)",
-              "",
-              "| Variant | p50 (μs) | Speedup vs A | Speedup vs B | TC util % | Occupancy % | DRAM %peak | Notes |",
-              "|---|---:|---:|---:|---:|---:|---:|---|"]
+    ncu = json.loads(N.read_text()) if N.exists() else {}
+    def linem(name, key):
+        # pick the closest ncu entry for the tag
+        for k in ncu.keys():
+            if name.lower().replace("-","_") in k: 
+                val = ncu[k].get(key)
+                if val is not None:
+                    return f"{val:.1f}" if isinstance(val, (int,float)) else str(val)
+        return "-"
 
-    # Extract mission-shape entries
-    def mission_rows(tag):
-        return [r for r in bench if r["shape"]["name"]=="mission" and r["backend"]==tag]
+    # Build markdown
+    md = []
+    md += [ "# SDPA — Mission Workload Summary",
+            "",
+            "## Top‑line numbers",
+            "",
+            "| Variant | p50 (μs) | p90 (μs) | Speedup× vs Baseline A | vs Baseline B | Mean abs err | Max abs err | Status |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    md.append(f"| Baseline A (math) | {base_a['p50_us']:.2f} | {base_a['p90_us']:.2f} | 1.00× | {base_a['p50_us']/base_b['p50_us']:.2f}× | - | - | REF |")
+    md.append(f"| Baseline B (flash) | {base_b['p50_us']:.2f} | {base_b['p90_us']:.2f} | {base_b['p50_us']/base_a['p50_us']:.2f}× | 1.00× | - | - | REF |")
+    for r in rows:
+        md.append(f"| {r['name']} | {r['p50']:.2f} | {r['p90']:.2f} | **{r['speedup_a']:.2f}×** | {r['speedup_b']:.2f}× | {r['mean_abs_err']:.4f} | {r['max_abs_err']:.4f} | {r['status']} |")
 
-    rows = []
-    for tag,label in [("baseline_a","Baseline A"),("baseline_b","Baseline B"),
-                      ("candidate_triton_ws","Cand: Triton WS"),("candidate_triton_flashlike","Cand: Triton FlashLike"),
-                      ("candidate_cuda_stub","Cand: CUDA Stub")]:
-        rs = mission_rows(tag)
-        if not rs:
-            continue
-        # choose latest (by ts)
-        r = sorted(rs, key=lambda x: x["ts"], reverse=True)[0]
-        name = label
-        p50 = r["latency"]["p50_us"]
-        sA  = r["speedup"]["vs_A"]
-        sB  = r["speedup"]["vs_B"]
-        # NCU mapping (use matching names where possible)
-        if tag=="baseline_a":
-            m = ncu_map.get("baseline", {})
-        elif tag.startswith("candidate_"):
-            idx = {"candidate_triton_ws":1,"candidate_triton_flashlike":2,"candidate_cuda_stub":3}.get(tag, None)
-            m = ncu_map.get(f"candidate_{idx}", {})
-        else:
-            m = {}
-        tc = m.get("tc_util_pct","-")
-        occ = m.get("achieved_occupancy_pct","-")
-        dram = m.get("dram_bw_pct","-")
-        rows.append((name,p50,sA,sB,tc,occ,dram,""))
+    md += ["", "## NCU highlights (best‑effort)",
+           "",
+           "| Variant | SM util % | TC util % | Ach. occ % | Eligible warps/cycle | L2 hit % | DRAM %peak |",
+           "|---|---:|---:|---:|---:|---:|---:|"]
+    for r in rows:
+        name = r["name"]
+        md.append(f"| {name} | {linem(name,'sm_util_pct')} | {linem(name,'tensor_core_util_pct')} | {linem(name,'achieved_occupancy_pct')} | {linem(name,'eligible_warps_per_cycle')} | {linem(name,'l2_hit_rate_pct')} | {linem(name,'dram_bw_pct_of_peak')} |")
 
-    for row in rows:
-        lines.append("| " + " | ".join([str(row[0]), *(fmt(x) for x in row[1:7]), row[7]]) + " |")
-
-    # NCU highlights
-    lines += ["", "## NCU Highlights & Bottlenecks", ""]
-    if ncu_map:
-        for name,m in ncu_map.items():
-            lines += [f"**{name}** — TC {fmt(m.get('tc_util_pct'))}% | Occ {fmt(m.get('achieved_occupancy_pct'))}% | DRAM {fmt(m.get('dram_bw_pct'))}% | Reg/thread {fmt(m.get('reg_per_thread'))}"]
+    # Risks + next actions (auto‑filled if <15×)
+    achieved = max([r["speedup_a"] for r in rows]) if rows else 0.0
+    status = "✅ **Target met (≥15× vs Baseline A)**" if achieved >= 15.0 else f"⚠️  **Target not met** (best {achieved:.2f}×)"
+    md += ["", f"**Status:** {status}", ""]
+    if achieved < 15.0:
+        md += ["### Bottlenecks (from NCU, heuristic):",
+               "- Top warp stalls by percentage (see artifacts/ncu/summary.json).",
+               "- Tensor Core under‑utilization or DRAM %peak too high indicates memory‑bound.",
+               "",
+               "### Next 3 levers (expected impact if bottlenecked):",
+               "1) Increase `NUM_STAGES` / `PREFETCH` depth to hide latency (**~5–15%**).",
+               "2) Try `PROD_WARPS=1→2` or smaller `BLOCK_K` to balance register pressure vs overlap (**~3–10%**).",
+               "3) Re‑layout KV to improve L2 locality (`KV_LAYOUT=interleaved`) (**~5–12%**).",
+               "",
+               "### Files Generated:",
+               f"- `artifacts/bench/*.json` — Performance data (p50/p90/CI)",
+               f"- `artifacts/ncu/*.ncu-rep` — Raw NCU profiles",
+               f"- `artifacts/ncu/summary.json` — Parsed NCU metrics",
+               f"- `artifacts/tune/tune_log.csv` — EvoEngineer-Full search log",
+               f"- `artifacts/tune/topk.json` — Top-6 elites",
+               f"- `artifacts/manifest.yaml` — Environment snapshot",
+        ]
     else:
-        lines += ["(No NCU data yet. Run `bash scripts/profile.sh`.)"]
+        md += ["### 🎉 Congratulations!",
+               f"Your kernel achieved **{achieved:.2f}× speedup** vs PyTorch math baseline.",
+               "",
+               "### Files Generated:",
+               f"- `artifacts/bench/*.json` — Performance data (p50/p90/CI)",
+               f"- `artifacts/ncu/*.ncu-rep` — Raw NCU profiles",
+               f"- `artifacts/ncu/summary.json` — Parsed NCU metrics",
+               f"- `artifacts/tune/tune_log.csv` — EvoEngineer-Full search log",
+               f"- `artifacts/tune/topk.json` — Top-6 elites",
+               f"- `artifacts/manifest.yaml` — Environment snapshot",
+        ]
 
-    # Autotune
-    lines += ["", "## Autotune Summary", ""]
-    if os.path.exists("artifacts/tune/tune_log.csv"):
-        lines += ["See `artifacts/tune/tune_log.csv` for full log; `artifacts/tune/topk.json` lists the best configs."]
-    else:
-        lines += ["(No autotune results yet. Run `python scripts/evo_tune.py`.)"]
+    (R/"summary.md").write_text("\n".join(md))
+    print(f"✅ Report written to {R/'summary.md'}")
 
-    # Risks/Next Actions
-    lines += ["", "## Risks & Next Actions",
-              "- Ensure correctness tolerances: atol=0.06, rtol=0.02.",
-              "- If <15× vs Baseline A, prioritize: (1) tighten QK^T tiling; (2) increase stages/prefetch; (3) adjust num_warps for occupancy.",
-              ""]
-
-    Path("reports/summary.md").write_text("\n".join(lines), encoding="utf-8")
-    print("Wrote reports/summary.md")
-
-if __name__ == "__main__":
+if __name__=="__main__":
     main()

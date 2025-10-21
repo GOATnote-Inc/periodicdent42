@@ -1,22 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "$ROOT/artifacts/bench"
 
-# Hardened benchmark driver for SDPA candidates.
-# Produces p50/p90 + 95% CI JSON under artifacts/bench/
+# Mission-shaped dims (adjust if needed)
+SHAPE="${SHAPE:-2,8,512,64}"
+WARMUP="${WARMUP:-10}"
+ITERS="${ITERS:-100}"
 
-BACKENDS=${BACKENDS:-"baseline_a baseline_b candidate_triton_ws candidate_triton_flashlike candidate_cuda_stub"}
-SHAPES=${SHAPES:-"small mission long"}
-ITERS=${ITERS:-100}
-WARMUP=${WARMUP:-20}
-
-mkdir -p artifacts/bench
-
-echo "Running kbench..."
-for backend in $BACKENDS; do
-  for shape in $SHAPES; do
-    echo "==> backend=$backend shape=$shape iters=$ITERS warmup=$WARMUP"
-    python3 scripts/kbench.py --backend "$backend" --shape "$shape" --iters "$ITERS" --warmup "$WARMUP" --out "artifacts/bench/${backend}_${shape}.json" || true
-  done
-done
-
-echo "DONE. See artifacts/bench/*.json"
+python3 "$ROOT/scripts/kbench.py" --shape "$SHAPE" --warmup "$WARMUP" --iters "$ITERS" \
+  --variants candidate_triton_flashlike candidate_cuda_stub candidate_triton_ws
