@@ -195,6 +195,12 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     __shared__ alignas(16) float sPV_frag[NUM_WARPS][WMMA_M][WMMA_N]; // +4 KB
 #endif
 
+#if USE_WARP_SPECIALIZATION
+    // Producer/consumer handshake flags for double-buffering (Stage-5)
+    __shared__ volatile int kv_ready[2];      // Producer sets to 1 when K/V tile ready
+    __shared__ volatile int kv_consumed[2];   // Consumer sets to 1 when tile consumed
+#endif
+
     // Total SMEM: 
     //   2-stage cp.async (NUM_STAGES=2):
     //     USE_WMMA_PV=0: USE_KV_LUT ? 24.5 KB : 22.5 KB (direct dequant saves 2 KB)
@@ -276,6 +282,18 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 
     const int nTiles = (S + TILE_N - 1) / TILE_N;
 
+#if USE_WARP_SPECIALIZATION
+    // Warp role detection (Stage-5)
+    const bool is_producer = (warp_id < NUM_PRODUCER_WARPS);
+    
+    // Initialize handshake flags (double-buffer: buf = t & 1)
+    if (tid == 0) {
+        kv_ready[0] = kv_ready[1] = 0;      // No tiles ready yet
+        kv_consumed[0] = kv_consumed[1] = 1; // Buffers available for writing
+    }
+    __syncthreads();
+#endif
+
 #if USE_CP_ASYNC
     // ==========================================
     // cp.async Multi-Stage Pipeline (2 or 3 stages)
@@ -327,6 +345,99 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
     #endif
     
     for (int t = 0; t < nTiles; ++t) {
+#if USE_WARP_SPECIALIZATION
+        // ==================================================================
+        // Stage-5: Warp Specialization (Producer/Consumer Split)
+        // ==================================================================
+        const int buf = t & 1;  // Double-buffer index (0 or 1)
+        
+        NVTX_RANGE("tile_iter_ws");
+        
+        // Compute tile bounds (used by both producer and consumer)
+        const int kv_start = t * TILE_N;
+        const int kv_len   = min(TILE_N, S - kv_start);
+        
+        // ====== PRODUCER WARPS ======
+        if (is_producer) {
+            // Wait for consumer to finish using this buffer
+            if (lane == 0) {
+                stage_spin_acquire(&kv_consumed[buf], 1);
+            }
+            __syncwarp();
+            
+            // Issue async copy for K/V tile
+            if (t < nTiles) {
+                cp_async_tile_u8(t, buf);
+            }
+            __pipeline_wait_prior(0);  // Ensure visibility within block
+            
+            // Dequantize u8 → half (sK_u8[buf] → sKT, sV_u8[buf] → sV)
+            // Use existing vectorized dequant logic
+            const int lanes_per_vec = 4;
+            const int lane_group    = lane / lanes_per_vec;
+            const int lane_in_group = lane % lanes_per_vec;
+            const int elems_per_vec = 16;
+            
+            for (int n = warp_id; n < kv_len; n += NUM_PRODUCER_WARPS) {
+                for (int d0 = lane_group * elems_per_vec; d0 < D; d0 += (32/lanes_per_vec)*elems_per_vec) {
+                    int valid = min(D - d0, elems_per_vec);
+                    uint4 vK = {0,0,0,0}, vV = {0,0,0,0};
+                    const uint4* pK = reinterpret_cast<const uint4*>(&sK_u8[buf][n][d0]);
+                    const uint4* pV = reinterpret_cast<const uint4*>(&sV_u8[buf][n][d0]);
+                    if (valid == elems_per_vec && ((reinterpret_cast<uintptr_t>(pK) % 16) == 0)) {
+                        vK = *pK; vV = *pV;
+                    }
+                    #pragma unroll
+                    for (int i = 0; i < 4 && (lane_in_group*4 + i) < valid; ++i) {
+                        int d = d0 + lane_in_group*4 + i;
+                        if (d < D) {
+                            uint32_t packK = reinterpret_cast<uint32_t*>(&vK)[lane_in_group];
+                            uint32_t packV = reinterpret_cast<uint32_t*>(&vV)[lane_in_group];
+                            uint8_t ku = (packK >> (i*8)) & 0xFF;
+                            uint8_t vu = (packV >> (i*8)) & 0xFF;
+                            float kf = dequant_sim_fp8(ku, k_s);
+                            float vf = dequant_sim_fp8(vu, v_s);
+                            sKT[n][d] = __float2half(kf);
+                            sV[n][d]  = __float2half(vf);
+                        }
+                    }
+                }
+            }
+            
+            // Zero-pad partial tiles
+            for (int idx = lane + kv_len * D; idx < TILE_N * D; idx += 32) {
+                int n = idx / D;
+                int d = idx % D;
+                if (n < TILE_N && d < D) {
+                    sKT[n][d] = __float2half(0.f);
+                    sV[n][d]  = __float2half(0.f);
+                }
+            }
+            
+            // Signal K/V ready
+            if (lane == 0) {
+                kv_consumed[buf] = 0;  // Mark buffer as in-use
+                stage_store_release(&kv_ready[buf], 1);
+            }
+            __syncwarp();
+        }
+        // ====== CONSUMER WARPS ======
+        else {
+            // Wait for producer to finish K/V tile
+            if (lane == 0) {
+                stage_spin_acquire(&kv_ready[buf], 1);
+            }
+            __syncwarp();
+        }
+        
+        // Block-wide sync to ensure sKT/sV visible to all warps before WMMA
+        // After this, ALL warps (including producers) participate in compute
+        __syncthreads();
+        
+#else
+        // ==================================================================
+        // Stage-2: Original Pipeline (no warp specialization)
+        // ==================================================================
         // Ring-buffer indexing for multi-stage pipeline
         const int read_stage  = t % NUM_STAGES;
         const int write_stage = (t + (NUM_STAGES - 1)) % NUM_STAGES;
@@ -422,6 +533,7 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
         }
         NVTX_POP();  // u8_to_half_dequant
         __syncthreads();
+#endif  // USE_WARP_SPECIALIZATION (closes Stage-2 dequant path)
 
 #ifdef DEBUG_PRINT
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && tid == 0 && t == 0) {
@@ -769,7 +881,17 @@ __global__ void sdpa_fp8_stage_c_wmma_kernel(
 #endif
         
         NVTX_POP();  // tile_iter
+        
+#if USE_WARP_SPECIALIZATION
+        // Consumer marks buffer as consumed so producer can reuse it
+        if (!is_producer && lane == 0) {
+            kv_ready[buf] = 0;
+            stage_store_release(&kv_consumed[buf], 1);
+        }
+        __syncwarp();
+#else
         __syncthreads();
+#endif
     }
     
     // Ensure all outstanding cp.async operations are complete
