@@ -145,8 +145,9 @@ flashcore_fused_wmma_kernel(
     
     // Keep QK scores in FP32 for robust WMMA store + stable softmax numerics
     __shared__ alignas(16) float sS_f32[TILE_M][TILE_N];             // 32×32×4B = 4 KB
-    // P as FP16 (with clamped softmax for stability)
-    __shared__ alignas(16) half sP[TILE_M][TILE_N];                  // 32×32×2B = 2 KB
+    // P as FP32 for numerical stability (Phase 2A: Fix precision!)
+    __shared__ alignas(16) float sP[TILE_M][TILE_N];                 // 32×32×4B = 4 KB
+    __shared__ alignas(16) half sP_fp16[TILE_M][TILE_N];             // 32×32×2B = 2 KB (conversion buffer for WMMA)
     
     // Per-row running statistics for online softmax
     __shared__ alignas(16) float m_smem[TILE_M];                      // 32×4B = 128 B
@@ -383,13 +384,13 @@ flashcore_fused_wmma_kernel(
                 float s = sS_f32[m][n];
                 // Clamp the exponent argument for numerical stability
                 float exp_arg = fminf(20.0f, fmaxf(-20.0f, s - m_new));
-                float p = expf(exp_arg);  // Unnormalized
-                sP[m][n] = __float2half(p);
+                float p = expf(exp_arg);  // Unnormalized (FP32!)
+                sP[m][n] = p;  // Store as FP32 for precision
             }
             
             // Zero out invalid columns
             for (int n = kv_len; n < TILE_N; ++n) {
-                sP[m][n] = __float2half(0.0f);
+                sP[m][n] = 0.0f;
             }
         }
         
@@ -399,7 +400,7 @@ flashcore_fused_wmma_kernel(
         float uniform_val = 1.0f / S;
         for (int m = tid; m < rows_in_tile; m += THREADS_PER_BLOCK) {
             for (int n = 0; n < kv_len; ++n) {
-                sP[m][n] = __float2half(uniform_val);
+                sP[m][n] = uniform_val;  // FP32
             }
             l_smem[m] = 1.0f;
         }
@@ -412,12 +413,22 @@ flashcore_fused_wmma_kernel(
                 const int m = idx / kv_len;
                 const int n = idx % kv_len;
                 const size_t out_offset = (size_t)(query_start + m) * D + n;
-                O_bh[out_offset] = sP[m][n];
+                O_bh[out_offset] = __float2half(sP[m][n]);  // Convert FP32 to FP16 for output
             }
         }
         __syncthreads();
         return;
 #endif
+        
+        // Convert FP32 P to FP16 for WMMA
+        #pragma unroll 4
+        for (int idx = tid; idx < TILE_M * TILE_N; idx += THREADS_PER_BLOCK) {
+            const int m = idx / TILE_N;
+            const int n = idx % TILE_N;
+            sP_fp16[m][n] = __float2half(sP[m][n]);
+        }
+        
+        __syncthreads();
         
         // ========================================
         // WMMA: P @ V -> per-warp partials (atomic-free)
@@ -439,7 +450,7 @@ flashcore_fused_wmma_kernel(
                 
                 if (k < kv_end_tile) {
                     // Load P[warp_m_start:+16, k:+16]
-                    wmma::load_matrix_sync(a_frag_pv, &sP[warp_m_start][k], TILE_N);
+                    wmma::load_matrix_sync(a_frag_pv, &sP_fp16[warp_m_start][k], TILE_N);
                     
                     // Load V[k:+16, d_tile*16:+16]
                     wmma::load_matrix_sync(b_frag_pv, &sV[k][d_tile * WMMA_N], HEAD_DIM_SMEM);
