@@ -280,7 +280,8 @@ __device__ __forceinline__ void prefetch_v_tile(
     }
 }
 
-__device__ __forceinline__ void mma_pv_accumulate(const half* p_tile, const half* v_tile, float* accum) {
+__device__ __forceinline__ void mma_pv_accumulate(
+    const half* p_tile, const half* v_tile, float* accum, bool first_tile) {
     const int warp_id = threadIdx.x / kWarpSize;
     const int warp_m = warp_id / 4;
     const int warp_n = warp_id % 4;
@@ -292,8 +293,17 @@ __device__ __forceinline__ void mma_pv_accumulate(const half* p_tile, const half
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> b_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::accumulator, kWmmaM, kWmmaN, kWmmaK, float> c_frag;
 
-    nvcuda::wmma::fill_fragment(c_frag, 0.0f);
+    float* dst = accum + tile_m * kTileD + tile_d;
 
+    // Sequential accumulation: load existing values or initialize
+    if (first_tile) {
+        nvcuda::wmma::fill_fragment(c_frag, 0.0f);
+    } else {
+        // Load existing accumulator (stored in row-major)
+        nvcuda::wmma::load_matrix_sync(c_frag, dst, kTileD, nvcuda::wmma::mem_row_major);
+    }
+
+    // Compute P_tile @ V_tile and accumulate into c_frag
     #pragma unroll
     for (int k = 0; k < kTileN; k += kWmmaK) {
         const half* p_ptr = p_tile + tile_m * kTileN + k;
@@ -303,13 +313,8 @@ __device__ __forceinline__ void mma_pv_accumulate(const half* p_tile, const half
         nvcuda::wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
     }
 
-    // Accumulate into shared memory with atomics
-    float* dst = accum + tile_m * kTileD + tile_d;
-    for (int i = 0; i < c_frag.num_elements; ++i) {
-        int row = i / kWmmaN;  // 16
-        int col = i % kWmmaN;
-        atomicAdd(&dst[row * kTileD + col], c_frag.x[i]);
-    }
+    // Store accumulated result back
+    nvcuda::wmma::store_matrix_sync(dst, c_frag, kTileD, nvcuda::wmma::mem_row_major);
 }
 
 __global__ void pv_kernel(
@@ -339,11 +344,7 @@ __global__ void pv_kernel(
     const half* v_base = V + v_offset;
     half* o_base = O + ((batch_idx * H + head_idx) * S + row_start) * D + col_start;
 
-    for (int idx = threadIdx.x; idx < kTileM * kTileD; idx += kThreadsPerBlock) {
-        shared.accum[idx] = 0.0f;
-    }
-    __syncthreads();
-
+    // No need to zero accumulator - first tile will initialize, subsequent tiles will load
     const int preload = kv_tiles < kStages ? kv_tiles : kStages;
     for (int stage = 0; stage < preload; ++stage) {
         const int kv_start = stage * kTileN;
@@ -362,7 +363,7 @@ __global__ void pv_kernel(
         half* p_tile = &shared.p_tiles[stage][0];
         half* v_tile = &shared.v_tiles[stage][0];
 
-        mma_pv_accumulate(p_tile, v_tile, &shared.accum[0]);
+        mma_pv_accumulate(p_tile, v_tile, &shared.accum[0], tile == 0);
         __syncthreads();
 
         const int next_tile = tile + kStages;
