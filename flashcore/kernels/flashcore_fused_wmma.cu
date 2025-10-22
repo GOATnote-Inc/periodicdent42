@@ -145,6 +145,7 @@ flashcore_fused_wmma_kernel(
     
     // Keep QK scores in FP32 for robust WMMA store + stable softmax numerics
     __shared__ alignas(16) float sS_f32[TILE_M][TILE_N];             // 32×32×4B = 4 KB
+    // P as FP16 (with clamped softmax for stability)
     __shared__ alignas(16) half sP[TILE_M][TILE_N];                  // 32×32×2B = 2 KB
     
     // Per-row running statistics for online softmax
@@ -374,13 +375,15 @@ flashcore_fused_wmma_kernel(
         
         __syncthreads();
         
-        // Materialize P (unnormalized probabilities)
+        // Materialize P (unnormalized probabilities) with clamped exp for stability
         for (int m = tid; m < rows_in_tile; m += THREADS_PER_BLOCK) {
             float m_new = m_smem[m];
             
             for (int n = 0; n < kv_len; ++n) {
                 float s = sS_f32[m][n];
-                float p = expf(s - m_new);  // Unnormalized
+                // Clamp the exponent argument for numerical stability
+                float exp_arg = fminf(20.0f, fmaxf(-20.0f, s - m_new));
+                float p = expf(exp_arg);  // Unnormalized
                 sP[m][n] = __float2half(p);
             }
             
