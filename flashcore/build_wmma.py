@@ -12,9 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def build_extension(verbose: bool = False):
     sources = [
-        ROOT / "flashcore" / "flashcore_bindings.cpp",
-        ROOT / "flashcore" / "flashcore_v6_wmma_qkt.cu",
-        ROOT / "flashcore" / "flashcore_v7_1_wmma_pv.cu",
+        ROOT / "flashcore" / "flashcore_unified.cu",
     ]
     extra_include_paths = [str(ROOT / "flashcore")]
     extra_cflags = ["-O3", "-std=c++17"]
