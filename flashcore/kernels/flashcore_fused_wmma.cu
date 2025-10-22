@@ -154,8 +154,8 @@ flashcore_fused_wmma_kernel(
     // Q tile: pre-scaled by 1/sqrt(D) for direct WMMA usage
     __shared__ alignas(16) half sQ[TILE_M][HEAD_DIM_SMEM];           // 32×80×2B
     
-    // K tile TRANSPOSED: [D][N] so K^T is naturally represented
-    __shared__ alignas(16) half sKT[HEAD_DIM_SMEM][TILE_N];          // 80×32×2B (transposed!)
+    // K tile as [N][D]; WMMA sees K^T via col_major load (no physical transpose)
+    __shared__ alignas(16) half sKT[TILE_N][HEAD_DIM_SMEM];          // 32×80×2B
     __shared__ alignas(16) half sV[TILE_N][HEAD_DIM_SMEM];           // 32×80×2B
     
     // Keep QK scores in FP32: robust WMMA store + stable softmax numerics
@@ -173,10 +173,9 @@ flashcore_fused_wmma_kernel(
     
     // ========================================
     // Load Q tile (staged once, reused across all K/V tiles)
-    // Pre-scale by 1/sqrt(D) to eliminate multiply in QK accumulation
+    // Pre-scale by softmax_scale to eliminate multiply in QK accumulation
     // ========================================
-    const float inv_sqrt_d = 1.0f / sqrtf((float)D);
-    const half scale_half = __float2half(inv_sqrt_d);
+    const half scale_half = __float2half(softmax_scale);
     
     for (int idx = tid; idx < rows_in_tile * D; idx += THREADS_PER_BLOCK) {
         const int m = idx / D;          // row index within this M-tile
@@ -220,11 +219,11 @@ flashcore_fused_wmma_kernel(
         // ========================================
         // Load K, V tiles
         // ========================================
-        // Load K TRANSPOSED: Store as [D][N] so K^T is naturally represented
+        // Load K as [N][D] (row-major buffer). WMMA B col_major will view it as K^T.
         for (int idx = tid; idx < kv_len * D; idx += THREADS_PER_BLOCK) {
             const int n = idx / D;   // sequence index within this N-tile
             const int d = idx % D;   // head dimension
-            sKT[d][n] = K_bh[(size_t)(kv_start + n) * D + d];  // Transpose on load!
+            sKT[n][d] = K_bh[(size_t)(kv_start + n) * D + d];
         }
         
         // Load V (row-major)
@@ -234,17 +233,11 @@ flashcore_fused_wmma_kernel(
             sV[n][d] = V_bh[(size_t)(kv_start + n) * D + d];
         }
         
-        // Zero-pad sKT for partial tiles (sKT is [D][N])
-        for (int idx = tid + kv_len * D; idx < HEAD_DIM_SMEM * TILE_N; idx += THREADS_PER_BLOCK) {
-            const int d = idx / TILE_N;
-            const int n = idx % TILE_N;
-            sKT[d][n] = __float2half(0.0f);
-        }
-        
-        // Zero-pad sV (still [N][D])
+        // Zero-pad sKT for partial tiles (sKT is [N][D])
         for (int idx = tid + kv_len * D; idx < TILE_N * HEAD_DIM_SMEM; idx += THREADS_PER_BLOCK) {
             const int n = idx / HEAD_DIM_SMEM;
             const int d = idx % HEAD_DIM_SMEM;
+            sKT[n][d] = __float2half(0.0f);
             sV[n][d]  = __float2half(0.0f);
         }
         
@@ -254,7 +247,7 @@ flashcore_fused_wmma_kernel(
         // WMMA: Q @ K^T -> c_frag (scores)
         // ========================================
         wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag_qk;
-        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag_qk;  // Changed to row_major!
+        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag_qk;
         wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag_qk;
         
         wmma::fill_fragment(c_frag_qk, 0.0f);
@@ -263,7 +256,6 @@ flashcore_fused_wmma_kernel(
         const bool warp_valid = (warp_m_start < rows_in_tile) && (warp_n_start < kv_len);
         
         // WMMA: Q @ K^T -> S (Q is pre-scaled, so result is already scaled)
-        // sKT is [D][N], so &sKT[k][warp_n_start] points to K^T[k:k+16, warp_n:warp_n+16]
         if (warp_valid) {
             // Accumulate over K dimension in chunks of WMMA_K=16
             #pragma unroll
@@ -271,14 +263,13 @@ flashcore_fused_wmma_kernel(
                 // Load Q[warp_m_start:warp_m_start+16, k:k+16] (row-major, pre-scaled)
                 wmma::load_matrix_sync(a_frag_qk, &sQ[warp_m_start][k], HEAD_DIM_SMEM);
                 
-                // Load K^T[k:k+16, warp_n_start:warp_n_start+16]
-                // sKT is [D][N], so this loads the correct K^T slice
-                wmma::load_matrix_sync(b_frag_qk, &sKT[k][warp_n_start], TILE_N);  // ldm = TILE_N!
+                // Load K^T[k:k+16, warp_n_start:warp_n_start+16] as col_major view from sKT[N][D]
+                // Pass ldm = HEAD_DIM_SMEM (row stride in sKT)
+                wmma::load_matrix_sync(b_frag_qk, &sKT[warp_n_start][k], HEAD_DIM_SMEM);
                 
                 // Accumulate: c_frag_qk += a_frag_qk @ b_frag_qk
                 wmma::mma_sync(c_frag_qk, a_frag_qk, b_frag_qk, c_frag_qk);
             }
-            // No softmax_scale multiply needed - Q was pre-scaled!
         }
         
         __syncwarp();
@@ -480,7 +471,7 @@ flashcore_fused_wmma_kernel(
         
         float u_val = U_smem[m][d];
         float l_val = l_smem[m];
-        float o_val = u_val / l_val;
+        float o_val = u_val / fmaxf(l_val, 1e-6f);  // Guard against pathological l=0
         
         O_bh[(size_t)(query_start + m) * D + d] = __float2half(o_val);
     }
