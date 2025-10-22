@@ -31,6 +31,11 @@ using namespace nvcuda;
 #define DEBUG_PV_ONLY 0
 #endif
 
+// Vectorized 128-bit loads (8 halfs per transaction)
+#ifndef USE_VLOAD
+#define USE_VLOAD 1
+#endif
+
 #define HEAD_DIM 64
 #define TILE_M   32      // Query rows per CTA
 #define TILE_N   32      // Key/Value rows per CTA
@@ -52,6 +57,16 @@ static_assert(TILE_N % 16 == 0, "TILE_N must be multiple of 16 for WMMA");
 #define WMMA_M 16
 #define WMMA_N 16
 #define WMMA_K 16
+
+#if USE_VLOAD
+static_assert(HEAD_DIM % 8 == 0, "Vectorized loads require D % 8 == 0");
+
+// Vectorized load helper: Copy 16 bytes (8 halfs) as a single transaction
+template <typename T>
+__device__ __forceinline__ void vload_int4(T* __restrict__ dst, const T* __restrict__ src) {
+    *reinterpret_cast<int4*>(dst) = *reinterpret_cast<const int4*>(src);
+}
+#endif
 
 // Warp reduction helpers
 __device__ __forceinline__ float warp_reduce_max(float v) {
@@ -169,7 +184,11 @@ flashcore_fused_wmma_kernel(
     // Output accumulator (unnormalized)
     __shared__ alignas(16) float U_smem[TILE_M][HEAD_DIM_SMEM];      // 32×80×4B
     
-    // Total SMEM: ~32 KB (well within 48 KB limit)
+    // Per-(warp_m, warp_n) partial 16×16 PV tiles in FP32 (atomic-free merge)
+    // Layout: [2 warp_m][2 warp_n][16 rows][16 cols] = 4 * 256 floats = 4 KiB
+    __shared__ alignas(16) float sU_part[2][2][WMMA_M][WMMA_N];
+    
+    // Total SMEM: ~36 KB (well within 48 KB limit)
     
     // ========================================
     // Load Q tile (staged once, reused across all K/V tiles)
@@ -177,12 +196,22 @@ flashcore_fused_wmma_kernel(
     // ========================================
     const half scale_half = __float2half(softmax_scale);
     
-    for (int idx = tid; idx < rows_in_tile * D; idx += THREADS_PER_BLOCK) {
-        const int m = idx / D;          // row index within this M-tile
-        const int d = idx % D;          // head dimension
-        half q = Q_bh[(size_t)(query_start + m) * D + d];
-        sQ[m][d] = __hmul(q, scale_half);  // ← Pre-scale here (eliminates QK hot-path multiply)
+    // Stage Q (pre-scaled). Vectorize when aligned.
+#if USE_VLOAD
+    for (int idx = tid; idx < rows_in_tile * (D/8); idx += THREADS_PER_BLOCK) {
+        const int m = idx / (D/8);
+        const int dv = idx % (D/8);
+        // load 8 half, then scale each element once in smem
+        vload_int4(&sQ[m][dv*8], &Q_bh[((size_t)(query_start + m) * D) + dv*8]);
+        #pragma unroll
+        for (int t = 0; t < 8; ++t) sQ[m][dv*8 + t] = __hmul(sQ[m][dv*8 + t], scale_half);
     }
+#else
+    for (int idx = tid; idx < rows_in_tile * D; idx += THREADS_PER_BLOCK) {
+        const int m = idx / D, d = idx % D;
+        sQ[m][d] = __hmul(Q_bh[(size_t)(query_start + m) * D + d], scale_half);
+    }
+#endif
     
     // Zero-pad Q for partial tiles
     for (int idx = tid + rows_in_tile * D; idx < TILE_M * HEAD_DIM_SMEM; idx += THREADS_PER_BLOCK) {
@@ -219,19 +248,34 @@ flashcore_fused_wmma_kernel(
         // ========================================
         // Load K, V tiles
         // ========================================
-        // Load K as [N][D] (row-major buffer). WMMA B col_major will view it as K^T.
+        // Load K as [N][D]; try 128-bit vectorized copies when aligned
+#if USE_VLOAD
+        // copy 8 halfs (16B) per step
+        for (int idx = tid; idx < kv_len * (D/8); idx += THREADS_PER_BLOCK) {
+            const int n = idx / (D/8);
+            const int dv = idx % (D/8);
+            vload_int4(&sKT[n][dv*8], &K_bh[((size_t)(kv_start + n) * D) + dv*8]);
+        }
+#else
         for (int idx = tid; idx < kv_len * D; idx += THREADS_PER_BLOCK) {
-            const int n = idx / D;   // sequence index within this N-tile
-            const int d = idx % D;   // head dimension
+            const int n = idx / D, d = idx % D;
             sKT[n][d] = K_bh[(size_t)(kv_start + n) * D + d];
         }
+#endif
         
         // Load V (row-major)
+#if USE_VLOAD
+        for (int idx = tid; idx < kv_len * (D/8); idx += THREADS_PER_BLOCK) {
+            const int n = idx / (D/8);
+            const int dv = idx % (D/8);
+            vload_int4(&sV[n][dv*8], &V_bh[((size_t)(kv_start + n) * D) + dv*8]);
+        }
+#else
         for (int idx = tid; idx < kv_len * D; idx += THREADS_PER_BLOCK) {
-            const int n = idx / D;
-            const int d = idx % D;
+            const int n = idx / D, d = idx % D;
             sV[n][d] = V_bh[(size_t)(kv_start + n) * D + d];
         }
+#endif
         
         // Zero-pad sKT for partial tiles (sKT is [N][D])
         for (int idx = tid + kv_len * D; idx < TILE_N * HEAD_DIM_SMEM; idx += THREADS_PER_BLOCK) {
@@ -443,17 +487,29 @@ flashcore_fused_wmma_kernel(
                     wmma::mma_sync(c_frag_pv, a_frag_pv, b_frag_pv, c_frag_pv);
                 }
                 
-                // Accumulate c_frag_pv into U_smem (using LUT for correct mapping)
-                // Atomic still needed because multiple warps may write to overlapping rows
-                for (int i = 0; i < c_frag_pv.num_elements; ++i) {
-                    int frag_row = WMMA_ACCUM_LUT[lane_id][i][0];
-                    int frag_col = WMMA_ACCUM_LUT[lane_id][i][1];
-                    
-                    int r_global = warp_m_start + frag_row;
-                    int d_global = d_tile * WMMA_N + frag_col;
-                    
+                // Store this warp's 16×16 partial into its private scratch
+                // One warp per (warp_m, warp_n) writes a unique slice → no overlap
+                wmma::store_matrix_sync(&sU_part[warp_m][warp_n][0][0],
+                                        c_frag_pv, WMMA_N, wmma::mem_row_major);
+            }
+        }
+        
+        __syncthreads();
+        
+        // Atomic-free merge: warp_n==0 sums both halves and writes to U_smem
+        if (warp_valid && warp_n == 0) {
+            const int num_d_tiles = HEAD_DIM / WMMA_N;  // 64 / 16 = 4
+            
+            for (int d_tile = 0; d_tile < num_d_tiles; ++d_tile) {
+                // lanes cooperatively write 16×16
+                for (int i = lane_id; i < WMMA_M * WMMA_N; i += 32) {
+                    const int r = i / WMMA_N;
+                    const int c = i % WMMA_N;
+                    float sum = sU_part[warp_m][0][r][c] + sU_part[warp_m][1][r][c];
+                    const int r_global = warp_m_start + r;
+                    const int d_global = d_tile * WMMA_N + c;
                     if (r_global < rows_in_tile && d_global < HEAD_DIM) {
-                        atomicAdd(&U_smem[r_global][d_global], c_frag_pv.x[i]);
+                        U_smem[r_global][d_global] += sum; // no atomics needed
                     }
                 }
             }
