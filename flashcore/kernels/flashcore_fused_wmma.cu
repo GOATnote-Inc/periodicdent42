@@ -458,11 +458,11 @@ flashcore_fused_wmma_kernel(
         // WMMA: P @ V -> U (output accumulation)
         // Partition K (the N dimension) across warp_n to avoid double-counting
         // ========================================
-        if (warp_valid) {
-            // Each warp computes 16×16 output for each D chunk
-            const int num_d_tiles = HEAD_DIM / WMMA_N;  // 64 / 16 = 4
-            
-            for (int d_tile = 0; d_tile < num_d_tiles; ++d_tile) {
+        // Each warp computes 16×16 output for each D chunk
+        const int num_d_tiles = HEAD_DIM / WMMA_N;  // 64 / 16 = 4
+        
+        for (int d_tile = 0; d_tile < num_d_tiles; ++d_tile) {
+            if (warp_valid) {
                 wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag_pv;
                 wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag_pv;
                 wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag_pv;
@@ -474,17 +474,17 @@ flashcore_fused_wmma_kernel(
                 const int kv_end = min(TILE_N, kv_len);
                 const int k_begin = warp_n * WMMA_K;  // {0, 16} for warp_n ∈ {0, 1}
                 
-                if (k_begin >= kv_end) continue;  // Tail tile: warp_n==1 may have no work
-                
-                for (int k = k_begin; k < kv_end; k += (2 * WMMA_K)) {  // Stride by 2*WMMA_K=32
-                    // Load P[warp_m_start:warp_m_start+16, k:k+16]
-                    wmma::load_matrix_sync(a_frag_pv, &sP[warp_m_start][k], TILE_N);
-                    
-                    // Load V[k:k+16, d_tile*16:(d_tile+1)*16]
-                    wmma::load_matrix_sync(b_frag_pv, &sV[k][d_tile * WMMA_N], HEAD_DIM_SMEM);
-                    
-                    // MMA: c_frag_pv += a_frag_pv @ b_frag_pv
-                    wmma::mma_sync(c_frag_pv, a_frag_pv, b_frag_pv, c_frag_pv);
+                if (k_begin < kv_end) {  // Only if this warp has work
+                    for (int k = k_begin; k < kv_end; k += (2 * WMMA_K)) {  // Stride by 2*WMMA_K=32
+                        // Load P[warp_m_start:warp_m_start+16, k:k+16]
+                        wmma::load_matrix_sync(a_frag_pv, &sP[warp_m_start][k], TILE_N);
+                        
+                        // Load V[k:k+16, d_tile*16:(d_tile+1)*16]
+                        wmma::load_matrix_sync(b_frag_pv, &sV[k][d_tile * WMMA_N], HEAD_DIM_SMEM);
+                        
+                        // MMA: c_frag_pv += a_frag_pv @ b_frag_pv
+                        wmma::mma_sync(c_frag_pv, a_frag_pv, b_frag_pv, c_frag_pv);
+                    }
                 }
                 
                 // Store this warp's 16×16 partial into its private scratch
@@ -492,15 +492,11 @@ flashcore_fused_wmma_kernel(
                 wmma::store_matrix_sync(&sU_part[warp_m][warp_n][0][0],
                                         c_frag_pv, WMMA_N, wmma::mem_row_major);
             }
-        }
-        
-        __syncthreads();
-        
-        // Atomic-free merge: warp_n==0 sums both halves and writes to U_smem
-        if (warp_valid && warp_n == 0) {
-            const int num_d_tiles = HEAD_DIM / WMMA_N;  // 64 / 16 = 4
             
-            for (int d_tile = 0; d_tile < num_d_tiles; ++d_tile) {
+            __syncthreads();
+            
+            // Atomic-free merge: warp_n==0 sums both halves for THIS d_tile and writes to U_smem
+            if (warp_valid && warp_n == 0) {
                 // lanes cooperatively write 16×16
                 for (int i = lane_id; i < WMMA_M * WMMA_N; i += 32) {
                     const int r = i / WMMA_N;
@@ -513,9 +509,9 @@ flashcore_fused_wmma_kernel(
                     }
                 }
             }
+            
+            __syncthreads();
         }
-        
-        __syncthreads();
     }
     
     // ========================================
