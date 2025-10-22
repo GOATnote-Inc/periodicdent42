@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def build_extension(verbose: bool = False):
     sources = [
         ROOT / "flashcore" / "flashcore_unified.cu",
+        ROOT / "flashcore" / "flashcore_fused.cu",
     ]
     extra_include_paths = [str(ROOT / "flashcore")]
     extra_cflags = ["-O3", "-std=c++17"]

@@ -72,6 +72,40 @@ def test_pv_correctness():
         return False
 
 
+def test_fused_correctness():
+    """Test fused attention kernel correctness."""
+    print("\n=== Fused Attention Correctness Test ===")
+    
+    B, H, S, D = 1, 8, 512, 64
+    q = torch.randn(B, H, S, D, device="cuda", dtype=torch.float16)
+    k = torch.randn_like(q)
+    v = torch.randn_like(q)
+    scale = 1.0 / (D ** 0.5)
+    
+    # Reference (PyTorch SDPA)
+    ref = F.scaled_dot_product_attention(q, k, v, scale=scale)
+    
+    # Build and run kernel
+    module = build_extension(verbose=False)
+    out = module.fused(q, k, v, scale)
+    
+    # Compare
+    max_err = (out - ref).abs().max().item()
+    mean_err = (out - ref).abs().mean().item()
+    
+    print(f"Shape: Q/K/V {list(q.shape)}")
+    print(f"Output shape: {list(out.shape)}")
+    print(f"Max error: {max_err:.6f}")
+    print(f"Mean error: {mean_err:.6f}")
+    
+    if max_err < 0.05:
+        print("✅ Fused: PASS")
+        return True
+    else:
+        print(f"❌ Fused: FAIL (error {max_err:.6f} >= 0.05)")
+        return False
+
+
 def benchmark_kernels():
     """Benchmark both kernels."""
     print("\n=== Performance Benchmark ===")
@@ -138,13 +172,37 @@ def benchmark_kernels():
     print(f"\n[PyTorch SDPA] {sdpa_us:.2f} µs")
     print(f"[Speedup vs SDPA] {sdpa_us / (qkt_us + pv_us):.2f}×")
     
+    # Benchmark Fused kernel
+    for _ in range(warmup):
+        module.fused(q, k, v, scale)
+    torch.cuda.synchronize()
+    
+    start.record()
+    for _ in range(iters):
+        module.fused(q, k, v, scale)
+    end.record()
+    torch.cuda.synchronize()
+    fused_us = (start.elapsed_time(end) / iters) * 1000.0
+    
+    print(f"\n[Fused Kernel] {fused_us:.2f} µs")
+    print(f"[Speedup vs Unfused] {(qkt_us + pv_us) / fused_us:.2f}×")
+    print(f"[Speedup vs SDPA] {sdpa_us / fused_us:.2f}×")
+    
+    if fused_us < 40.0:
+        print("\n🎉 TARGET ACHIEVED: Fused <40 µs! 🎉")
+    elif fused_us < sdpa_us:
+        print(f"\n✅ Fused is faster than PyTorch SDPA by {sdpa_us / fused_us:.2f}×")
+    else:
+        gap = fused_us / sdpa_us
+        print(f"\n📊 Fused: {gap:.2f}× slower than SDPA (target: <40 µs)")
+    
     if (qkt_us + pv_us) < 40.0:
-        print("\n🎉 TARGET ACHIEVED: <40 µs! 🎉")
+        print("\n🎉 UNFUSED TARGET ACHIEVED: <40 µs! 🎉")
     elif (qkt_us + pv_us) < sdpa_us:
-        print(f"\n✅ Faster than PyTorch SDPA by {sdpa_us / (qkt_us + pv_us):.2f}×")
+        print(f"\n✅ Unfused faster than PyTorch SDPA by {sdpa_us / (qkt_us + pv_us):.2f}×")
     else:
         gap = (qkt_us + pv_us) / sdpa_us
-        print(f"\n📊 Current: {gap:.2f}× slower than SDPA (target: <40 µs)")
+        print(f"\n📊 Unfused: {gap:.2f}× slower than SDPA")
 
 
 if __name__ == "__main__":
@@ -154,8 +212,9 @@ if __name__ == "__main__":
     
     qkt_pass = test_qkt_correctness()
     pv_pass = test_pv_correctness()
+    fused_pass = test_fused_correctness()
     
-    if qkt_pass and pv_pass:
+    if qkt_pass and pv_pass and fused_pass:
         print("\n" + "=" * 60)
         print("✅ All correctness tests PASSED")
         print("=" * 60)
