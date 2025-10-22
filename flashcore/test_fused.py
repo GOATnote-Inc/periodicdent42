@@ -50,7 +50,8 @@ def test_flashcore_fused():
         
         # Our kernel
         with torch.no_grad():
-            O_kernel = ext.forward(Q, K, V, scale)
+            O_kernel = torch.zeros_like(Q)
+            ext.forward(Q, K, V, O_kernel)
         
         # Compute errors
         max_err = (O_ref - O_kernel).abs().max().item()
