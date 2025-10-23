@@ -29,6 +29,11 @@ constexpr int kSoftmaxWarps = 1;
 constexpr int kWarpsPerBlock = kComputeWarps + kLoadWarps + kSoftmaxWarps;  // 16 warps
 constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;  // 512 threads
 
+// WMMA constants
+constexpr int kWMMAM = 16;
+constexpr int kWMMAN = 16;
+constexpr int kWMMAK = 16;
+
 // Phase 5: SMEM Padding for Bank Conflict Avoidance
 constexpr int kTilePadD = kTileD + 8;  // 64 + 8 = 72 (avoid conflicts)
 constexpr int kTilePadN = kTileN + 16; // 48 + 16 = 64 (WMMA-safe)
