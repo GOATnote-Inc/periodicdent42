@@ -108,7 +108,7 @@ __device__ __forceinline__ float warp_reduce_max(float val) {
 __device__ __forceinline__ float warp_reduce_sum(float val) {
     #pragma unroll
     for (int offset = 16; offset > 0; offset /= 2) {
-        val += __shfl_xor_sync(0xFFFFFFFF, val, offset));
+        val += __shfl_xor_sync(0xFFFFFFFF, val, offset);
     }
     return val;
 }
