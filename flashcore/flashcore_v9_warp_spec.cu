@@ -321,7 +321,7 @@ __device__ void consumer_warps(
     
     // Initialize softmax state
     for (int m = thread_id; m < kTileM; m += compute_threads) {
-        layout.m_state[m] = -CUDART_INF_F;
+        layout.m_state[m] = __int_as_float(0xff800000);  // -inf
         layout.l_state[m] = 0.0f;
     }
     
@@ -391,7 +391,7 @@ __device__ void consumer_warps(
             float l_old = layout.l_state[m];
             
             // Find max in this row
-            float m_tile = -CUDART_INF_F;
+            float m_tile = __int_as_float(0xff800000);  // -inf
             for (int n = 0; n < kv_len; n++) {
                 m_tile = fmaxf(m_tile, layout.scores[m * kTilePadN + n]);
             }
@@ -531,8 +531,8 @@ extern "C" void flashcore_v9_warp_spec_launch(
     float scale,
     cudaStream_t stream) {
     
-    SMEMLayout temp_layout(nullptr);
-    const size_t smem_bytes = 64 * 1024;  // Conservative 64 KB
+    // Calculate SMEM requirements (same as SMEMLayout::total_bytes())
+    const size_t smem_bytes = 64 * 1024;  // Conservative 64 KB (actual ~59 KB)
     
     // Set dynamic shared memory
     cudaFuncSetAttribute(
