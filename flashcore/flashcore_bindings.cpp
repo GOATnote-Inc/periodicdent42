@@ -62,6 +62,18 @@ extern "C" void flashcore_v8_dynamic_launch(
     float scale,
     cudaStream_t stream);
 
+extern "C" void flashcore_v9_warp_spec_launch(
+    const half* Q,
+    const half* K,
+    const half* V,
+    half* O,
+    int B,
+    int H,
+    int S,
+    int D,
+    float scale,
+    cudaStream_t stream);
+
 namespace {
 
 torch::Tensor launch_qkt(torch::Tensor q, torch::Tensor k, double scale) {
@@ -269,6 +281,51 @@ torch::Tensor launch_v8_dynamic(
     return output;
 }
 
+torch::Tensor launch_v9_warp_spec(
+    torch::Tensor q,
+    torch::Tensor k,
+    torch::Tensor v,
+    double scale) {
+    TORCH_CHECK(q.device().is_cuda(), "Q must be on CUDA");
+    TORCH_CHECK(k.device().is_cuda(), "K must be on CUDA");
+    TORCH_CHECK(v.device().is_cuda(), "V must be on CUDA");
+    TORCH_CHECK(q.is_contiguous(), "Q must be contiguous");
+    TORCH_CHECK(k.is_contiguous(), "K must be contiguous");
+    TORCH_CHECK(v.is_contiguous(), "V must be contiguous");
+    TORCH_CHECK(q.dtype() == torch::kHalf, "Q must be half");
+    TORCH_CHECK(k.dtype() == torch::kHalf, "K must be half");
+    TORCH_CHECK(v.dtype() == torch::kHalf, "V must be half");
+    TORCH_CHECK(q.dim() == 4, "Expected Q of shape [B, H, S, D]");
+    TORCH_CHECK(k.dim() == 4, "Expected K of shape [B, H, S, D]");
+    TORCH_CHECK(v.dim() == 4, "Expected V of shape [B, H, S, D]");
+    TORCH_CHECK(q.sizes() == k.sizes(), "Q and K must have identical shapes");
+    TORCH_CHECK(q.sizes() == v.sizes(), "Q and V must have identical shapes");
+
+    const int64_t B = q.size(0);
+    const int64_t H = q.size(1);
+    const int64_t S = q.size(2);
+    const int64_t D = q.size(3);
+
+    auto options = q.options();
+    auto output = torch::empty({B, H, S, D}, options);
+
+    auto stream = at::cuda::getCurrentCUDAStream();
+
+    flashcore_v9_warp_spec_launch(
+        reinterpret_cast<const half*>(q.data_ptr<at::Half>()),
+        reinterpret_cast<const half*>(k.data_ptr<at::Half>()),
+        reinterpret_cast<const half*>(v.data_ptr<at::Half>()),
+        reinterpret_cast<half*>(output.data_ptr<at::Half>()),
+        static_cast<int>(B),
+        static_cast<int>(H),
+        static_cast<int>(S),
+        static_cast<int>(D),
+        static_cast<float>(scale),
+        stream);
+
+    return output;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -279,6 +336,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("fused_phase2", &launch_fused_phase2, "FlashCore Phase 2 Fused Attention (64×64 dynamic SMEM)",
           py::arg("q"), py::arg("k"), py::arg("v"), py::arg("scale"));
     m.def("v8_dynamic", &launch_v8_dynamic, "FlashCore v8 - Proper dynamic SMEM (48×32 asymmetric)",
+          py::arg("q"), py::arg("k"), py::arg("v"), py::arg("scale"));
+    m.def("v9_warp_spec", &launch_v9_warp_spec, "FlashCore v9 - Warp Specialization (12 compute + 4 producer)",
           py::arg("q"), py::arg("k"), py::arg("v"), py::arg("scale"));
 }
 
