@@ -16,6 +16,7 @@ def build_extension(verbose: bool = False):
         ROOT / "flashcore" / "flashcore_unified.cu",
         ROOT / "flashcore" / "flashcore_fused.cu",
         ROOT / "flashcore" / "flashcore_fused_phase2.cu",
+        ROOT / "flashcore" / "flashcore_fused_phase2_2.cu",
     ]
     extra_include_paths = [str(ROOT / "flashcore")]
     extra_cflags = ["-O3", "-std=c++17"]
