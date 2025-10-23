@@ -173,7 +173,9 @@ __device__ __forceinline__ void compute_online_softmax(
 __device__ __forceinline__ void compute_pv_wmma(
     const half* probs,     // [kTileM, kTileN] probabilities
     const half* v_tile,    // [kTileN, kTileD] values
-    float* o_accum) {      // [kTileM, kTileD] output accumulator
+    float* o_accum,        // [kTileM, kTileD] output accumulator
+    int rows,
+    int cols) {
     
     const int warp_id = threadIdx.x / kWarpSize;
     const int warp_m = warp_id / 2;  // 2×2 warp layout for 32×32 tiles
@@ -182,16 +184,20 @@ __device__ __forceinline__ void compute_pv_wmma(
     const int tile_m = warp_m * kWmmaM;
     const int tile_d = warp_n * kWmmaN;
 
+    // Bounds check for this warp's tile
+    if (tile_m >= rows || tile_d >= kTileD) return;
+
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> p_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> v_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::accumulator, kWmmaM, kWmmaN, kWmmaK, float> o_frag;
 
     float* dst = o_accum + tile_m * kTileD + tile_d;
     
-    // Load existing accumulator
+    // Load existing accumulator (already rescaled by alpha)
     nvcuda::wmma::load_matrix_sync(o_frag, dst, kTileD, nvcuda::wmma::mem_row_major);
 
     // Compute P @ V and accumulate: O += P @ V
+    // Probs and V are padded to full kTileN, so we can loop over full tiles
     #pragma unroll
     for (int k = 0; k < kTileN; k += kWmmaK) {
         const half* p_ptr = probs + tile_m * kTileN + k;
@@ -289,7 +295,9 @@ __global__ __launch_bounds__(128, 2) void fused_attention_kernel(
         compute_pv_wmma(
             shared.probs,
             v_tile,
-            shared.o_accum);
+            shared.o_accum,
+            q_len,
+            kv_len);
         __syncthreads();
 
         // Prefetch next K/V tiles
