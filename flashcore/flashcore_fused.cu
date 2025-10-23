@@ -4,13 +4,23 @@
 namespace flashcore {
 namespace fused {
 
-// Reduced tile sizes to fit in 48 KB shared memory limit
-constexpr int kTileM = 32;
-constexpr int kTileN = 32;
-constexpr int kTileD = 64;
-constexpr int kStages = 2;
-constexpr int kWarpsPerBlock = 8;  // 8 warps for 32×64 output (2×4 warp layout)
-constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;
+// Phase 1.4: Larger tiles for better compute density (<50 μs target)
+constexpr int kTileM = 64;  // Doubled from 32
+constexpr int kTileN = 64;  // Doubled from 32
+constexpr int kTileD = 64;  // Unchanged
+constexpr int kStages = 2;   // Keep double-buffering
+constexpr int kWarpsPerBlock = 16;  // 16 warps for 64×64 tiles (4×4 warp layout)
+constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;  // 512 threads
+
+// Shared memory usage (static allocation, ~80 KB total):
+// - q_tile: 64×64×2B = 8 KB
+// - kv_tiles: 2×2×64×64×2B = 32 KB
+// - scores: 64×64×4B = 16 KB
+// - probs: 64×64×2B = 8 KB
+// - m_state: 64×4B = 0.25 KB
+// - l_state: 64×4B = 0.25 KB
+// - o_accum: 64×64×4B = 16 KB
+// Total: ~80.5 KB (< 96 KB limit on L4) ✅
 
 // Warp-level reduction helpers (Phase 1.3 optimization)
 __device__ __forceinline__ float warp_reduce_max(float val) {
@@ -87,14 +97,13 @@ __device__ __forceinline__ void prefetch_kv_tile(
 __device__ __forceinline__ void compute_qkt_wmma(
     const half* q_tile, const half* k_tile, float* scores, float scale) {
     const int warp_id = threadIdx.x / kWarpSize;
-    const int warp_m = warp_id / 2;  // 2×2 warp layout for 32×32 QK^T output
-    const int warp_n = warp_id % 2;
+    const int warp_m = warp_id / 4;  // 4×4 warp layout for 64×64 QK^T output
+    const int warp_n = warp_id % 4;
 
     const int tile_m = warp_m * kWmmaM;
     const int tile_n = warp_n * kWmmaN;
     
-    // Only first 4 warps compute QK^T (produces 32×32 scores)
-    if (warp_id >= 4) return;
+    // All 16 warps participate in QK^T for 64×64 output
 
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> a_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::col_major> b_frag;
@@ -191,13 +200,14 @@ __device__ __forceinline__ void compute_pv_wmma(
     int cols) {
     
     const int warp_id = threadIdx.x / kWarpSize;
-    const int warp_m = warp_id / 4;  // 2×4 warp layout for 32×64 P·V output
+    const int warp_m = warp_id / 4;  // 4×4 warp layout for 64×64 P·V output
     const int warp_d = warp_id % 4;
 
     const int tile_m = warp_m * kWmmaM;
     const int tile_d = warp_d * kWmmaN;
 
-    // Bounds check for this warp's tile
+    // All 16 warps participate (64×64 output)
+    // Bounds check for tail tiles
     if (tile_m >= rows || tile_d >= kTileD) return;
 
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> p_frag;
@@ -224,7 +234,7 @@ __device__ __forceinline__ void compute_pv_wmma(
     nvcuda::wmma::store_matrix_sync(dst, o_frag, kTileD, nvcuda::wmma::mem_row_major);
 }
 
-__global__ __launch_bounds__(256, 2) void fused_attention_kernel(
+__global__ __launch_bounds__(512, 1) void fused_attention_kernel(
     const half* __restrict__ Q,
     const half* __restrict__ K,
     const half* __restrict__ V,
