@@ -224,14 +224,15 @@ void fused_attention_excellence_kernel(
         __syncthreads();  // K/V tiles loaded
         
         // QK^T with WMMA (Phase 4: compute microkernel)
-        // 8 warps in 2×2 layout for 32×32
-        const int warp_m = warp_id / 2;  // 0-3
-        const int warp_n = warp_id % 2;  // 0-1
-        
-        const int m_base = warp_m * kWMMAM;
-        const int n_base = warp_n * kWMMAN;
-        
-        if (m_base < q_len && n_base < kv_len) {
+        // Only use first 4 warps in 2×2 layout for 32×32
+        if (warp_id < 4) {  // Warps 0-3 compute Q·K^T
+            const int warp_m = warp_id / 2;  // 0-1
+            const int warp_n = warp_id % 2;  // 0-1
+            
+            const int m_base = warp_m * kWMMAM;
+            const int n_base = warp_n * kWMMAN;
+            
+            if (m_base < q_len && n_base < kv_len) {
             wmma::fragment<wmma::matrix_a, kWMMAM, kWMMAN, kWMMAK, half, wmma::row_major> a_frag;
             wmma::fragment<wmma::matrix_b, kWMMAM, kWMMAN, kWMMAK, half, wmma::col_major> b_frag;
             wmma::fragment<wmma::accumulator, kWMMAM, kWMMAN, kWMMAK, float> c_frag;
@@ -250,8 +251,9 @@ void fused_attention_excellence_kernel(
                 c_frag.x[i] *= scale;
             }
             
-            wmma::store_matrix_sync(&layout.scores[m_base * kTilePadN + n_base], c_frag, kTilePadN, wmma::mem_row_major);
-        }
+                wmma::store_matrix_sync(&layout.scores[m_base * kTilePadN + n_base], c_frag, kTilePadN, wmma::mem_row_major);
+            }
+        }  // End warp_id < 4 check
         
         __syncthreads();  // Scores ready
         
