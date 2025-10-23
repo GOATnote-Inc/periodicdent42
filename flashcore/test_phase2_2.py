@@ -24,9 +24,9 @@ def test_phase2_2():
     V = torch.randn_like(Q)
     
     print(f"\nConfiguration: B={B}, H={H}, S={S}, D={D}")
-    print(f"Tile size: 48×48 (balance occupancy + work)")
-    print(f"Warps: 12 (384 threads)")
-    print(f"SMEM: ~56 KB (good occupancy)")
+    print(f"Tile size: 40×40 (fit in 48 KB SMEM)")
+    print(f"Warps: 10 (320 threads)")
+    print(f"SMEM: ~45 KB (fits in static limit)")
     
     # Reference
     with torch.no_grad():

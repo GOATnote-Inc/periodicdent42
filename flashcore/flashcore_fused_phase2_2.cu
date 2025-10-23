@@ -5,29 +5,29 @@ namespace flashcore {
 namespace fused_phase2_2 {
 
 // Phase 2.2: Aggressive optimization for <40 μs
-// - 48×48 tiles (balance occupancy + work)
+// - 40×40 tiles (fit in 48 KB SMEM limit)
 // - Improved cp.async usage
 // - Reduced synchronization
 // - Optimized softmax
-constexpr int kTileM = 48;
-constexpr int kTileN = 48;
+constexpr int kTileM = 40;
+constexpr int kTileN = 40;
 constexpr int kTileD = 64;
 constexpr int kStages = 2;
-constexpr int kWarpsPerBlock = 12;  // 12 warps = 384 threads (compromise)
+constexpr int kWarpsPerBlock = 10;  // 10 warps = 320 threads
 constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;
 
-// SMEM calculation (~52 KB - good occupancy)
-constexpr size_t kQTileBytes = sizeof(half) * kTileM * kTileD;  // 6 KB
-constexpr size_t kKVTilesBytes = sizeof(half) * kStages * 2 * kTileN * kTileD;  // 24 KB
-constexpr size_t kScoresBytes = sizeof(float) * kTileM * kTileN;  // 9 KB
-constexpr size_t kProbsBytes = sizeof(half) * kTileM * kTileN;  // 4.5 KB
-constexpr size_t kStateBytes = sizeof(float) * kTileM * 2;  // 0.4 KB
-constexpr size_t kOAccumBytes = sizeof(float) * kTileM * kTileD;  // 12 KB
+// SMEM calculation (~43 KB - fits in 48 KB static limit!)
+constexpr size_t kQTileBytes = sizeof(half) * kTileM * kTileD;  // 5 KB
+constexpr size_t kKVTilesBytes = sizeof(half) * kStages * 2 * kTileN * kTileD;  // 20 KB
+constexpr size_t kScoresBytes = sizeof(float) * kTileM * kTileN;  // 6.4 KB
+constexpr size_t kProbsBytes = sizeof(half) * kTileM * kTileN;  // 3.2 KB
+constexpr size_t kStateBytes = sizeof(float) * kTileM * 2;  // 0.3 KB
+constexpr size_t kOAccumBytes = sizeof(float) * kTileM * kTileD;  // 10 KB
 
 constexpr size_t kTotalSMEM = kQTileBytes + kKVTilesBytes + kScoresBytes + 
-                              kProbsBytes + kStateBytes + kOAccumBytes;  // ~56 KB
+                              kProbsBytes + kStateBytes + kOAccumBytes;  // ~45 KB
 
-static_assert(kTotalSMEM <= 64 * 1024, "SMEM exceeds 64 KB limit!");
+static_assert(kTotalSMEM <= 48 * 1024, "SMEM exceeds 48 KB static limit!");
 
 // Warp reduction helpers (optimized)
 __device__ __forceinline__ float warp_reduce_max(float val) {
@@ -103,19 +103,22 @@ __device__ __forceinline__ void prefetch_kv_async(
     }
 }
 
-// QK^T with WMMA (3×3 warp layout for 48×48)
+// QK^T with WMMA (3×3 warp layout for 40×40, produces 48×48 with bounds check)
 __device__ __forceinline__ void compute_qkt_wmma(
     const half* q_tile, const half* k_tile, float* scores, float scale) {
     
     const int warp_id = threadIdx.x / kWarpSize;
     
-    // 9 warps compute QK^T (3×3 layout for 48×48)
+    // First 9 warps compute QK^T (3×3 layout covers 48×48, mask to 40×40)
     if (warp_id >= 9) return;
     
     const int warp_m = warp_id / 3;
     const int warp_n = warp_id % 3;
     const int tile_m = warp_m * kWmmaM;
     const int tile_n = warp_n * kWmmaN;
+    
+    // Bounds check for 40×40 tiles
+    if (tile_m >= kTileM || tile_n >= kTileN) return;
     
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> a_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::col_major> b_frag;
@@ -193,19 +196,22 @@ __device__ __forceinline__ void compute_online_softmax_optimized(
     }
 }
 
-// P·V with WMMA (3×4 warp layout for 48×64 output)
+// P·V with WMMA (3×4 warp layout for 40×64 output, produces 48×64 with bounds check)
 __device__ __forceinline__ void compute_pv_wmma(
     const half* probs, const half* v_tile, float* o_accum, int rows) {
     
     const int warp_id = threadIdx.x / kWarpSize;
-    if (warp_id >= 12) return;  // Only first 12 warps (3×4 layout)
     
-    const int warp_m = warp_id / 4;
-    const int warp_d = warp_id % 4;
+    // First 10 warps (all available warps)
+    if (warp_id >= kWarpsPerBlock) return;
+    
+    const int warp_m = warp_id / 4;  // 3 rows (covers up to 48)
+    const int warp_d = warp_id % 4;   // 4 cols (covers 64)
     const int tile_m = warp_m * kWmmaM;
     const int tile_d = warp_d * kWmmaN;
     
-    if (tile_m >= rows) return;
+    // Bounds check for 40×64 output
+    if (tile_m >= rows || tile_d >= kTileD) return;
     
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> p_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> v_frag;
@@ -224,7 +230,7 @@ __device__ __forceinline__ void compute_pv_wmma(
     nvcuda::wmma::store_matrix_sync(dst, o_frag, kTileD, nvcuda::wmma::mem_row_major);
 }
 
-__global__ __launch_bounds__(384, 2) void fused_attention_kernel_phase2_2(
+__global__ __launch_bounds__(320, 2) void fused_attention_kernel_phase2_2(
     const half* __restrict__ Q,
     const half* __restrict__ K,
     const half* __restrict__ V,
