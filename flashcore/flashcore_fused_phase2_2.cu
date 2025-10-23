@@ -46,14 +46,18 @@ __device__ __forceinline__ float warp_reduce_sum(float val) {
     return val;
 }
 
+// Pad arrays to 48×48 for WMMA alignment (even though we only use 40×40)
+constexpr int kTilePadM = 48;  // Round up to WMMA-friendly size
+constexpr int kTilePadN = 48;
+
 struct SharedStorage {
-    __align__(16) half q_tile[kTileM * kTileD];
-    __align__(16) half kv_tiles[kStages][2][kTileN * kTileD];
-    __align__(16) float scores[kTileM * kTileN];
-    __align__(16) half probs[kTileM * kTileN];
-    __align__(16) float m_state[kTileM];
-    __align__(16) float l_state[kTileM];
-    __align__(16) float o_accum[kTileM * kTileD];
+    __align__(16) half q_tile[kTilePadM * kTileD];
+    __align__(16) half kv_tiles[kStages][2][kTilePadN * kTileD];
+    __align__(16) float scores[kTilePadM * kTilePadN];  // Padded for WMMA stores
+    __align__(16) half probs[kTilePadM * kTilePadN];    // Padded for WMMA stores
+    __align__(16) float m_state[kTilePadM];
+    __align__(16) float l_state[kTilePadM];
+    __align__(16) float o_accum[kTilePadM * kTileD];
 };
 
 // Optimized vectorized load
@@ -138,7 +142,8 @@ __device__ __forceinline__ void compute_qkt_wmma(
         c_frag.x[i] *= scale;
     }
     
-    nvcuda::wmma::store_matrix_sync(scores + tile_m * kTileN + tile_n, c_frag, kTileN, nvcuda::wmma::mem_row_major);
+    // Store with padded stride
+    nvcuda::wmma::store_matrix_sync(scores + tile_m * kTilePadN + tile_n, c_frag, kTilePadN, nvcuda::wmma::mem_row_major);
 }
 
 // Optimized online softmax with warp-level reductions
@@ -150,7 +155,7 @@ __device__ __forceinline__ void compute_online_softmax_optimized(
     const int warp_id = threadIdx.x / kWarpSize;
     
     for (int row = warp_id; row < rows; row += kWarpsPerBlock) {
-        const float* score_row = scores + row * kTileN;
+        const float* score_row = scores + row * kTilePadN;  // Use padded stride
         
         // Warp-parallel max
         float m_tile = -INFINITY;
@@ -168,7 +173,7 @@ __device__ __forceinline__ void compute_online_softmax_optimized(
         
         // Warp-parallel exp and sum
         float l_tile = 0.0f;
-        half* prob_row = probs + row * kTileN;
+        half* prob_row = probs + row * kTilePadN;  // Use padded stride
         
         #pragma unroll 4
         for (int col = lane_id; col < cols; col += kWarpSize) {
@@ -222,7 +227,8 @@ __device__ __forceinline__ void compute_pv_wmma(
     
     #pragma unroll
     for (int k = 0; k < kTileN; k += kWmmaK) {
-        nvcuda::wmma::load_matrix_sync(p_frag, probs + tile_m * kTileN + k, kTileN);
+        // Load from padded probs array
+        nvcuda::wmma::load_matrix_sync(p_frag, probs + tile_m * kTilePadN + k, kTilePadN);
         nvcuda::wmma::load_matrix_sync(v_frag, v_tile + k * kTileD + tile_d, kTileD);
         nvcuda::wmma::mma_sync(o_frag, p_frag, v_frag, o_frag);
     }
