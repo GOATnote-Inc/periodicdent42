@@ -117,15 +117,13 @@ __device__ __forceinline__ void compute_qkt_wmma(
     nvcuda::wmma::store_matrix_sync(dst, c_frag, kTileN, nvcuda::wmma::mem_row_major);
 }
 
-// Online softmax: update (m, l, O) with new tile scores
-__device__ __forceinline__ void online_softmax_update(
+// Step 1: Compute softmax and rescale O
+__device__ __forceinline__ void compute_online_softmax(
     const float* scores,    // [kTileM, kTileN]
     half* probs,           // [kTileM, kTileN] output
     float* m_state,        // [kTileM] max
     float* l_state,        // [kTileM] sum
     float* o_accum,        // [kTileM, kTileD] accumulator
-    const half* v_tile,    // [kTileN, kTileD]
-    int kv_tile_idx,
     int rows,
     int cols) {
     
@@ -133,7 +131,7 @@ __device__ __forceinline__ void online_softmax_update(
     for (int row = threadIdx.x; row < rows; row += kThreadsPerBlock) {
         const float* score_row = scores + row * kTileN;
         
-        // 1. Find max in this tile (sequential for simplicity)
+        // 1. Find max in this tile
         float m_tile = -INFINITY;
         for (int col = 0; col < cols; ++col) {
             m_tile = fmaxf(m_tile, score_row[col]);
@@ -165,20 +163,46 @@ __device__ __forceinline__ void online_softmax_update(
             o_row[d] *= rescale;
         }
         
-        // 6. Add contribution from this tile: O += P @ V
-        // Simple scalar dot product for now (will optimize later)
-        for (int d = 0; d < kTileD; ++d) {
-            float sum = 0.0f;
-            for (int k = 0; k < cols; ++k) {
-                sum += __half2float(prob_row[k]) * __half2float(v_tile[k * kTileD + d]);
-            }
-            o_row[d] += sum;
-        }
-        
-        // 7. Update state
+        // 6. Update state
         m_state[row] = m_new;
         l_state[row] = l_new;
     }
+}
+
+// Step 2: WMMA for P @ V (Tensor Core acceleration!)
+__device__ __forceinline__ void compute_pv_wmma(
+    const half* probs,     // [kTileM, kTileN] probabilities
+    const half* v_tile,    // [kTileN, kTileD] values
+    float* o_accum) {      // [kTileM, kTileD] output accumulator
+    
+    const int warp_id = threadIdx.x / kWarpSize;
+    const int warp_m = warp_id / 2;  // 2×2 warp layout for 32×32 tiles
+    const int warp_n = warp_id % 2;
+
+    const int tile_m = warp_m * kWmmaM;
+    const int tile_d = warp_n * kWmmaN;
+
+    nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> p_frag;
+    nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> v_frag;
+    nvcuda::wmma::fragment<nvcuda::wmma::accumulator, kWmmaM, kWmmaN, kWmmaK, float> o_frag;
+
+    float* dst = o_accum + tile_m * kTileD + tile_d;
+    
+    // Load existing accumulator
+    nvcuda::wmma::load_matrix_sync(o_frag, dst, kTileD, nvcuda::wmma::mem_row_major);
+
+    // Compute P @ V and accumulate: O += P @ V
+    #pragma unroll
+    for (int k = 0; k < kTileN; k += kWmmaK) {
+        const half* p_ptr = probs + tile_m * kTileN + k;
+        const half* v_ptr = v_tile + k * kTileD + tile_d;
+        nvcuda::wmma::load_matrix_sync(p_frag, p_ptr, kTileN);
+        nvcuda::wmma::load_matrix_sync(v_frag, v_ptr, kTileD);
+        nvcuda::wmma::mma_sync(o_frag, p_frag, v_frag, o_frag);
+    }
+
+    // Store accumulated result back
+    nvcuda::wmma::store_matrix_sync(dst, o_frag, kTileD, nvcuda::wmma::mem_row_major);
 }
 
 __global__ __launch_bounds__(128, 2) void fused_attention_kernel(
@@ -249,18 +273,23 @@ __global__ __launch_bounds__(128, 2) void fused_attention_kernel(
         compute_qkt_wmma(shared.q_tile, k_tile, shared.scores, scale);
         __syncthreads();
 
-        // Online softmax + PV accumulation
+        // Step 1: Online softmax (compute probabilities and rescale O)
         const int q_len = min(kTileM, S - q_start);
-        online_softmax_update(
+        compute_online_softmax(
             shared.scores,
             shared.probs,
             shared.m_state,
             shared.l_state,
             shared.o_accum,
-            v_tile,
-            tile,
             q_len,
             kv_len);
+        __syncthreads();
+
+        // Step 2: P @ V using WMMA (Tensor Cores!)
+        compute_pv_wmma(
+            shared.probs,
+            v_tile,
+            shared.o_accum);
         __syncthreads();
 
         // Prefetch next K/V tiles
