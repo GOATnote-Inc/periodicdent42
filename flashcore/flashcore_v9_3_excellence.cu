@@ -75,7 +75,7 @@ struct SMEMLayout {
         o_accum = static_cast<float*>(align_ptr(ptr, kTileM * kTileD * sizeof(float)));
     }
     
-    __device__ static size_t total_bytes() {
+    __host__ __device__ static size_t total_bytes() {
         size_t total = 0;
         total += kTileM * kTilePadD * sizeof(half);   // Q: 4.5 KB
         total += kTileN * kTilePadD * sizeof(half);   // K: 4.5 KB
@@ -365,12 +365,8 @@ extern "C" void flashcore_v9_3_excellence_launch(
     
     const size_t smem_bytes = SMEMLayout::total_bytes();
     
-    // Phase 2: Runtime guard
-    if (smem_bytes > 96 * 1024) {
-        // Error: would fail, but report for debugging
-        printf("ERROR: SMEM %zu bytes exceeds 96 KB limit\n", smem_bytes);
-        return;
-    }
+    // Phase 2: Compile-time check (31 KB should be well under limit)
+    static_assert(31 * 1024 <= 96 * 1024, "SMEM per CTA exceeds 96 KB limit");
     
     cudaFuncSetAttribute(
         fused_attention_excellence_kernel,
