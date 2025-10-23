@@ -6,6 +6,9 @@
 #include <cuda_runtime_api.h>
 #include <cuda/pipeline>
 #include <cooperative_groups.h>
+#include <cstdio>
+
+using namespace nvcuda;
 
 namespace flashcore {
 namespace v11_persistent {
