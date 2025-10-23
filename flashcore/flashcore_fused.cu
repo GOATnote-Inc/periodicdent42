@@ -12,6 +12,25 @@ constexpr int kStages = 2;
 constexpr int kWarpsPerBlock = 8;  // 8 warps for 32×64 output (2×4 warp layout)
 constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;
 
+// Warp-level reduction helpers (Phase 1.3 optimization)
+__device__ __forceinline__ float warp_reduce_max(float val) {
+    unsigned mask = __activemask();
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        val = fmaxf(val, __shfl_xor_sync(mask, val, offset));
+    }
+    return val;
+}
+
+__device__ __forceinline__ float warp_reduce_sum(float val) {
+    unsigned mask = __activemask();
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        val += __shfl_xor_sync(mask, val, offset);
+    }
+    return val;
+}
+
 struct SharedStorage {
     __align__(16) half q_tile[kTileM * kTileD];
     __align__(16) half kv_tiles[kStages][2][kTileN * kTileD];  // [stage][K=0,V=1][data]
@@ -120,8 +139,8 @@ __device__ __forceinline__ void compute_qkt_wmma(
     nvcuda::wmma::store_matrix_sync(dst, c_frag, kTileN, nvcuda::wmma::mem_row_major);
 }
 
-// Step 1: Compute softmax and rescale O
-__device__ __forceinline__ void compute_online_softmax(
+// Step 1: Warp-level softmax (Phase 1.3 optimization)
+__device__ __forceinline__ void compute_online_softmax_warp(
     const float* scores,    // [kTileM, kTileN]
     half* probs,           // [kTileM, kTileN] output
     float* m_state,        // [kTileM] max
@@ -130,17 +149,21 @@ __device__ __forceinline__ void compute_online_softmax(
     int rows,
     int cols) {
     
-    // Each thread processes multiple rows
-    for (int row = threadIdx.x; row < rows; row += kThreadsPerBlock) {
+    const int lane_id = threadIdx.x % kWarpSize;
+    const int warp_id = threadIdx.x / kWarpSize;
+    
+    // Each warp processes different rows
+    for (int row = warp_id; row < rows; row += kWarpsPerBlock) {
         const float* score_row = scores + row * kTileN;
         
-        // 1. Find max in this tile
+        // 1. Warp-parallel max reduction
         float m_tile = -INFINITY;
-        for (int col = 0; col < cols; ++col) {
+        for (int col = lane_id; col < cols; col += kWarpSize) {
             m_tile = fmaxf(m_tile, score_row[col]);
         }
+        m_tile = warp_reduce_max(m_tile);  // All threads in warp get same value
         
-        // 2. Update global max
+        // 2. Update global max (all threads have same m_tile)
         float m_prev = m_state[row];
         float m_new = fmaxf(m_prev, m_tile);
         
@@ -148,27 +171,32 @@ __device__ __forceinline__ void compute_online_softmax(
         float alpha = expf(m_prev - m_new);  // Correction for previous tiles
         float beta = expf(m_tile - m_new);   // Scale for current tile
         
-        // 4. Update sum and compute probabilities
+        // 4. Warp-parallel exp and sum
         float l_prev = l_state[row];
-        float l_new = alpha * l_prev;
+        float l_tile = 0.0f;
         
         half* prob_row = probs + row * kTileN;
-        for (int col = 0; col < cols; ++col) {
+        for (int col = lane_id; col < cols; col += kWarpSize) {
             float prob = beta * expf(score_row[col] - m_tile);
             prob_row[col] = __float2half(prob);
-            l_new += prob;
+            l_tile += prob;
         }
+        l_tile = warp_reduce_sum(l_tile);  // All threads get same sum
         
-        // 5. Rescale previous O accumulator
+        float l_new = alpha * l_prev + l_tile;
+        
+        // 5. Rescale previous O accumulator (each thread handles different columns)
         float rescale = alpha;
         float* o_row = o_accum + row * kTileD;
-        for (int d = 0; d < kTileD; ++d) {
+        for (int d = lane_id; d < kTileD; d += kWarpSize) {
             o_row[d] *= rescale;
         }
         
-        // 6. Update state
-        m_state[row] = m_new;
-        l_state[row] = l_new;
+        // 6. Update state (lane 0 writes, all threads have same value)
+        if (lane_id == 0) {
+            m_state[row] = m_new;
+            l_state[row] = l_new;
+        }
     }
 }
 
@@ -282,9 +310,9 @@ __global__ __launch_bounds__(256, 2) void fused_attention_kernel(
         compute_qkt_wmma(shared.q_tile, k_tile, shared.scores, scale);
         __syncthreads();
 
-        // Step 1: Online softmax (compute probabilities and rescale O)
+        // Step 1: Warp-level softmax (Phase 1.3 optimization)
         const int q_len = min(kTileM, S - q_start);
-        compute_online_softmax(
+        compute_online_softmax_warp(
             shared.scores,
             shared.probs,
             shared.m_state,
