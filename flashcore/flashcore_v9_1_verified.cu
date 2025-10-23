@@ -408,8 +408,8 @@ void fused_attention_verified_kernel(
         
         // 2. Wait for current stage to be ready (all warps check)
         if (warp_id == 0 && lane_id == 0) {
-            // Verified read: use __ldg for guaranteed visibility
-            while (!__ldg(&layout.stage_flags[stage])) {
+            // Verified read: volatile ensures visibility
+            while (layout.stage_flags[stage] == 0) {
                 // Spin-wait is safe here: single thread, guaranteed progress
             }
         }
