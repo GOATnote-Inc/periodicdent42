@@ -50,18 +50,6 @@ extern "C" void flashcore_fused_phase2_launch(
     float scale,
     cudaStream_t stream);
 
-extern "C" void flashcore_fused_phase2_2_launch(
-    const half* Q,
-    const half* K,
-    const half* V,
-    half* O,
-    int B,
-    int H,
-    int S,
-    int D,
-    float scale,
-    cudaStream_t stream);
-
 extern "C" void flashcore_v8_dynamic_launch(
     const half* Q,
     const half* K,
@@ -336,8 +324,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("fused", &launch_fused, "FlashCore Fused Attention kernel",
           py::arg("q"), py::arg("k"), py::arg("v"), py::arg("scale"));
     m.def("fused_phase2", &launch_fused_phase2, "FlashCore Phase 2 Fused Attention (64×64 dynamic SMEM)",
-          py::arg("q"), py::arg("k"), py::arg("v"), py::arg("scale"));
-    m.def("fused_phase2_2", &launch_fused_phase2_2, "FlashCore Phase 2.2 Optimized (48×48 + cp.async)",
           py::arg("q"), py::arg("k"), py::arg("v"), py::arg("scale"));
     m.def("v8_dynamic", &launch_v8_dynamic, "FlashCore v8 - Proper dynamic SMEM (48×32 asymmetric)",
           py::arg("q"), py::arg("k"), py::arg("v"), py::arg("scale"));
