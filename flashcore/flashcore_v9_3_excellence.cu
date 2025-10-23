@@ -96,7 +96,7 @@ struct SoftmaxState {
     float m;  // Running max
     float l;  // Running sum exp
     
-    __device__ SoftmaxState() : m(__int_as_float(0xff800000)), l(0.0f) {}
+    __device__ SoftmaxState() : m(-INFINITY), l(0.0f) {}
     
     __device__ void update(float new_max, float new_sum) {
         float correction = expf(m - new_max);
@@ -177,7 +177,7 @@ void fused_attention_excellence_kernel(
     __shared__ float l_state[kTileM];
     
     for (int m = thread_id; m < kTileM; m += kThreadsPerBlock) {
-        m_state[m] = __int_as_float(0xff800000);  // -inf
+        m_state[m] = -INFINITY;  // -inf
         l_state[m] = 0.0f;
     }
     
@@ -261,7 +261,7 @@ void fused_attention_excellence_kernel(
             float l_old = l_state[m];
             
             // Find max
-            float m_tile = __int_as_float(0xff800000);
+            float m_tile = -INFINITY;
             for (int n = 0; n < kv_len; n++) {
                 m_tile = fmaxf(m_tile, layout.scores[m * kTilePadN + n]);
             }
