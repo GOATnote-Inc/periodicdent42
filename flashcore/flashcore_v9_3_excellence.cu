@@ -319,20 +319,23 @@ void fused_attention_excellence_kernel(
                 }
             }
             
-            // Accumulate to output
-            float pv_results[pv_frag.num_elements];
-            wmma::store_matrix_sync(pv_results, pv_frag, kWMMAM, wmma::mem_row_major);
-            
-            #pragma unroll
-            for (int i = 0; i < kWMMAM; i++) {
-                for (int j = 0; j < kWMMAN; j++) {
-                    const int out_m = pv_m_base + i;
-                    const int out_n = pv_n_base + j;
-                    if (out_m < q_len && out_n < kTileD) {
-                        atomicAdd(&layout.o_accum[out_m * kTileD + out_n], pv_results[i * kWMMAN + j]);
-                    }
-                }
+            // Accumulate to shared memory output buffer
+            // Load existing accumulator
+            wmma::fragment<wmma::accumulator, kWMMAM, kWMMAN, kWMMAK, float> o_frag;
+            if (kv_tile_idx == 0) {
+                wmma::fill_fragment(o_frag, 0.0f);
+            } else {
+                wmma::load_matrix_sync(o_frag, &layout.o_accum[pv_m_base * kTileD + pv_n_base], kTileD, wmma::mem_row_major);
             }
+            
+            // Add P·V result
+            #pragma unroll
+            for (int i = 0; i < o_frag.num_elements; i++) {
+                o_frag.x[i] += pv_frag.x[i];
+            }
+            
+            // Store back
+            wmma::store_matrix_sync(&layout.o_accum[pv_m_base * kTileD + pv_n_base], o_frag, kTileD, wmma::mem_row_major);
         }
         
         __syncthreads();  // Phase 7: Single barrier per tile iteration
