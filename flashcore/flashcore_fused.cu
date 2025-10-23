@@ -41,24 +41,6 @@ struct SharedStorage {
     float o_accum[kTileM * kTileD];   // Output accumulator (F32)
 };
 
-// Warp reduce max
-__device__ __forceinline__ float warp_reduce_max(float val) {
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset /= 2) {
-        val = fmaxf(val, __shfl_xor_sync(0xffffffff, val, offset));
-    }
-    return val;
-}
-
-// Warp reduce sum
-__device__ __forceinline__ float warp_reduce_sum(float val) {
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset /= 2) {
-        val += __shfl_xor_sync(0xffffffff, val, offset);
-    }
-    return val;
-}
-
 // Vectorized Q load (reuse from v6)
 __device__ __forceinline__ void load_q_tile(
     half* dst, const half* src, int rows, int cols, int ld_src, int row_offset, int s_bound) {
