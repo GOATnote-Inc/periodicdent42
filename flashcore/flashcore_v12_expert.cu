@@ -307,21 +307,12 @@ void fused_attention_expert_kernel(
                 const int kv_len = min(kTileN, S - kv_start);
                 const int stage = kv_tile_idx % kStages;
                 
-                // Load K/V (only load warps)
-                if (is_load) {
-                    // Divide work among 4 load warps
-                    const int load_warp_id = warp_id - kComputeWarps;
-                    const int rows_per_load_warp = (kv_len * D + kLoadWarps * kWarpSize - 1) / (kLoadWarps * kWarpSize);
-                    const int idx_start = (load_warp_id * kWarpSize + lane_id) * rows_per_load_warp;
-                    
-                    for (int idx = idx_start; idx < kv_len * D && idx < idx_start + rows_per_load_warp; idx++) {
-                        const int row = idx / D;
-                        const int col = idx % D;
-                        if (row < kv_len) {
-                            layout.k_tiles[stage][row * kTilePadD + col] = K_bh[(kv_start + row) * D + col];
-                            layout.v_tiles[stage][row * kTilePadD + col] = V_bh[(kv_start + row) * D + col];
-                        }
-                    }
+                // Load K/V (all threads - simpler, will optimize later)
+                for (int idx = thread_id; idx < kv_len * D; idx += kThreadsPerBlock) {
+                    const int row = idx / D;
+                    const int col = idx % D;
+                    layout.k_tiles[stage][row * kTilePadD + col] = K_bh[(kv_start + row) * D + col];
+                    layout.v_tiles[stage][row * kTilePadD + col] = V_bh[(kv_start + row) * D + col];
                 }
                 
                 __syncthreads();  // Barrier 1: KV loaded
