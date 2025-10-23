@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def build_extension(verbose: bool = False):
     sources = [
+        ROOT / "flashcore" / "flashcore_bindings.cpp",
         ROOT / "flashcore" / "flashcore_unified.cu",
         ROOT / "flashcore" / "flashcore_fused.cu",
     ]
