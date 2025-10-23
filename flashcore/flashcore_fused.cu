@@ -52,21 +52,27 @@ struct SharedStorage {
     float o_accum[kTileM * kTileD];   // Output accumulator (F32)
 };
 
-// Vectorized Q load (reuse from v6)
+// Phase 2.1: Vectorized Q load with unroll hints
 __device__ __forceinline__ void load_q_tile(
     half* dst, const half* src, int rows, int cols, int ld_src, int row_offset, int s_bound) {
-    constexpr int elems_per_vec = 8;
-    const int vecs_per_row = cols / elems_per_vec;
+    constexpr int kVecSize = 8;  // 8 halfs = 16 bytes
+    const int vecs_per_row = cols / kVecSize;
+    
+    #pragma unroll 2
     for (int vec_idx = threadIdx.x; vec_idx < rows * vecs_per_row; vec_idx += kThreadsPerBlock) {
         const int row = vec_idx / vecs_per_row;
         const int col_vec = vec_idx % vecs_per_row;
-        const int col = col_vec * elems_per_vec;
+        const int col = col_vec * kVecSize;
         const int global_row = row_offset + row;
+        
         uint4 value = make_uint4(0, 0, 0, 0);
         if (global_row < s_bound) {
+            // Vectorized load: 16 bytes in one transaction
             const uint4* gmem_ptr = reinterpret_cast<const uint4*>(src + global_row * ld_src + col);
             value = *gmem_ptr;
         }
+        
+        // Vectorized store to SMEM
         uint4* smem_ptr = reinterpret_cast<uint4*>(dst + row * cols + col);
         *smem_ptr = value;
     }
@@ -340,16 +346,32 @@ __global__ __launch_bounds__(256, 2) void fused_attention_kernel(
         }
     }
 
-    // Final normalization and write output
+    // Phase 2.1: Vectorized output normalization and write
     const int q_len = min(kTileM, S - q_start);
-    for (int row = threadIdx.x; row < q_len; row += kThreadsPerBlock) {
-        float l_final = shared.l_state[row];
-        float* o_row = shared.o_accum + row * kTileD;
+    constexpr int kVecSize = 8;  // 8 halfs = 16 bytes (uint4)
+    const int vecs_total = q_len * (kTileD / kVecSize);
+    
+    // Each thread processes multiple vectors
+    for (int vec_idx = threadIdx.x; vec_idx < vecs_total; vec_idx += kThreadsPerBlock) {
+        const int row = vec_idx / (kTileD / kVecSize);
+        const int vec_in_row = vec_idx % (kTileD / kVecSize);
+        const int d_start = vec_in_row * kVecSize;
+        
+        // Normalize and convert to half
+        float inv_l = 1.0f / shared.l_state[row];
+        const float* o_row = shared.o_accum + row * kTileD;
         half* out_row = o_base + row * D;
         
-        for (int d = 0; d < kTileD; ++d) {
-            out_row[d] = __float2half(o_row[d] / l_final);
+        // Process 8 elements (16 bytes)
+        half vec_data[kVecSize];
+        #pragma unroll
+        for (int i = 0; i < kVecSize; ++i) {
+            vec_data[i] = __float2half(o_row[d_start + i] * inv_l);
         }
+        
+        // Vectorized write (16 bytes)
+        uint4* out_ptr = reinterpret_cast<uint4*>(out_row + d_start);
+        *out_ptr = *reinterpret_cast<const uint4*>(vec_data);
     }
 }
 
