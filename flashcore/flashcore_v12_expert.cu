@@ -301,42 +301,51 @@ void fused_attention_expert_kernel(
             
             const int num_kv_tiles = (S + kTileN - 1) / kTileN;
             
-            // KV tile loop (SIMPLIFIED - no pipeline for now, add later)
+            // KV tile loop (Phase 1 Optimized: 1 barrier per tile)
             for (int kv_tile_idx = 0; kv_tile_idx < num_kv_tiles; kv_tile_idx++) {
                 const int kv_start = kv_tile_idx * kTileN;
                 const int kv_len = min(kTileN, S - kv_start);
                 const int stage = kv_tile_idx % kStages;
                 
-                // Load K/V (load warps + others help)
-                for (int idx = thread_id; idx < kv_len * D; idx += kThreadsPerBlock) {
-                    const int row = idx / D;
-                    const int col = idx % D;
-                    layout.k_tiles[stage][row * kTilePadD + col] = K_bh[(kv_start + row) * D + col];
-                    layout.v_tiles[stage][row * kTilePadD + col] = V_bh[(kv_start + row) * D + col];
+                // Load K/V (only load warps)
+                if (is_load) {
+                    // Divide work among 4 load warps
+                    const int load_warp_id = warp_id - kComputeWarps;
+                    const int rows_per_load_warp = (kv_len * D + kLoadWarps * kWarpSize - 1) / (kLoadWarps * kWarpSize);
+                    const int idx_start = (load_warp_id * kWarpSize + lane_id) * rows_per_load_warp;
+                    
+                    for (int idx = idx_start; idx < kv_len * D && idx < idx_start + rows_per_load_warp; idx++) {
+                        const int row = idx / D;
+                        const int col = idx % D;
+                        if (row < kv_len) {
+                            layout.k_tiles[stage][row * kTilePadD + col] = K_bh[(kv_start + row) * D + col];
+                            layout.v_tiles[stage][row * kTilePadD + col] = V_bh[(kv_start + row) * D + col];
+                        }
+                    }
                 }
                 
-                __syncthreads();  // Phase 7: KV loaded
+                __syncthreads();  // Barrier 1: KV loaded
                 
-                // Compute QK^T (compute warps)
+                // Compute QK^T (compute warps only)
                 if (is_compute) {
                     compute_qkt_wmma(layout, stage, scale, warp_id, q_len, kv_len);
                 }
                 
-                __syncthreads();  // Scores ready
+                __syncthreads();  // Barrier 2: Scores ready
                 
                 // Online softmax (softmax warp)
                 if (is_softmax) {
                     compute_online_softmax(layout, m_state, l_state, kv_tile_idx, q_len, kv_len, warp_id, lane_id);
                 }
                 
-                __syncthreads();  // Probs ready
+                __syncthreads();  // Barrier 3: Probs ready
                 
                 // Compute P·V (compute warps)
                 if (is_compute) {
                     compute_pv_wmma(layout, stage, kv_tile_idx, warp_id, q_len, kv_len);
                 }
                 
-                __syncthreads();  // Phase 7: Single barrier per tile
+                // ✅ NO 4th barrier - next iteration starts with one
             }
             
             // Finalize
