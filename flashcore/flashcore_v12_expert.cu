@@ -336,7 +336,7 @@ void fused_attention_expert_kernel(
                     compute_pv_wmma(layout, stage, kv_tile_idx, warp_id, q_len, kv_len);
                 }
                 
-                // ✅ NO 4th barrier - next iteration starts with one
+                __syncthreads();  // Barrier 4: o_accum ready (needed for next iteration!)
             }
             
             // Finalize
