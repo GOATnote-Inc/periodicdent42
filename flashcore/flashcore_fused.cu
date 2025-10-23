@@ -4,32 +4,24 @@
 namespace flashcore {
 namespace fused {
 
-// Phase 1.4: 64×64 tiles with dynamic SMEM (<50 μs target)
-// Requires cudaFuncSetAttribute for >48 KB SMEM per block
-constexpr int kTileM = 64;
-constexpr int kTileN = 64;
+// Phase 1.4: Vectorization + optimized 32×32 tiles (<50 μs target)
+// Note: 64×64 tiles require dynamic SMEM (82 KB > 48 KB default limit)
+// For now, keep 32×32 and focus on vectorized I/O for speedup
+constexpr int kTileM = 32;
+constexpr int kTileN = 32;
 constexpr int kTileD = 64;
 constexpr int kStages = 2;
-constexpr int kWarpsPerBlock = 16;  // 16 warps for 64×64 tiles (4×4 warp layout)
-constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;  // 512 threads
+constexpr int kWarpsPerBlock = 8;  // 8 warps for 32×64 output (Phase 1.3 layout)
+constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;
 
-// Shared memory usage (requires dynamic SMEM, ~82 KB total):
-// - q_tile: 64×64×2B = 8 KB
-// - kv_tiles: 2×2×64×64×2B = 32 KB
-// - scores: 64×64×4B = 16 KB
-// - probs: 64×64×2B = 8 KB
-// - m_state: 64×4B = 0.25 KB
-// - l_state: 64×4B = 0.25 KB
-// - o_accum: 64×64×4B = 16 KB
-// Total: ~80.5 KB (requires opt-in via cudaFuncSetAttribute) ✅
-constexpr size_t kSharedMemoryBytes = 
-    sizeof(half) * kTileM * kTileD +                    // q_tile
-    sizeof(half) * kStages * 2 * kTileN * kTileD +      // kv_tiles
-    sizeof(float) * kTileM * kTileN +                    // scores
-    sizeof(half) * kTileM * kTileN +                     // probs
-    sizeof(float) * kTileM +                             // m_state
-    sizeof(float) * kTileM +                             // l_state
-    sizeof(float) * kTileM * kTileD;                     // o_accum
+// Shared memory usage (~41 KB, fits in 48 KB default limit):
+// - q_tile: 32×64×2B = 4 KB
+// - kv_tiles: 2×2×32×64×2B = 16 KB
+// - scores: 32×32×4B = 4 KB
+// - probs: 32×32×2B = 2 KB
+// - m_state + l_state: 0.25 KB
+// - o_accum: 32×64×4B = 8 KB
+// Total: ~38.25 KB (< 48 KB default limit) ✅
 
 // Warp-level reduction helpers (Phase 1.3 optimization)
 __device__ __forceinline__ float warp_reduce_max(float val) {
@@ -106,13 +98,14 @@ __device__ __forceinline__ void prefetch_kv_tile(
 __device__ __forceinline__ void compute_qkt_wmma(
     const half* q_tile, const half* k_tile, float* scores, float scale) {
     const int warp_id = threadIdx.x / kWarpSize;
-    const int warp_m = warp_id / 4;  // 4×4 warp layout for 64×64 QK^T output
-    const int warp_n = warp_id % 4;
+    const int warp_m = warp_id / 2;  // 2×2 warp layout for 32×32 QK^T output
+    const int warp_n = warp_id % 2;
 
     const int tile_m = warp_m * kWmmaM;
     const int tile_n = warp_n * kWmmaN;
     
-    // All 16 warps compute QK^T (produces 64×64 scores)
+    // First 4 warps compute QK^T (produces 32×32 scores)
+    if (warp_id >= 4) return;
 
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> a_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::col_major> b_frag;
@@ -209,13 +202,13 @@ __device__ __forceinline__ void compute_pv_wmma(
     int cols) {
     
     const int warp_id = threadIdx.x / kWarpSize;
-    const int warp_m = warp_id / 4;  // 4×4 warp layout for 64×64 P·V output
+    const int warp_m = warp_id / 4;  // 2×4 warp layout for 32×64 P·V output
     const int warp_d = warp_id % 4;
 
     const int tile_m = warp_m * kWmmaM;
     const int tile_d = warp_d * kWmmaN;
 
-    // All 16 warps participate (64×64 output)
+    // All 8 warps participate (32×64 output)
     // Bounds check for tail tiles
     if (tile_m >= rows || tile_d >= kTileD) return;
 
@@ -243,7 +236,7 @@ __device__ __forceinline__ void compute_pv_wmma(
     nvcuda::wmma::store_matrix_sync(dst, o_frag, kTileD, nvcuda::wmma::mem_row_major);
 }
 
-__global__ __launch_bounds__(512, 1) void fused_attention_kernel(
+__global__ __launch_bounds__(256, 2) void fused_attention_kernel(
     const half* __restrict__ Q,
     const half* __restrict__ K,
     const half* __restrict__ V,
@@ -372,24 +365,11 @@ void launch_fused(
     float scale,
     cudaStream_t stream) {
     
-    // Opt-in for larger shared memory (64×64 tiles need ~80 KB)
-    // L4 allows up to 100 KB per block with opt-in
-    static bool attributes_set = false;
-    if (!attributes_set) {
-        // Set max shared memory per block (required for >48 KB)
-        cudaFuncSetAttribute(
-            fused_attention_kernel,
-            cudaFuncAttributeMaxDynamicSharedMemorySize,
-            static_cast<int>(kSharedMemoryBytes));
-        
-        // Prefer 100% shared memory carveout
-        cudaFuncSetAttribute(
-            fused_attention_kernel,
-            cudaFuncAttributePreferredSharedMemoryCarveout,
-            cudaSharedmemCarveoutMaxShared);
-        
-        attributes_set = true;
-    }
+    // Opt-in for 100% shared memory carveout (L4 allows up to 99 KB per SM)
+    cudaFuncSetAttribute(
+        fused_attention_kernel,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        cudaSharedmemCarveoutMaxShared);
     
     dim3 grid((S + kTileM - 1) / kTileM, H, B);
     dim3 block(kThreadsPerBlock);
