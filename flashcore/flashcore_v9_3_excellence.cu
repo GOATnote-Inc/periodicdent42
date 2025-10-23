@@ -26,7 +26,7 @@ constexpr int kTileM = 32;        // Reduced from 48 for occupancy
 constexpr int kTileN = 32;        // Square tiles for simplicity
 constexpr int kTileD = 64;
 constexpr int kTilePadD = 72;     // +8 for bank conflict avoidance
-constexpr int kTilePadN = 48;     // +16 for WMMA safety
+constexpr int kTilePadN = 32;     // No padding needed for 32×32 tiles
 
 constexpr int kWarpsPerBlock = 8;  // Reduced from 12 for smaller tiles
 constexpr int kWarpSize = 32;
@@ -77,14 +77,14 @@ struct SMEMLayout {
     
     __host__ __device__ static size_t total_bytes() {
         size_t total = 0;
-        total += kTileM * kTilePadD * sizeof(half);   // Q: 4.5 KB
-        total += kTileN * kTilePadD * sizeof(half);   // K: 4.5 KB
-        total += kTileN * kTilePadD * sizeof(half);   // V: 4.5 KB
-        total += kTileM * kTilePadN * sizeof(float);  // scores: 6 KB
-        total += kTileM * kTilePadN * sizeof(half);   // probs: 3 KB
-        total += kTileM * kTileD * sizeof(float);     // O: 8 KB
+        total += kTileM * kTilePadD * sizeof(half);   // Q: 32×72×2 = 4.5 KB
+        total += kTileN * kTilePadD * sizeof(half);   // K: 32×72×2 = 4.5 KB
+        total += kTileN * kTilePadD * sizeof(half);   // V: 32×72×2 = 4.5 KB
+        total += kTileM * kTilePadN * sizeof(float);  // scores: 32×32×4 = 4 KB
+        total += kTileM * kTilePadN * sizeof(half);   // probs: 32×32×2 = 2 KB
+        total += kTileM * kTileD * sizeof(float);     // O: 32×64×4 = 8 KB
         total += 16 * 6;  // Alignment padding
-        return total;  // ~31 KB
+        return total;  // ~27.5 KB (well under 32 KB!)
     }
 };
 
