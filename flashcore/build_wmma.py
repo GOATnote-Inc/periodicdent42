@@ -23,6 +23,8 @@ def build_extension(verbose: bool = False):
         "-lineinfo",
         "-use_fast_math",
         "--generate-code=arch=compute_89,code=sm_89",
+        "-maxrregcount=96",  # Allow more registers
+        "-Xptxas=-dlcm=ca",  # Cache-all mode for L2
     ]
 
     return load(

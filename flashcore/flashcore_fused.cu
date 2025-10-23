@@ -4,11 +4,12 @@
 namespace flashcore {
 namespace fused {
 
-constexpr int kTileM = 64;
-constexpr int kTileN = 64;
+// Reduced tile sizes to fit in 48 KB shared memory limit
+constexpr int kTileM = 32;
+constexpr int kTileN = 32;
 constexpr int kTileD = 64;
 constexpr int kStages = 2;
-constexpr int kWarpsPerBlock = 16;
+constexpr int kWarpsPerBlock = 4;  // 4 warps for 32×32 tiles (2×2 warp layout)
 constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;
 
 struct SharedStorage {
@@ -85,8 +86,8 @@ __device__ __forceinline__ void prefetch_kv_tile(
 __device__ __forceinline__ void compute_qkt_wmma(
     const half* q_tile, const half* k_tile, float* scores, float scale) {
     const int warp_id = threadIdx.x / kWarpSize;
-    const int warp_m = warp_id / 4;
-    const int warp_n = warp_id % 4;
+    const int warp_m = warp_id / 2;  // 2×4 warp layout for 32×32 tiles
+    const int warp_n = warp_id % 2;
 
     const int tile_m = warp_m * kWmmaM;
     const int tile_n = warp_n * kWmmaN;
@@ -180,7 +181,7 @@ __device__ __forceinline__ void online_softmax_update(
     }
 }
 
-__global__ void fused_attention_kernel(
+__global__ __launch_bounds__(128, 2) void fused_attention_kernel(
     const half* __restrict__ Q,
     const half* __restrict__ K,
     const half* __restrict__ V,
@@ -301,6 +302,12 @@ void launch_fused(
     int D,
     float scale,
     cudaStream_t stream) {
+    
+    // Opt-in for 100% shared memory carveout (L4 allows up to 99 KB per SM)
+    cudaFuncSetAttribute(
+        fused_attention_kernel,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        cudaSharedmemCarveoutMaxShared);
     
     dim3 grid((S + kTileM - 1) / kTileM, H, B);
     dim3 block(kThreadsPerBlock);
