@@ -9,7 +9,7 @@ constexpr int kTileM = 32;
 constexpr int kTileN = 32;
 constexpr int kTileD = 64;
 constexpr int kStages = 2;
-constexpr int kWarpsPerBlock = 4;  // 4 warps for 32×32 tiles (2×2 warp layout)
+constexpr int kWarpsPerBlock = 8;  // 8 warps for 32×64 output (2×4 warp layout)
 constexpr int kThreadsPerBlock = kWarpsPerBlock * kWarpSize;
 
 struct SharedStorage {
@@ -86,11 +86,14 @@ __device__ __forceinline__ void prefetch_kv_tile(
 __device__ __forceinline__ void compute_qkt_wmma(
     const half* q_tile, const half* k_tile, float* scores, float scale) {
     const int warp_id = threadIdx.x / kWarpSize;
-    const int warp_m = warp_id / 2;  // 2×4 warp layout for 32×32 tiles
+    const int warp_m = warp_id / 2;  // 2×2 warp layout for 32×32 QK^T output
     const int warp_n = warp_id % 2;
 
     const int tile_m = warp_m * kWmmaM;
     const int tile_n = warp_n * kWmmaN;
+    
+    // Only first 4 warps compute QK^T (produces 32×32 scores)
+    if (warp_id >= 4) return;
 
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::row_major> a_frag;
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, kWmmaM, kWmmaN, kWmmaK, half, nvcuda::wmma::col_major> b_frag;
@@ -178,11 +181,11 @@ __device__ __forceinline__ void compute_pv_wmma(
     int cols) {
     
     const int warp_id = threadIdx.x / kWarpSize;
-    const int warp_m = warp_id / 2;  // 2×2 warp layout for 32×32 tiles
-    const int warp_n = warp_id % 2;
+    const int warp_m = warp_id / 4;  // 2×4 warp layout for 32×64 P·V output
+    const int warp_d = warp_id % 4;
 
     const int tile_m = warp_m * kWmmaM;
-    const int tile_d = warp_n * kWmmaN;
+    const int tile_d = warp_d * kWmmaN;
 
     // Bounds check for this warp's tile
     if (tile_m >= rows || tile_d >= kTileD) return;
@@ -211,7 +214,7 @@ __device__ __forceinline__ void compute_pv_wmma(
     nvcuda::wmma::store_matrix_sync(dst, o_frag, kTileD, nvcuda::wmma::mem_row_major);
 }
 
-__global__ __launch_bounds__(128, 2) void fused_attention_kernel(
+__global__ __launch_bounds__(256, 2) void fused_attention_kernel(
     const half* __restrict__ Q,
     const half* __restrict__ K,
     const half* __restrict__ V,
