@@ -4,7 +4,8 @@ on: [push, pull_request]
 jobs:
   parity-and-sanitizers:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.pull_request.title, 'Repo Ops')"
+    # DISABLED: Requires GPU runner - re-enable when self-hosted L4 runner is configured
+    if: false  # "!contains(github.event.pull_request.title, 'Repo Ops')"
     # NOTE: This workflow requires a self-hosted GPU runner or GHA GPU instance
     # Standard GitHub Actions runners do not have CUDA/GPU support
     # To enable: Add self-hosted L4 runner with CUDA 12.2+ installed

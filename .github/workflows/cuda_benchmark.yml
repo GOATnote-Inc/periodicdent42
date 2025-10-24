@@ -17,7 +17,8 @@ jobs:
   benchmark:
     name: Benchmark
     runs-on: self-hosted
-    if: contains(github.event.pull_request.labels.*.name, 'benchmark') || github.event_name == 'workflow_dispatch'
+    # DISABLED: No self-hosted runner available - re-enable when runner is configured
+    if: false  # contains(github.event.pull_request.labels.*.name, 'benchmark') || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     
     steps:
