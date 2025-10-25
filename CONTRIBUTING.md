@@ -368,7 +368,7 @@ We pledge to make participation in FlashCore a harassment-free experience for ev
 ### Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to:
-- **Email**: conduct@thegoatnote.com
+- **Email**: b@thegoatnote.com
 - **GitHub**: Open a confidential issue
 
 All complaints will be reviewed and investigated promptly and fairly.
@@ -440,7 +440,7 @@ Look for issues labeled:
 **DO NOT** open public issues for security vulnerabilities.
 
 Instead:
-1. Email: security@thegoatnote.com
+1. Email: b@thegoatnote.com
 2. Include: Description, impact, reproduction steps
 3. Expect: Response within 48 hours
 
@@ -458,8 +458,8 @@ When contributing:
 
 **General questions**: [GitHub Discussions](https://github.com/GOATnote-Inc/periodicdent42/discussions)  
 **Bug reports**: [GitHub Issues](https://github.com/GOATnote-Inc/periodicdent42/issues)  
-**Security**: security@thegoatnote.com  
-**Conduct**: conduct@thegoatnote.com
+**Security**: b@thegoatnote.com  
+**Code of Conduct**: b@thegoatnote.com
 
 ---
 

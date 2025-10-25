@@ -410,7 +410,7 @@ for start_n in range(0, N, BLOCK_N):  # ✅ Fixed iteration count
 
 ## 🔐 Security Contact
 
-**Security Issues**: security@thegoatnote.com  
+**Security Issues**: b@thegoatnote.com  
 **Bug Reports**: https://github.com/GOATnote-Inc/periodicdent42/issues  
 **Responsible Disclosure**: Within 48 hours
 
