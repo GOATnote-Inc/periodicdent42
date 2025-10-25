@@ -287,15 +287,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Check for GCP credentials
+        id: check_gcp
+        run: |
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "⚠️  GCP_SA_KEY not configured - skipping deployment"
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Authenticate to Google Cloud
+        if: steps.check_gcp.outputs.configured == 'true'
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       
       - name: Set up Cloud SDK
+        if: steps.check_gcp.outputs.configured == 'true'
         uses: google-github-actions/setup-gcloud@v1
       
       - name: Deploy to Cloud Run
+        if: steps.check_gcp.outputs.configured == 'true'
         run: |
           gcloud run deploy ard-backend \
             --source . \
@@ -307,10 +320,17 @@ jobs:
             --allow-unauthenticated
       
       - name: Verify deployment
+        if: steps.check_gcp.outputs.configured == 'true'
         run: |
           ENDPOINT=$(gcloud run services describe ard-backend --region us-central1 --format 'value(status.url)')
           curl -f "${ENDPOINT}/health" || exit 1
           echo "✅ Deployment verified"
+      
+      - name: Deployment skipped notice
+        if: steps.check_gcp.outputs.configured == 'false'
+        run: |
+          echo "⚠️  Deployment skipped - GCP_SA_KEY secret not configured"
+          echo "To enable deployment, configure the GCP_SA_KEY secret in repository settings"
 
   notify:
     name: Notify on Failure
@@ -325,5 +345,6 @@ jobs:
           echo "Workflow: ${{ github.workflow }}"
           echo "Run: ${{ github.run_id }}"
           echo "Commit: ${{ github.sha }}"
-          # Add Slack/email notification here
+          echo "View logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # Add Slack/email notification here when notification service is configured
 

@@ -1,225 +1,142 @@
-# Phase D Status: Library Comparison Complete
+# Phase D Implementation Status - L4 FlashAttention
 
-**Date**: Oct 17, 2025  
-**Findings**: xFormers CUTLASS is optimal for L4
-
----
-
-## **📊 Benchmark Results (L4, sm_89, S=512, D=64)**
-
-```
-Implementation          Latency    vs Best    Correct
-──────────────────────────────────────────────────────
-xFormers SDPA (champion)  24.22 μs   1.00×      ✅
-FlashAttention-2 (direct) 147.99 μs  6.11×      ✅
-```
-
-**Winner**: xFormers CUTLASS FMHA @ **24.22 μs**
+**Date**: October 21, 2025  
+**Branch**: feat/l4-stage5-fixes-D1  
+**GPU**: NVIDIA L4 (Ada, SM_89)  
+**Goal**: <5 μs latency (≥15× vs PyTorch SDPA baseline of ~25.9 μs)
 
 ---
 
-## **🎯 Key Insights**
+## 🎯 Mission Objective
 
-### **1. xFormers >> FlashAttention-2 on L4**
-
-**Surprise Finding**: FA-2 direct is **6.11× SLOWER** than xFormers!
-
-**Why?**:
-- xFormers uses **CUTLASS FMHA kernels** optimized for Ada (sm_89)
-- FA-2 has **layout conversion overhead** (B,H,S,D → B,S,H,D → B,H,S,D)
-- FA-2 may not have Ada-specific optimizations yet
-- xFormers' CUTLASS benefits from **NVIDIA's latest tuning**
-
-**Lesson**: "Best library" depends on architecture!  
-- Hopper (H100): FA-3 would be best  
-- Ada (L4): xFormers CUTLASS is best  
-- Ampere (A100): FA-2 is competitive
+Achieve **<5 μs** forward pass latency for attention (B=1, H=8, S=512, D=64), representing:
+- **5.2× speedup** vs PyTorch SDPA baseline (25.9 μs)
+- **≥15× speedup** vs older PyTorch implementations (870 μs)
+- **Tier 3 Excellent** performance target
 
 ---
 
-### **2. NCU Findings: Low Occupancy by Design**
+## ✅ Completed Infrastructure (Steps 0-7)
 
-From earlier NCU profiling:
-```
-Theoretical Occupancy:  33.33%  (limited by registers)
-Achieved Occupancy:      9.28%  (workload imbalance)
-Eligible Warps:          0.27   (per scheduler)
-Issue Slots Busy:       25.74%  (idle 74%!)
-```
+### 0. Environment Setup
+- Branch: feat/l4-stage5-fixes-D1 created on L4
+- Toolchain verified: CUDA 12.2, PyTorch 2.5.1, ninja 1.13.0
+- Dependencies installed: numpy, pytest, pyyaml, tabulate, rich
 
-**Root Cause**: Register pressure (intentional for Tensor Core efficiency)
+### 1. Build System Overhaul
+- Created tasks/fp8_sdpa_stage_c_wmma/build_ext_v2.py
+  - Signature-based cache invalidation (fixes PyTorch JIT reuse bug)
+  - Unique extension names per config
+  - Proper macro propagation to NVCC
+  - PATH environment setup (ninja visibility)
 
-**xFormers' Tradeoff**:
-- ✅ Low occupancy (9.28%)
-- ✅ High work per warp (Tensor Cores = 32× FMA throughput)
-- ✅ Net result: **FAST** (24.22 μs)
+### 2. Kernel Correctness Fixes
+Applied numerical stability guards to cudadent42/bench/kernels/sdpa_fp8_stage_c_wmma.cu
+- Softmax m_new stability guard
+- Rescale factor clamping  
+- Final normalization guard
 
----
+PTXAS Stats (sm_89):
+- Registers: 96
+- Shared Memory: 37 KB
+- Spills: 0
 
-## **🚀 Path Forward**
+### 3. Test Suite
+Created tests/test_sdpa_kernel_correctness.py:
+- 12 test cases: 4 shapes × 3 seeds
+- Shapes: Small (64), Medium (128), Mission (512), Multi-batch
+- Correctness checks: max_err ≤ 0.06, NaN/Inf detection
+- Determinism tests
 
-### **Option 1: Accept xFormers Champion**
-
-**Current**: 24.22 μs  
-**Target**: < 5 μs (4.8× speedup needed)
-
-**Reality Check**:
-- xFormers team: NVIDIA + Meta experts  
-- Already Tensor Core optimized
-- Low occupancy is **intentional design choice**
-- 24.22 μs is **excellent** for L4
-
-**Difficulty to beat**: **9/10** (expert-level only)
-
----
-
-### **Option 2: Register Pressure Attack (User's Choice)**
-
-**Strategy**: NO QUITTING - Attack register pressure systematically
-
-**Plan**:
-1. ✅ Submodules initialized (FA-2, CUTLASS)
-2. ✅ Baselines measured (xFormers: 24.22 μs, FA-2: 147.99 μs)
-3. 🔄 **Next**: Apply register fixes to custom kernel
-4. 🔄 Sweep REGCAP + THREADS (90 configs)
-5. 🔄 NCU validate best config
-6. 🔄 Target: Beat 24.22 μs
-
-**Expected**:
-- Best case: 24 → 15 μs (1.6× improvement, 40% success)
-- Realistic: 24 → 20 μs (1.2× improvement, 70% success)
-- Risk: May not beat experts' kernel
+### 4-6. Benchmarking, NCU Profiling, Repro Bundle
+- scripts/run_single_bench.py: Single-variant runner
+- scripts/profile.sh: NCU automation  
+- repro.sh: One-click validation pipeline
 
 ---
 
-### **Option 3: Hybrid Approach**
+## 📊 Current Results
 
-**Use xFormers as baseline + document learnings**:
-- ✅ Champion found: 24.22 μs (production-grade)
-- ✅ NCU analysis: Professional insights
-- ✅ Library comparison: Data-driven choice
-- ✅ Register pressure sweep: For learning/portfolio
+### Correctness Status
 
-**Value**: Demonstrates **engineering process**, not just speed
+| Shape | Seeds | Status | Max Error | Notes |
+|-------|-------|--------|-----------|-------|
+| 1×2×64×64 | 0,1,2 | ✅ PASS | 0.043 | Within 0.06 threshold |
+| 1×4×128×64 | 0 | ✅ PASS | ~0.05 | Acceptable |
+| 1×8×512×64 | 0 | ❌ FAIL | nan | FP8 precision limits |
+| 2×2×64×64 | 0 | ✅ PASS | ~0.04 | Multi-batch OK |
 
----
+**Key Finding**: FP8 quantization precision limits cause NaNs on long sequences (512)
 
-## **📈 Progress Summary**
-
-### **Achievements Today (10+ hours)**
-
-```
-Baseline Testing:
-  ✅ Created registry (5 implementations)
-  ✅ Fixed PyTorch version issues
-  ✅ Systematic benchmarking
-  ✅ Champion: xFormers @ 24.22 μs (earlier: 33.19 μs)
-
-NCU Profiling:
-  ✅ Fixed profiling script (isolated SDPA kernel)
-  ✅ Full report (35 passes)
-  ✅ Root cause: Low occupancy (register pressure)
-  ✅ Understanding: Intentional design tradeoff
-
-Library Comparison:
-  ✅ FA-2 installed and benchmarked
-  ✅ xFormers 6.11× faster than FA-2 on L4
-  ✅ Data-driven champion selection
-
-Infrastructure:
-  ✅ Submodules (FA-2, CUTLASS)
-  ✅ Sweep scripts ready
-  ✅ Build system for tuning
-```
-
-**Total Speedup from Start**: **118.5× (2870 → 24.22 μs)**
+### Root Cause
+1. FP8 Dynamic Range: E4M3 format limited to ±448
+2. Error Accumulation: 512-step online softmax compounds quantization noise  
+3. Overflow/Underflow: Extreme scores cause NaN propagation despite guards
 
 ---
 
-## **🎓 What We Learned**
+## 🔧 Recommended Next Steps
 
-### **1. "Standing on Shoulders" Means Choosing Wisely**
+### Option A: Switch to FP16 Path ⭐ RECOMMENDED
 
-- Not all "giants" are equal for your architecture
-- xFormers (CUTLASS) >> FA-2 on L4
-- Architecture-specific optimization matters!
+Remove FP8 quantization entirely; use native FP16 throughout
 
-### **2. Low Occupancy ≠ Bad Kernel**
+Changes:
+1. Modify kernel wrappers to skip quantize_sim_fp8_per_head()
+2. Pass FP16 tensors directly to kernel
+3. Update kernel to load half* instead of uint8_t*
+4. Remove dequantization logic
 
-- xFormers: 9.28% occupancy, 24.22 μs ✅
-- High occupancy with scalar ops: ~500 μs ❌
-- **Quality > Quantity** (smart warps > many warps)
-
-### **3. NCU Reveals Hidden Tradeoffs**
-
-- Before: "Can we beat 24 μs?"
-- After NCU: "24 μs is result of expert tradeoffs"
-- To beat: Need **different approach**, not just tuning
+Expected Outcome: Mission shape passes (max_err <0.06)
 
 ---
 
-## **💡 Recommendation**
+## 📦 Artifacts Summary
 
-### **For Portfolio / Learning**: Continue with Option 2
+### Code Commits
+- c124dac: Build system + softmax numerical stability
+- 8ab92e0: Complete test + benchmark + profiling infrastructure
 
-**Why**:
-- Demonstrates systematic optimization process
-- Shows understanding of register pressure
-- NCU-driven analysis (professional-grade)
-- Even if we don't beat 24 μs, we **learn** and **document**
-
-**Deliverable**: Complete optimization case study
-
----
-
-### **For Production**: Accept Option 1
-
-**Why**:
-- 24.22 μs is **excellent** for L4
-- xFormers is battle-tested, correct, fast
-- Further optimization has **diminishing returns**
-- Time better spent on other bottlenecks
-
-**Deliverable**: Production-ready champion
+### Files Created/Modified
+- tasks/fp8_sdpa_stage_c_wmma/build_ext_v2.py [NEW]
+- cudadent42/bench/kernels/sdpa_fp8_stage_c_wmma.cu [MOD]  
+- tests/test_sdpa_kernel_correctness.py [NEW]
+- scripts/profile.sh [NEW]
+- scripts/run_single_bench.py [NEW]
+- repro.sh [NEW]
 
 ---
 
-## **⏱️ Time Summary**
+## 📋 Definition of Done - Current Status
 
-```
-Today:
-  Baseline testing:   4 hours  ✅
-  NCU profiling:      3 hours  ✅
-  Library comparison: 1 hour   ✅
-  Infrastructure:     2 hours  ✅
-  ─────────────────────────────
-  Total:             10 hours
-
-Remaining (if continue):
-  Register fixes:     2 hours
-  Occupancy sweep:    3 hours
-  NCU validation:     1 hour
-  ─────────────────────────────
-  Total:              6 hours
-```
+| Criterion | Target | Status |
+|-----------|--------|--------|
+| Correctness | Pass all shapes | ⚠️ Partial (small ✅, mission ❌) |
+| Performance | <5 μs | 🔄 Pending FP16 fix |
+| Build System | Proper caching | ✅ Done |
+| Test Suite | Pytest + shapes | ✅ Done |
+| Profiling | NCU automation | ✅ Done |
+| Repro Bundle | One-click validation | ✅ Done |
 
 ---
 
-## **📝 Next Steps**
+## 🚀 Immediate Next Action
 
-**User's Choice**: Continue with NO QUITTING strategy
+Execute Option A (Switch to FP16 Path):
+1. Create FP16 variant of build system
+2. Modify wrapper to skip quantization  
+3. Update kernel (half* instead of uint8_t*)
+4. Test: pytest tests/test_sdpa_kernel_correctness.py -v
+5. Benchmark: ./repro.sh
 
-**Phase D.2**: Apply register pressure fixes
-- Move temporaries to SMEM
-- Add `-maxrregcount` caps
-- De-inline helpers
-- Test single config (REGCAP=80, THREADS=192)
-
-**Then**: Sweep → NCU → Compare vs 24.22 μs
+Expected: All tests pass, ready for Phase D perf optimization
 
 ---
 
-**Status**: ✅ **Excellent progress!** Standing on xFormers' shoulders (correctly identified as best for L4)
+**Status**: ✅ Infrastructure Complete, ⚠️ Awaiting FP16 Path Implementation  
+**Estimated Time to FP16**: 2-3 hours  
+**Estimated Time to <5 μs**: 1-2 weeks (Phase D optimizations)
 
-**Champion**: xFormers CUTLASS @ **24.22 μs** on L4
-
+**Last Updated**: October 21, 2025  
+**Branch**: feat/l4-stage5-fixes-D1  
+**Commits**: c124dac, 8ab92e0 (local)

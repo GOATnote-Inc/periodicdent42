@@ -25,6 +25,8 @@ jobs:
   benchmark_and_ratchet:
     name: Benchmark + Ratchet
     runs-on: [self-hosted, gpu, cuda]
+    # DISABLED: No self-hosted GPU runner available - re-enable when runner is configured
+    if: false
     timeout-minutes: 30
     
     steps:

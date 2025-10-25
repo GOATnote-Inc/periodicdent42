@@ -1,0 +1,94 @@
+# FlashCore GPU Ground Rules (Cursor AI Rules)
+# Type: Always (applies to all prompts in this repo)
+# Last Updated: October 21, 2025
+
+## Hardware & Environment
+- Use NVIDIA L4 GPU (GCP instance) for all heavy tasks (compile, test, bench, profile)
+- Never fall back to CPU without explicit user permission
+- Engineering time >> GPU cost: keep GPU alive, don't idle or tear down
+- Toolchain: CUDA 12.2, PyTorch 2.x (CUDA-enabled), Nsight Compute installed
+- Ensure nvcc, ncu, and torch.utils.cpp_extension are in $PATH
+
+## Repository Structure
+- Active workspace root: /Users/kiteboard/periodicdent42/
+- Current project: flashcore/ (new kernel development)
+- Historical kernels: cudadent42/ (reference implementations)
+- Compilation target: L4 (Ada, sm_89) - always use -arch=sm_89
+
+## Mandatory Preflight
+Before ANY compile/profile/benchmark step:
+1. Run: bash scripts/preflight.sh
+2. If fails: auto-fix PATH/CUDA_HOME/LD_LIBRARY_PATH via scripts/env_cuda_l4.sh
+3. Show one-screen diff of environment changes
+4. Re-run preflight until passes
+5. Only proceed after [PASS] status
+
+## Build Defaults
+- Flags: -O3 --use_fast_math -lineinfo -Xptxas -v -arch=sm_89
+- Environment: CUDA_HOME=/usr/local/cuda-12.2, CUDA_ARCH=8.9
+- PyTorch allocator: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512
+
+## GPU Keep-Alive
+Maintain tmux session 'gpu' with nvidia-smi dmon logger:
+- Start: bash scripts/keepalive.sh
+- Attach: tmux attach -t gpu
+- Log: logs/gpu_dmon.log
+
+## Operating Heuristics
+- Always use Test-Driven Development: write/run tests first, then code, then re-run tests
+- Keep changes small (50-200 lines per diff)
+- Explain plan before executing
+- Use Agent mode for multi-file edits + terminal commands
+- Summarize diffs and command logs at each step
+- Save all artifacts (JSONs, NCU logs) with timestamps + git SHA
+
+## Current Project Phase
+- ✅ Phase 0: Baseline validated (1500 µs, correct)
+- 🔄 Phase 1: WMMA Tensor Cores (target: ~150 µs, 10× speedup)
+- ⏳ Phase 2: FlashAttention Fusion (target: <58 µs, ≥15× speedup) ← PRIMARY GOAL
+
+## Success Criteria (Phase 1)
+- PTXAS: ≤120 registers, ≤64 KB SMEM, 0 spills
+- Correctness: All 15 tests pass (max_err ≤ 0.06)
+- Performance: <200 µs on mission shape (≥7× vs baseline)
+- NCU: Tensor Core utilization ≥50%
+
+## Standard Workflow
+1. bash scripts/preflight.sh (verify GPU environment)
+2. python build.py (compile kernel)
+3. pytest tests/test_correctness.py -v (run 15 tests)
+4. python benchmarks/benchmark_latency.py --shape mission (measure p50/p90/p99)
+5. ncu ... (profile Tensor Core utilization, DRAM throughput)
+6. Document results (save JSONs, update phase reports)
+
+## Key Files
+- scripts/preflight.sh: GPU validation (run before heavy ops)
+- scripts/env_cuda_l4.sh: CUDA environment setup
+- scripts/keepalive.sh: GPU keep-alive (tmux + dmon)
+- AGENTS.md: Complete operating manual for AI agents
+- docs/PHASE1_WMMA_GUIDE.md: Phase 1 implementation guide
+
+## References
+- FlashCore architecture: docs/ARCHITECTURE.md
+- Getting started: docs/GETTING_STARTED.md
+- L4 execution guide: L4_GPU_EXECUTION_GUIDE.md
+- periodicdent42 WMMA reference: ../cudadent42/bench/kernels/fa_wmma_qkt.cu
+
+## Safety Rules
+- Never commit without tests passing
+- Always check for NaN/Inf in outputs
+- Verify PTXAS reports no spills
+- Save benchmark JSONs before changing code
+- Include performance summary in git commits
+
+## Memory/Context Management
+- Add this file content to Cursor Memories for sticky context across sessions
+- Reference AGENTS.md for complete operating manual
+- Keep project phase status updated in all prompts
+- Use Agent mode for complex multi-step operations
+
+---
+For detailed operating procedures, see: AGENTS.md
+For Phase 1 WMMA implementation: docs/PHASE1_WMMA_GUIDE.md
+For L4 GPU execution: L4_GPU_EXECUTION_GUIDE.md
+

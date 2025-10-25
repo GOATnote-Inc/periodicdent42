@@ -23,6 +23,11 @@ USE_WMMA_PV  = int(os.environ.get("USE_WMMA_PV", "1"))  # Default ON (Stage-2 me
 USE_FUSED_SOFTMAX = int(os.environ.get("USE_FUSED_SOFTMAX", "0"))  # Stage-3: fused softmax in registers (OFF until Step-3 lands)
 USE_SMEM_SWIZZLE_XOR = int(os.environ.get("USE_SMEM_SWIZZLE_XOR", "0"))  # Stage-3: XOR swizzle (OFF, Step-2 regressed +6%)
 USE_CP_ASYNC_3STAGE = int(os.environ.get("USE_CP_ASYNC_3STAGE", "0"))  # Stage-3: 3-stage pipeline (long seq)
+# Stage-5: Warp Specialization + Persistent CTAs
+USE_WARP_SPECIALIZATION = int(os.environ.get("USE_WARP_SPECIALIZATION", "0"))  # OFF by default
+NUM_PRODUCER_WARPS = int(os.environ.get("NUM_PRODUCER_WARPS", "1"))  # 1 or 2 producers
+USE_PERSISTENT_CTA = int(os.environ.get("USE_PERSISTENT_CTA", "0"))  # OFF by default
+USE_FAST_EXP = int(os.environ.get("USE_FAST_EXP", "0"))  # OFF by default (breaks correctness)
 ARCH_LIST = os.environ.get("TORCH_CUDA_ARCH_LIST", "8.9")
 
 # Paths
@@ -58,19 +63,32 @@ def build_extension(name="sdpa_fp8_stage_c_wmma", verbose=True):
         extra_cuda_cflags.append("-DUSE_SMEM_SWIZZLE_XOR=1")
     if USE_CP_ASYNC_3STAGE:
         extra_cuda_cflags.append("-DUSE_CP_ASYNC_3STAGE=1")
+    # Stage-5 toggles
+    if USE_WARP_SPECIALIZATION:
+        extra_cuda_cflags.append("-DUSE_WARP_SPECIALIZATION=1")
+        extra_cuda_cflags.append(f"-DNUM_PRODUCER_WARPS={NUM_PRODUCER_WARPS}")
+    if USE_PERSISTENT_CTA:
+        extra_cuda_cflags.append("-DUSE_PERSISTENT_CTA=1")
+    if USE_FAST_EXP:
+        extra_cuda_cflags.append("-DUSE_FAST_EXP=1")
     
     print(f"\n{'='*80}")
     print("FP8 SDPA Stage-C WMMA Kernel Build")
     print(f"{'='*80}")
-    print(f"  USE_KV_LUT:          {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
-    print(f"  DEBUG_PRINT:         {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
-    print(f"  USE_CP_ASYNC:        {USE_CP_ASYNC} ({'double-buffer K/V' if USE_CP_ASYNC else 'direct load'})")
-    print(f"  USE_WMMA_PV:         {USE_WMMA_PV} ({'WMMA P·V' if USE_WMMA_PV else 'scalar P·V'})")
-    print(f"  USE_FUSED_SOFTMAX:   {USE_FUSED_SOFTMAX} ({'fused softmax (no sS)' if USE_FUSED_SOFTMAX else 'Stage-2 baseline'})")
-    print(f"  USE_SMEM_SWIZZLE_XOR: {USE_SMEM_SWIZZLE_XOR} ({'XOR swizzle' if USE_SMEM_SWIZZLE_XOR else 'no swizzle'})")
-    print(f"  USE_CP_ASYNC_3STAGE: {USE_CP_ASYNC_3STAGE} ({'3-stage pipeline' if USE_CP_ASYNC_3STAGE else '2-stage'})")
-    print(f"  Architecture:        sm_{ARCH_LIST.replace('.', '')}")
-    print(f"  Flags:               {' '.join(extra_cuda_cflags)}")
+    print(f"  USE_KV_LUT:               {USE_KV_LUT} ({'LUT path' if USE_KV_LUT else 'direct dequant ✓'})")
+    print(f"  DEBUG_PRINT:              {DEBUG_PRINT} ({'enabled' if DEBUG_PRINT else 'quiet ✓'})")
+    print(f"  USE_CP_ASYNC:             {USE_CP_ASYNC} ({'double-buffer K/V' if USE_CP_ASYNC else 'direct load'})")
+    print(f"  USE_WMMA_PV:              {USE_WMMA_PV} ({'WMMA P·V' if USE_WMMA_PV else 'scalar P·V'})")
+    print(f"  USE_FUSED_SOFTMAX:        {USE_FUSED_SOFTMAX} ({'fused softmax (no sS)' if USE_FUSED_SOFTMAX else 'Stage-2 baseline'})")
+    print(f"  USE_SMEM_SWIZZLE_XOR:     {USE_SMEM_SWIZZLE_XOR} ({'XOR swizzle' if USE_SMEM_SWIZZLE_XOR else 'no swizzle'})")
+    print(f"  USE_CP_ASYNC_3STAGE:      {USE_CP_ASYNC_3STAGE} ({'3-stage pipeline' if USE_CP_ASYNC_3STAGE else '2-stage'})")
+    print(f"  USE_WARP_SPECIALIZATION:  {USE_WARP_SPECIALIZATION} ({'WS (prod/cons)' if USE_WARP_SPECIALIZATION else 'Stage-2'})")
+    if USE_WARP_SPECIALIZATION:
+        print(f"    NUM_PRODUCER_WARPS:     {NUM_PRODUCER_WARPS}")
+    print(f"  USE_PERSISTENT_CTA:       {USE_PERSISTENT_CTA} ({'persistent' if USE_PERSISTENT_CTA else 'per-tile'})")
+    print(f"  USE_FAST_EXP:             {USE_FAST_EXP} ({'fast approx' if USE_FAST_EXP else 'standard __expf ✓'})")
+    print(f"  Architecture:             sm_{ARCH_LIST.replace('.', '')}")
+    print(f"  Flags:                    {' '.join(extra_cuda_cflags)}")
     print(f"{'='*80}\n")
     
     # Build
@@ -124,6 +142,10 @@ def capture_build_metadata(output_dir=None):
             "USE_FUSED_SOFTMAX": USE_FUSED_SOFTMAX,
             "USE_SMEM_SWIZZLE_XOR": USE_SMEM_SWIZZLE_XOR,
             "USE_CP_ASYNC_3STAGE": USE_CP_ASYNC_3STAGE,
+            "USE_WARP_SPECIALIZATION": USE_WARP_SPECIALIZATION,
+            "NUM_PRODUCER_WARPS": NUM_PRODUCER_WARPS,
+            "USE_PERSISTENT_CTA": USE_PERSISTENT_CTA,
+            "USE_FAST_EXP": USE_FAST_EXP,
             "arch": f"sm_{ARCH_LIST.replace('.', '')}",
             "flags": ["-O3", "--use_fast_math", "-lineinfo"],
         },

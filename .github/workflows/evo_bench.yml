@@ -22,7 +22,8 @@ jobs:
   bench-gate:
     runs-on: [self-hosted, gpu, cuda, l4]
     timeout-minutes: 30
-    if: contains(github.event.head_commit.message, '[bench]') || github.event_name == 'workflow_dispatch'
+    # DISABLED: No self-hosted L4 runner available - re-enable when runner is configured
+    if: false  # contains(github.event.head_commit.message, '[bench]') || github.event_name == 'workflow_dispatch'
     
     env:
       IMPL: ${{ github.event.inputs.impl || 'wmma' }}

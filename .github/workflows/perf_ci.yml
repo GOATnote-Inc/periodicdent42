@@ -18,6 +18,8 @@ jobs:
   perf-check:
     name: Performance Validation
     runs-on: ubuntu-latest
+    # DISABLED: Requires GPU for meaningful tests - re-enable when self-hosted runner available
+    if: false
     # TODO: Replace with self-hosted GPU runner
     # runs-on: [self-hosted, gpu, l4]
     
