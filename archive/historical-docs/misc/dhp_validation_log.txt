@@ -1,0 +1,180 @@
+==========================================
+DHP EXPERT FRAMEWORK - GPU VALIDATION
+==========================================
+Target: root@154.57.34.90:36088
+
+🔌 Testing connection...
+NVIDIA H100 80GB HBM3, 9.0
+✅ Connected to GPU
+
+📦 Uploading expert DHP files...
+✅ Files uploaded
+
+🚀 Running expert validation on GPU...
+==========================================
+HARDWARE VALIDATION
+==========================================
++ cd /workspace/dhp_expert
++ echo ==========================================
++ echo 'HARDWARE VALIDATION'
++ echo ==========================================
++ nvidia-smi --query-gpu=name,driver_version,compute_cap,memory.total --format=csv
+name, driver_version, compute_cap, memory.total [MiB]
+NVIDIA H100 80GB HBM3, 575.57.08, 9.0, 81559 MiB
++ export PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ nvcc --version
++ grep release
+Cuda compilation tools, release 12.4, V12.4.131
+/usr/local/cuda/bin/nvcc
+
+==========================================
+STEP 1: BUILD PRODUCTION KERNEL
+==========================================
++ which nvcc
++ echo ''
++ echo ==========================================
++ echo 'STEP 1: BUILD PRODUCTION KERNEL'
++ echo ==========================================
+++ nvidia-smi --query-gpu=compute_cap --format=csv,noheader
+++ head -1
+++ tr -d .
+++ awk '{print "sm_"$1}'
++ ARCH=sm_90
+Detected architecture: sm_90
++ echo 'Detected architecture: sm_90'
++ nvcc -std=c++17 -O3 -Xptxas -O3 -gencode arch=compute_90,code=sm_90 -cubin kernels/chacha20_poly1305_production.cu -o chacha20_production.cubin
+kernels/chacha20_poly1305_production.cu(62): warning #191-D: type qualifier is meaningless on cast type
+      v = *reinterpret_cast<const uint4* __restrict__>(p);
+                            ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+kernels/chacha20_poly1305_production.cu(66): warning #191-D: type qualifier is meaningless on cast type
+      *reinterpret_cast<uint4* __restrict__>(p) = v;
+                        ^
+
+✅ Kernel compiled
+-rw-r--r-- 1 root root 48K Oct 25 16:37 chacha20_production.cubin
+
+==========================================
+STEP 2: ENHANCED SASS VALIDATION
+==========================================
++ echo '✅ Kernel compiled'
++ ls -lh chacha20_production.cubin
++ echo ''
++ echo ==========================================
++ echo 'STEP 2: ENHANCED SASS VALIDATION'
++ echo ==========================================
++ chmod +x tools/sass_validator_enhanced.sh
+====================================================
+Enhanced SASS Validation (Expert-Hardened)
+====================================================
+CUBIN: chacha20_production.cubin
+
+[1/6] Disassembling CUBIN...
+tools/sass_validator_enhanced.sh: line 34: build/sass_dump.txt: No such file or directory
++ bash tools/sass_validator_enhanced.sh chacha20_production.cubin
++ tee sass_validation_results.txt
+==========================================
+DHP EXPERT FRAMEWORK - GPU VALIDATION
+==========================================
+Target: root@154.57.34.90:36088
+
+🔌 Testing connection...
+NVIDIA H100 80GB HBM3, 9.0
+✅ Connected to GPU
+
+📦 Uploading expert DHP files...
+✅ Files uploaded
+
+🚀 Running expert validation on GPU...
+==========================================
+HARDWARE VALIDATION
+==========================================
++ cd /workspace/dhp_expert
++ echo ==========================================
++ echo 'HARDWARE VALIDATION'
++ echo ==========================================
++ nvidia-smi --query-gpu=name,driver_version,compute_cap,memory.total --format=csv
+name, driver_version, compute_cap, memory.total [MiB]
+NVIDIA H100 80GB HBM3, 575.57.08, 9.0, 81559 MiB
++ export PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ nvcc --version
++ grep release
+Cuda compilation tools, release 12.4, V12.4.131
+/usr/local/cuda/bin/nvcc
+
++ which nvcc
++ echo ''
+==========================================
+STEP 1: BUILD PRODUCTION KERNEL
+==========================================
++ echo ==========================================
++ echo 'STEP 1: BUILD PRODUCTION KERNEL'
++ echo ==========================================
+++ nvidia-smi --query-gpu=compute_cap --format=csv,noheader
+++ head -1
+++ tr -d .
+++ awk '{print "sm_"$1}'
+Detected architecture: sm_90
++ ARCH=sm_90
++ echo 'Detected architecture: sm_90'
++ nvcc -std=c++17 -O3 -Xptxas -O3 -gencode arch=compute_90,code=sm_90 -cubin kernels/chacha20_poly1305_production.cu -o chacha20_production.cubin
+kernels/chacha20_poly1305_production.cu(62): warning #191-D: type qualifier is meaningless on cast type
+      v = *reinterpret_cast<const uint4* __restrict__>(p);
+                            ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+kernels/chacha20_poly1305_production.cu(66): warning #191-D: type qualifier is meaningless on cast type
+      *reinterpret_cast<uint4* __restrict__>(p) = v;
+                        ^
+
+✅ Kernel compiled
+-rw-r--r-- 1 root root 48K Oct 25 16:38 chacha20_production.cubin
+
+==========================================
++ echo '✅ Kernel compiled'
++ ls -lh chacha20_production.cubin
++ echo ''
++ echo ==========================================
+STEP 2: ENHANCED SASS VALIDATION
+==========================================
++ echo 'STEP 2: ENHANCED SASS VALIDATION'
++ echo ==========================================
++ chmod +x tools/sass_validator_enhanced.sh
++ mkdir -p build
++ sed -i 's|build/sass_dump.txt|sass_dump.txt|g' tools/sass_validator_enhanced.sh
+====================================================
+Enhanced SASS Validation (Expert-Hardened)
+====================================================
+CUBIN: chacha20_production.cubin
+
+[1/6] Disassembling CUBIN...
++ bash tools/sass_validator_enhanced.sh chacha20_production.cubin
++ tee sass_validation_results.txt
+      Created: sass_dump.txt
+
+[2/6] Checking for LOCAL MEMORY usage (register spills)...
+      PASS: No local memory usage detected
+
+[3/6] Checking for PREDICATED BRANCHES...
+      FAIL: Predicated branches detected
+
+      Offending instructions:
+      47:        /*0150*/               @P3 BRA 0x3d70 ;                                           /* 0x0000003c00043947 */
+      2021:        /*3f00*/               @P0 BRA 0x7f60 ;                                           /* 0x0000004000140947 */
+      4091:        /*7fb0*/               @P3 BRA 0xaed0 ;                                           /* 0x0000002c00c43947 */
+      4379:        /*88b0*/               @P1 BRA 0x8310 ;                                           /* 0xfffffff800941947 */
+      4531:        /*8d70*/               @P0 BRA 0x8bf0 ;                                           /* 0xfffffffc009c0947 */
+      5065:        /*9e20*/               @P1 BRA 0x9880 ;                                           /* 0xfffffff800941947 */
+      5217:        /*a2e0*/               @P0 BRA 0xa160 ;                                           /* 0xfffffffc009c0947 */
+
+      Impact: Data-dependent control flow creates timing side-channels
+      Fix: Use SELP-friendly patterns (ct_select_u32), avoid if/else on secrets

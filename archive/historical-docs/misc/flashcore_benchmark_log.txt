@@ -1,0 +1,174 @@
+==========================================
+FLASHCORE vs PYTORCH SDPA - H100 BENCHMARK
+==========================================
+Target: root@154.57.34.90:36088
+
+🔌 Testing connection...
+NVIDIA H100 80GB HBM3, 9.0
+✅ Connected to GPU
+
+📦 Uploading kernel and benchmark...
+✅ Files uploaded
+
+🚀 Compiling and benchmarking on H100...
++ cd /workspace/flashcore_bench
++ export PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ LD_LIBRARY_PATH=/usr/local/cuda/lib64:
+==========================================
+HARDWARE INFO
+==========================================
++ echo ==========================================
++ echo 'HARDWARE INFO'
++ echo ==========================================
++ nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv
+name, compute_cap, memory.total [MiB]
+NVIDIA H100 80GB HBM3, 9.0, 81559 MiB
++ nvcc --version
++ grep release
+Cuda compilation tools, release 12.4, V12.4.131
+
+==========================================
+STEP 1: COMPILE MINIMAL KERNEL
++ echo ''
++ echo ==========================================
++ echo 'STEP 1: COMPILE MINIMAL KERNEL'
+==========================================
++ echo ==========================================
+++ nvidia-smi --query-gpu=compute_cap --format=csv,noheader
+++ head -1
+++ tr -d .
+++ awk '{print "sm_"$1}'
+Architecture: sm_90
++ ARCH=sm_90
++ echo 'Architecture: sm_90'
++ nvcc -std=c++17 -O3 -Xptxas -O3 --use_fast_math -gencode arch=compute_90,code=sm_90 -cubin attention_phase_d1_minimal.cu -o attention_minimal.cubin
+✅ Kernel compiled
+-rw-r--r-- 1 root root 23K Oct 25 16:44 attention_minimal.cubin
+
+==========================================
+STEP 2: SASS VALIDATION
+==========================================
++ echo '✅ Kernel compiled'
++ ls -lh attention_minimal.cubin
++ echo ''
++ echo ==========================================
++ echo 'STEP 2: SASS VALIDATION'
++ echo ==========================================
++ cuobjdump -sass attention_minimal.cubin
+Checking for predicated branches...
+⚠️  WARNING: Predicated branches found
+        /*0090*/               @P0 BRA 0x5c0 ;                                       /* 0x0000000400480947 */
+        /*2580*/               @P1 BRA 0x2060 ;                                      /* 0xfffffff800b41947 */
+        /*29d0*/               @P0 BRA 0x2870 ;                                      /* 0xfffffffc00a40947 */
+        /*2e50*/               @P2 BRA 0x2c30 ;                                      /* 0xfffffffc00742947 */
+        /*3060*/               @P0 BRA 0x2fc0 ;                                      /* 0xfffffffc00d40947 */
+Checking for register spills...
+✅ No register spills
+
+==========================================
+STEP 3: CREATE BENCHMARK
+==========================================
++ echo 'Checking for predicated branches...'
++ grep -P '@P\d+\s+BRA' sass_dump.txt
++ echo '⚠️  WARNING: Predicated branches found'
++ grep -P '@P\d+\s+BRA' sass_dump.txt
++ head -5
++ echo 'Checking for register spills...'
++ grep -P '\b(LD|ST)\.LCL' sass_dump.txt
++ echo '✅ No register spills'
++ echo ''
++ echo ==========================================
++ echo 'STEP 3: CREATE BENCHMARK'
++ echo ==========================================
++ cat
+✅ Benchmark script created
+
+==========================================
+STEP 4: RUN PYTORCH SDPA BENCHMARK
+==========================================
++ echo '✅ Benchmark script created'
++ echo ''
++ echo ==========================================
++ echo 'STEP 4: RUN PYTORCH SDPA BENCHMARK'
++ echo ==========================================
++ python3 benchmark.py
++ tee benchmark_output.txt
+Configuration: B=1, H=8, S=512, D=64
+Device: NVIDIA H100 80GB HBM3
+
+Warming up PyTorch SDPA...
+✅ Warmup complete
+
+========================================
+PYTORCH SDPA BENCHMARK (1000 iterations)
+========================================
+PyTorch SDPA Performance:
+  Min:      23.14 μs
+  Median:   24.83 μs
+  Mean:     25.56 μs
+  p95:      31.33 μs
+  p99:      38.37 μs
+  Max:      46.66 μs
+
+========================================
+RESULTS SUMMARY
+========================================
+PyTorch SDPA Baseline: 24.83 μs (median)
+Target (5× faster):    4.97 μs
+
+✅ Benchmark complete
+Results saved to: benchmark_results.txt
+
+==========================================
+VALIDATION COMPLETE
+==========================================
++ echo ''
++ echo ==========================================
++ echo 'VALIDATION COMPLETE'
++ echo ==========================================
++ cat benchmark_results.txt
+PYTORCH_SDPA_MEDIAN_US=24.83
+PYTORCH_SDPA_P99_US=38.37
+TARGET_5X_FASTER_US=4.97
+
++ echo ''
++ exit 0
+
+⬇️  Downloading results...
+
+==========================================
+FINAL RESULTS
+==========================================
+PYTORCH_SDPA_MEDIAN_US=24.83
+PYTORCH_SDPA_P99_US=38.37
+TARGET_5X_FASTER_US=4.97
+Configuration: B=1, H=8, S=512, D=64
+Device: NVIDIA H100 80GB HBM3
+
+Warming up PyTorch SDPA...
+✅ Warmup complete
+
+========================================
+PYTORCH SDPA BENCHMARK (1000 iterations)
+========================================
+PyTorch SDPA Performance:
+  Min:      23.14 μs
+  Median:   24.83 μs
+  Mean:     25.56 μs
+  p95:      31.33 μs
+  p99:      38.37 μs
+  Max:      46.66 μs
+
+========================================
+RESULTS SUMMARY
+========================================
+PyTorch SDPA Baseline: 24.83 μs (median)
+Target (5× faster):    4.97 μs
+
+✅ Benchmark complete
+Results saved to: benchmark_results.txt
+
+✅ Benchmark complete - ready for iteration
+==========================================

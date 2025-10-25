@@ -1,0 +1,19 @@
+Testing configurations:
+
+Original (8h×512):
+  Aggressive:  45.57 μs
+  SDPA:        33.60 μs
+  Speedup:      0.74×
+  Target 5μs: ❌
+
+Reduced (8h×256):
+  Aggressive:  28.35 μs
+  SDPA:        18.27 μs
+  Speedup:      0.64×
+  Target 5μs: ❌
+
+Fewer heads (4h×512):
+  Aggressive:  30.69 μs
+  SDPA:        22.69 μs
+  Speedup:      0.74×
+  Target 5μs: ❌

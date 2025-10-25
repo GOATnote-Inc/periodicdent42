@@ -1,0 +1,104 @@
+==========================================
+PHASE D.2: BRANCH-FREE KERNEL BENCHMARK
+==========================================
+Target: Zero branches, establish performance baseline
+
+📦 Uploading Phase D.2 kernel...
+✅ Uploaded
+
+==========================================
+COMPILE PHASE D.2
+==========================================
++ cd /workspace/phase_d2
++ export PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ echo ==========================================
++ echo 'COMPILE PHASE D.2'
++ echo ==========================================
++ ARCH=sm_90
++ nvcc -std=c++17 -O3 -Xptxas -O3 --use_fast_math -gencode arch=compute_90,code=sm_90 -cubin attention_phase_d2_branchfree.cu -o attention_d2.cubin
++ head -20
+✅ Compiled
+-rw-r--r-- 1 root root 73K Oct 25 16:48 attention_d2.cubin
+
+==========================================
+SASS VALIDATION
+==========================================
++ echo '✅ Compiled'
++ ls -lh attention_d2.cubin
++ echo ''
++ echo ==========================================
++ echo 'SASS VALIDATION'
++ echo ==========================================
++ cuobjdump -sass attention_d2.cubin
+Checking predicated branches...
+Predicated branches found: 4
+⚠️  Still has 4 branches
+        /*0c60*/               @P1 BRA 0x7b0 ;                                        /* 0xfffffff800d01947 */
+        /*5170*/               @P1 BRA 0x4cc0 ;                                       /* 0xfffffff800d01947 */
+        /*9680*/               @P1 BRA 0x91d0 ;                                       /* 0xfffffff800d01947 */
+        /*db80*/               @P1 BRA 0xd6d0 ;                                       /* 0xfffffff800d01947 */
+Checking register spills...
++ echo 'Checking predicated branches...'
+++ grep -cP '@P\d+\s+BRA' sass_d2.txt
++ BRANCH_COUNT=4
++ echo 'Predicated branches found: 4'
++ '[' 4 -eq 0 ']'
++ echo '⚠️  Still has 4 branches'
++ grep -P '@P\d+\s+BRA' sass_d2.txt
++ head -10
++ echo 'Checking register spills...'
+++ grep -cP '\b(LD|ST)\.LCL' sass_d2.txt
+++ echo 0
+⚠️  0
+0 register spills detected
+
++ SPILL_COUNT='0
+0'
++ '[' '0
+0' -eq 0 ']'
+bash: line 42: [: 0
+0: integer expression expected
++ echo '⚠️  0
+0 register spills detected'
++ echo ''
+==========================================
+RESULTS SUMMARY
+==========================================
+Phase D.2 Validation:
+  Predicated Branches: 4
+  Register Spills: 0
+0
+
+PHASE_D2_BRANCHES=4
+PHASE_D2_SPILLS=0
+0
+PHASE_D2_STATUS=FAIL
++ echo ==========================================
++ echo 'RESULTS SUMMARY'
++ echo ==========================================
++ echo 'Phase D.2 Validation:'
++ echo '  Predicated Branches: 4'
++ echo '  Register Spills: 0
+0'
++ echo ''
++ cat
+++ '[' 4 -eq 0 ']'
+++ echo FAIL
++ cat validation_d2.txt
++ exit 0
+
+⬇️  Downloading results...
+
+==========================================
+PHASE D.2 VALIDATION COMPLETE
+==========================================
+PHASE_D2_BRANCHES=4
+PHASE_D2_SPILLS=0
+0
+PHASE_D2_STATUS=FAIL
+
+Next: If branches = 0, proceed to performance benchmark
+      If branches > 0, iterate on branch elimination

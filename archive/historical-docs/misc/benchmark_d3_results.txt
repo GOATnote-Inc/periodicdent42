@@ -1,0 +1,7 @@
+SDPA_MEDIAN_US=23.78
+SDPA_P99_US=29.44
+TARGET_5X_US=4.76
+TARGET_2X_US=11.89
+
+# Phase D.3 kernel compilation successful
+# Next: Integrate kernel launch for actual performance test

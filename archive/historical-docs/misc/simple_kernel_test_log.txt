@@ -1,0 +1,88 @@
+==========================================
+ITERATION: SIMPLE KERNEL (Learning from Failure)
+==========================================
+Previous: 40ms (1723× slower)
+Goal: Beat PyTorch (< 24 μs)
+
++ cd /workspace/simple_test
++ export PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+==========================================
+COMPILE SIMPLE KERNEL
+==========================================
++ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ LD_LIBRARY_PATH=/usr/local/cuda/lib64:
++ echo ==========================================
++ echo 'COMPILE SIMPLE KERNEL'
++ echo ==========================================
++ nvcc -std=c++17 -O3 -Xptxas -O3 --use_fast_math -gencode arch=compute_90,code=sm_90 attention_simple_fast.cu -o simple_benchmark
+✅ Compiled (995K)
+
+==========================================
+RUN SIMPLE KERNEL
+==========================================
+++ ls -lh simple_benchmark
+++ awk '{print $5}'
++ echo '✅ Compiled (995K)'
++ echo ''
++ echo ==========================================
++ echo 'RUN SIMPLE KERNEL'
++ echo ==========================================
++ ./simple_benchmark
++ tee simple_output.txt
+========================================
+SIMPLE FAST Attention Benchmark
+========================================
+Config: B=1, H=8, S=512, D=64
+Strategy: One block per token (simple but correct)
+
+Device: NVIDIA H100 80GB HBM3
+Compute: 9.0
+
+Benchmarking (warmup=100, iters=1000)...
+
+Simple Kernel Performance:
+  Median:  628.42 μs
+  p99:     632.19 μs
+
+========================================
+Complete
+========================================
+
+==========================================
+COMPARE VS PYTORCH SDPA
+==========================================
++ echo ''
++ echo ==========================================
++ echo 'COMPARE VS PYTORCH SDPA'
++ echo ==========================================
++ python3
+
+========================================
+RESULTS
+========================================
+PyTorch SDPA:        23.78 μs
+Simple Kernel:      628.42 μs
+Speedup:              0.04×
+
+Target (5×):          4.76 μs
+Status:           ⚠️  Still slower
+Gap:              26.43× slower than PyTorch
+SDPA_MEDIAN_US=23.78
+SIMPLE_KERNEL_MEDIAN_US=628.42
+SPEEDUP=0.038
+STATUS=SLOWER
+TARGET_5X_US=4.76
++ cat simple_comparison.txt
++ exit 0
+
+==========================================
+ITERATION COMPLETE
+==========================================
+SDPA_MEDIAN_US=23.78
+SIMPLE_KERNEL_MEDIAN_US=628.42
+SPEEDUP=0.038
+STATUS=SLOWER
+TARGET_5X_US=4.76
+
+Next: If faster, optimize further. If slower, try different approach.
