@@ -185,9 +185,10 @@ This work builds upon groundbreaking research and open-source contributions:
 - **[FlashAttention](https://github.com/Dao-AILab/flash-attention)** - Efficient attention algorithm (Dao et al., Stanford)
 
 #### Research Foundations
-- **[FlashAttention-2](https://arxiv.org/abs/2307.08691)** - Dao et al., 2023
-- **[EvoEngineer](https://arxiv.org/abs/2510.03760)** - Guo et al., 2025 (City University of Hong Kong)
-- **[Attention is All You Need](https://arxiv.org/abs/1706.03762)** - Vaswani et al., 2017
+- **[FlashAttention-2](https://arxiv.org/abs/2307.08691)** - Dao et al., Stanford University, 2023
+- **[FlashAttention-3](https://arxiv.org/abs/2407.08608)** - Dao et al., Princeton University, 2024
+- **[EvoEngineer](https://arxiv.org/abs/2510.03760)** - Guo et al., City University of Hong Kong, 2025
+- **[Attention is All You Need](https://arxiv.org/abs/1706.03762)** - Vaswani et al., Google Brain, 2017
 
 #### Infrastructure
 - **[CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)** - NVIDIA
@@ -344,5 +345,5 @@ output = attention(q, k, v)  # Automatically selects optimal config
 
 <p align="center">
   <strong>Built with ❤️ by GOATnote Inc.</strong><br>
-  Standing on the shoulders of PyTorch, Triton, FlashAttention, and the entire CUDA ecosystem.
+  Standing on the shoulders of PyTorch, Triton, FlashAttention, EvoEngineer, and the entire CUDA ecosystem.
 </p>
