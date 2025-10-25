@@ -80,7 +80,13 @@ STEPS = _load_steps()
 
 def get_auth(credentials: HTTPBasicCredentials = Depends(security)):
     user = os.getenv("AUTH_BASIC_USER", "pilot")
-    password = os.getenv("AUTH_BASIC_PASS", "changeme")
+    password = os.getenv("AUTH_BASIC_PASS")
+    if not password:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AUTH_BASIC_PASS environment variable must be set",
+            headers={"WWW-Authenticate": "Basic"},
+        )
     if credentials.username != user or credentials.password != password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
