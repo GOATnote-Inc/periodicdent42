@@ -1,6 +1,14 @@
-# Dependabot configuration for automated dependency updates
-# This ensures security patches and updates are automatically proposed
-# Aligns with PhD research roadmap: Supply Chain Security (Phase 1)
+# Dependabot configuration - Security Monitoring
+# 
+# PURPOSE: Monitor dependencies for security vulnerabilities
+# POLICY: PRs are for awareness only, NOT for auto-merge
+# 
+# Per DEPENDENCY_STABILITY_POLICY.md:
+#   - FlashCore sub-5μs kernel uses pinned dependencies
+#   - Updates only for CRITICAL security issues (CVSS ≥ 7.0)
+#   - All PRs reviewed against stability criteria
+# 
+# See: DEPENDENCY_STABILITY_POLICY.md for update criteria
 
 version: 2
 updates:
@@ -17,6 +25,7 @@ updates:
     labels:
       - "dependencies"
       - "security"
+      - "stability-policy"  # Per DEPENDENCY_STABILITY_POLICY.md
     commit-message:
       prefix: "deps"
       prefix-development: "deps(dev)"
@@ -47,6 +56,7 @@ updates:
       - "dependencies"
       - "app"
       - "security"
+      - "stability-policy"  # Per DEPENDENCY_STABILITY_POLICY.md
     commit-message:
       prefix: "deps(app)"
     groups:
@@ -74,6 +84,7 @@ updates:
     labels:
       - "dependencies"
       - "ci/cd"
+      - "stability-policy"  # Per DEPENDENCY_STABILITY_POLICY.md
     commit-message:
       prefix: "ci"
 
@@ -90,5 +101,6 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+      - "stability-policy"  # Per DEPENDENCY_STABILITY_POLICY.md
     commit-message:
       prefix: "docker"
