@@ -32,9 +32,9 @@ htc = [
     "scipy==1.11.0",          # Statistical analysis and optimization
     "scikit-learn==1.3.2",    # ML models (shared with dev)
     "seaborn==0.12.0",        # Publication-quality plots
-    "statsmodels==0.14.0",    # Statistical modeling
+    "statsmodels==0.14.5",    # Statistical modeling
     "pandas==2.1.4",          # Data manipulation (shared with dev)
-    "gitpython==3.1.40",      # Git provenance tracking
+    "gitpython==3.1.45",      # Git provenance tracking
     "typer==0.9.0",           # Calibration CLI tool (Tier 1)
     "scikit-optimize==0.9.0", # v0.5.0: Bayesian optimization (pinned for determinism)
     "pyyaml>=6.0",            # v0.5.0: μ* config persistence
