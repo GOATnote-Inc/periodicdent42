@@ -5,6 +5,9 @@
 #include <iostream>
 #include <cmath>
 #include <cstdlib>
+#include <vector>
+#include <algorithm>
+#include <numeric>
 
 // Forward declaration
 extern "C" void launch_attention_wmma(
@@ -94,60 +97,138 @@ int main(int argc, char** argv) {
     float scale = 1.0f / std::sqrt(static_cast<float>(D));
     
     // Warmup
-    std::cout << "[1/2] Warmup (10 iterations)...\n";
+    std::cout << "[1/3] Warmup (10 iterations)...\n";
     for (int i = 0; i < 10; ++i) {
         launch_attention_wmma(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "❌ Kernel launch failed: " << cudaGetErrorString(err) << "\n";
+            return 1;
+        }
     }
     cudaDeviceSynchronize();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cerr << "❌ Kernel execution failed: " << cudaGetErrorString(err) << "\n";
+        return 1;
+    }
+    std::cout << "✅ Warmup complete (no errors)\n\n";
     
-    // Benchmark
-    std::cout << "[2/2] Benchmarking (100 iterations)...\n";
+    // Benchmark with proper timing
+    std::cout << "[2/3] Benchmarking (100 iterations)...\n";
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     
     const int iters = 100;
-    float total_ms = 0.0f;
+    std::vector<float> times;
+    times.reserve(iters);
     
     for (int i = 0; i < iters; ++i) {
-        cudaEventRecord(start);
+        cudaDeviceSynchronize();  // Ensure previous work is done
+        
+        cudaEventRecord(start, 0);
         launch_attention_wmma(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
-        cudaEventRecord(stop);
+        cudaEventRecord(stop, 0);
+        
         cudaEventSynchronize(stop);
         
         float ms;
         cudaEventElapsedTime(&ms, start, stop);
-        total_ms += ms;
+        times.push_back(ms);
+        
+        // Check for errors periodically
+        if (i % 10 == 0) {
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "❌ Error at iteration " << i << ": " << cudaGetErrorString(err) << "\n";
+                return 1;
+            }
+        }
     }
     
-    float avg_ms = total_ms / iters;
-    float tflops = compute_tflops(B, H, S, D, avg_ms);
+    // Compute statistics
+    std::sort(times.begin(), times.end());
+    float min_ms = times[0];
+    float median_ms = times[iters / 2];
+    float max_ms = times[iters - 1];
+    float p95_ms = times[int(iters * 0.95)];
+    float avg_ms = std::accumulate(times.begin(), times.end(), 0.0f) / iters;
+    
+    float median_tflops = compute_tflops(B, H, S, D, median_ms);
+    float min_tflops = compute_tflops(B, H, S, D, min_ms);
+    
+    std::cout << "\nTiming Statistics:\n";
+    std::cout << "  Min:    " << min_ms << " ms (" << min_tflops << " TFLOPS)\n";
+    std::cout << "  Median: " << median_ms << " ms (" << median_tflops << " TFLOPS)\n";
+    std::cout << "  P95:    " << p95_ms << " ms\n";
+    std::cout << "  Max:    " << max_ms << " ms\n";
+    std::cout << "  Mean:   " << avg_ms << " ms\n\n";
+    
+    float tflops = median_tflops;
     
     // Copy result back
     cudaMemcpy(h_O, d_O, bytes, cudaMemcpyDeviceToHost);
     
     // Print results
     std::cout << "\n========================================\n";
-    std::cout << "RESULTS\n";
+    std::cout << "RESULTS - ITERATION 1 (WMMA)\n";
     std::cout << "========================================\n";
-    std::cout << "Average latency: " << avg_ms << " ms\n";
-    std::cout << "TFLOPS:          " << tflops << "\n\n";
+    std::cout << "Performance:\n";
+    std::cout << "  Median: " << median_ms << " ms → " << median_tflops << " TFLOPS\n";
+    std::cout << "  Best:   " << min_ms << " ms → " << min_tflops << " TFLOPS\n\n";
     
     std::cout << "Targets:\n";
-    std::cout << "  Phase 1 (Foundation): 140 TFLOPS\n";
-    std::cout << "  Phase 2 (Optimized):  210 TFLOPS\n";
-    std::cout << "  FA3 baseline:         190 TFLOPS\n\n";
+    std::cout << "  Baseline (scalar):    1.6 TFLOPS ✅\n";
+    std::cout << "  Iteration 1 goal:     100-200 TFLOPS\n";
+    std::cout << "  Phase 1 (Foundation): 150 TFLOPS\n";
+    std::cout << "  FA3 baseline:         450 TFLOPS\n";
+    std::cout << "  Final goal:           500+ TFLOPS\n\n";
     
-    if (tflops >= 210) {
-        std::cout << "✅ EXCELLENT: Beat FA3 by " << ((tflops / 190.0f - 1) * 100) << "%!\n";
-    } else if (tflops >= 190) {
-        std::cout << "✅ SUCCESS: Matched/beat FA3!\n";
-    } else if (tflops >= 140) {
-        std::cout << "⚠️  GOOD: Phase 1 target met, continue optimization\n";
+    // Improvement from baseline
+    float improvement = median_tflops / 1.6;
+    std::cout << "Improvement: " << improvement << "× over baseline\n\n";
+    
+    if (median_tflops >= 450) {
+        float speedup = (median_tflops / 450.0 - 1.0) * 100.0;
+        std::cout << "✅ EXCELLENT: Beat FA3 by " << speedup << "%!\n";
+    } else if (median_tflops >= 150) {
+        std::cout << "✅ GOOD: Phase 1 target achieved (" << (median_tflops/450.0)*100 << "% of FA3)\n";
+    } else if (median_tflops >= 50) {
+        std::cout << "✅ PROGRESS: Major improvement (" << (median_tflops/450.0)*100 << "% of FA3)\n";
+    } else if (median_tflops > 1.6) {
+        std::cout << "⚡ WORKING: " << improvement << "× improvement, continuing optimization\n";
     } else {
-        std::cout << "❌ BELOW TARGET: Need more optimization\n";
+        std::cout << "⚠️  ISSUE: Performance below baseline - debugging needed\n";
+    }
+    std::cout << "========================================\n\n";
+    
+    // Simple correctness check
+    std::cout << "[3/3] Basic correctness check...\n";
+    bool has_output = false;
+    bool has_nan = false;
+    bool has_inf = false;
+    float max_val = 0.0f;
+    
+    for (size_t i = 0; i < B * H * S * D; ++i) {
+        float val = __half2float(h_O[i]);
+        if (std::abs(val) > 1e-6) has_output = true;
+        if (std::isnan(val)) has_nan = true;
+        if (std::isinf(val)) has_inf = true;
+        max_val = std::max(max_val, std::abs(val));
     }
     
+    std::cout << "  Output range: [0, " << max_val << "]\n";
+    std::cout << "  Has non-zero: " << (has_output ? "✅" : "❌") << "\n";
+    std::cout << "  Has NaN:      " << (has_nan ? "❌" : "✅") << "\n";
+    std::cout << "  Has Inf:      " << (has_inf ? "❌" : "✅") << "\n";
+    
+    if (has_output && !has_nan && !has_inf) {
+        std::cout << "\n✅ Basic sanity checks PASS\n";
+        std::cout << "Next: Compare vs PyTorch SDPA for full correctness\n";
+    } else {
+        std::cout << "\n❌ Basic sanity checks FAIL - debugging needed\n";
+    }
     std::cout << "========================================\n";
     
     // Cleanup
