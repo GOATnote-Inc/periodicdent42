@@ -35,25 +35,28 @@ def test_kv_cache_vs_pytorch_prefill_decode():
     k_full = torch.randn(B, H, S_prefill + S_decode, D, device='cuda', dtype=torch.float16)
     v_full = torch.randn(B, H, S_prefill + S_decode, D, device='cuda', dtype=torch.float16)
     
-    # PyTorch reference (full attention)
-    print(f"\nComputing reference with PyTorch SDPA...")
-    expected = F.scaled_dot_product_attention(q_full, k_full, v_full)
+    # PyTorch reference (MUST be causal to match incremental cache behavior)
+    # Incremental decoding is implicitly causal: token i only sees tokens [0:i]
+    print(f"\nComputing reference with PyTorch SDPA (causal)...")
+    expected = F.scaled_dot_product_attention(q_full, k_full, v_full, is_causal=True)
     
     # Our implementation with cache
     print(f"Computing with FlashCore KV cache...")
     
-    # Step 1: Prefill
+    # Step 1: Prefill (causal - each token in prefill only sees previous tokens)
     q_prefill = q_full[:, :, :S_prefill, :]
     k_prefill = k_full[:, :, :S_prefill, :]
     v_prefill = v_full[:, :, :S_prefill, :]
     
     output_prefill, cache = attention_with_kv_cache(
-        q_prefill, k_prefill, v_prefill, update_cache=True
+        q_prefill, k_prefill, v_prefill, 
+        update_cache=True,
+        is_causal=True  # Causal masking in prefill phase
     )
     
     print(f"  Prefill: S={S_prefill}, cache initialized")
     
-    # Step 2: Decode (one token at a time)
+    # Step 2: Decode (one token at a time, causal - new token sees cache + itself)
     outputs = [output_prefill]
     for t in range(S_decode):
         q_t = q_full[:, :, S_prefill + t:S_prefill + t + 1, :]
@@ -61,7 +64,10 @@ def test_kv_cache_vs_pytorch_prefill_decode():
         v_t = v_full[:, :, S_prefill + t:S_prefill + t + 1, :]
         
         output_t, cache = attention_with_kv_cache(
-            q_t, k_t, v_t, past_key_value=cache, update_cache=True
+            q_t, k_t, v_t, 
+            past_key_value=cache, 
+            update_cache=True,
+            is_causal=True  # Causal masking in decode phase
         )
         outputs.append(output_t)
         
