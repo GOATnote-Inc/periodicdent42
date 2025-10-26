@@ -43,7 +43,7 @@ from typing import List, Dict
 
 
 # Model configuration
-MODEL_ID = "meta-llama/Llama-3.1-8B"
+MODEL_ID = "meta-llama/Meta-Llama-3-8B"  # Meta Llama 3 8B (access granted)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
 
