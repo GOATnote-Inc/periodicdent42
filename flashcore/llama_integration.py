@@ -62,13 +62,34 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
         >>> # Now use model normally with FlashCore kernels
     """
     try:
-        from transformers.models.llama.modeling_llama import LlamaAttention
+        from transformers.models.llama.modeling_llama import (
+            LlamaAttention,
+            apply_rotary_pos_emb,
+        )
     except ImportError:
         raise ImportError(
             "HuggingFace transformers not found. Install with: pip install transformers"
         )
     
     from flashcore.fast.attention_production import attention_with_kv_cache
+    
+    def _rope_cos_sin(rope, ref_tensor, seq_len):
+        """
+        Robust RoPE invocation across HF transformers versions.
+        
+        HF changed LlamaRotaryEmbedding.forward signatures across releases.
+        This helper tries common variants to maintain cross-version compatibility.
+        """
+        try:
+            # HF 4.35-4.47 style
+            return rope(ref_tensor, seq_len=seq_len)
+        except TypeError:
+            try:
+                # Some newer patches
+                return rope(seq_len)
+            except TypeError:
+                # Fallback variant
+                return rope(ref_tensor, seq_len)
     
     # Define the FlashCore attention class inside this function to ensure
     # it has access to the attention_with_kv_cache function
@@ -80,6 +101,29 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
         method to use FlashCore's optimized attention implementation. All other
         functionality (QKV projections, RoPE, output projection) remains unchanged.
         """
+        
+        def __init__(self, config, layer_idx=None, **kwargs):
+            """
+            Initialize FlashCore attention by calling parent init.
+            
+            CRITICAL: This calls super().__init__ to ensure all base class
+            attributes (q_proj, k_proj, v_proj, o_proj, rotary_emb) are created.
+            """
+            # Initialize parent class (creates all projections and RoPE)
+            super().__init__(config, layer_idx)
+            
+            # HF 4.49+ may expose "rope" instead of "rotary_emb"
+            # Create compatibility alias for cross-version support
+            if not hasattr(self, "rotary_emb") and hasattr(self, "rope"):
+                self.rotary_emb = self.rope
+            
+            # Safety check
+            if not hasattr(self, "rotary_emb"):
+                raise AttributeError(
+                    "RoPE (rotary_emb) not found after parent init. "
+                    "HuggingFace transformers API mismatch. "
+                    "Try: pip install 'transformers>=4.37,<4.49'"
+                )
         
         def forward(
             self,
@@ -139,10 +183,26 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
             ).transpose(1, 2)
             
             # Apply RoPE (done BEFORE attention, unchanged from original)
-            cos, sin = self.rotary_emb(value_states, position_ids)
-            query_states, key_states = self._apply_rotary_pos_emb(
-                query_states, key_states, cos, sin
-            )
+            # Use robust invocation for cross-version compatibility
+            kv_seq_len = key_states.shape[-2]
+            if past_key_value is not None:
+                if hasattr(past_key_value, 'get_usable_length'):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, 0)
+                elif isinstance(past_key_value, tuple):
+                    kv_seq_len += past_key_value[0].shape[-2]
+            
+            cos, sin = _rope_cos_sin(self.rotary_emb, value_states, kv_seq_len)
+            
+            # Apply RoPE with signature tolerance
+            try:
+                query_states, key_states = apply_rotary_pos_emb(
+                    query_states, key_states, cos, sin, position_ids
+                )
+            except TypeError:
+                # Some HF versions drop position_ids parameter
+                query_states, key_states = apply_rotary_pos_emb(
+                    query_states, key_states, cos, sin
+                )
             
             # Handle cache format conversion (HuggingFace -> FlashCore)
             if past_key_value is not None:
