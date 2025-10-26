@@ -145,10 +145,19 @@ def test_kv_cache_single_decode_step():
     
     torch.manual_seed(44)
     
-    # Create cache
-    K_cache = torch.randn(B, H, S_cache, D, device='cuda', dtype=torch.float16)
-    V_cache = torch.randn(B, H, S_cache, D, device='cuda', dtype=torch.float16)
-    cache = (K_cache, V_cache)
+    # Create cache (must be 3-tuple: K, V, seq_lens)
+    # Note: Cache is pre-allocated to max size, but only S_cache tokens are filled
+    cache_max_len = 4096
+    K_cache = torch.zeros(B, H, cache_max_len, D, device='cuda', dtype=torch.float16)
+    V_cache = torch.zeros(B, H, cache_max_len, D, device='cuda', dtype=torch.float16)
+    
+    # Fill first S_cache positions with actual data
+    K_cache[:, :, :S_cache, :] = torch.randn(B, H, S_cache, D, device='cuda', dtype=torch.float16)
+    V_cache[:, :, :S_cache, :] = torch.randn(B, H, S_cache, D, device='cuda', dtype=torch.float16)
+    
+    # seq_lens tracks actual fill (not max size!)
+    seq_lens = torch.full((B,), S_cache, dtype=torch.int32, device='cuda')
+    cache = (K_cache, V_cache, seq_lens)
     
     # New token
     q_new = torch.randn(B, H, 1, D, device='cuda', dtype=torch.float16)
@@ -157,18 +166,16 @@ def test_kv_cache_single_decode_step():
     
     # Create full sequence for reference
     q_full = q_new
-    k_full = torch.cat([K_cache, k_new], dim=2)
-    v_full = torch.cat([V_cache, v_new], dim=2)
+    k_full = torch.cat([K_cache[:, :, :S_cache, :], k_new], dim=2)
+    v_full = torch.cat([V_cache[:, :, :S_cache, :], v_new], dim=2)
     
     # PyTorch reference
     expected = F.scaled_dot_product_attention(q_full, k_full, v_full)
     
     # FlashCore with cache
-    seq_lens = torch.full((B,), S_cache, dtype=torch.int32, device='cuda')
     result, _ = attention_with_kv_cache(
         q_new, k_new, v_new,
         past_key_value=cache,
-        seq_lens=seq_lens,
         update_cache=False  # Don't modify cache for this test
     )
     
