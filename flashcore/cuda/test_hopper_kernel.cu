@@ -55,11 +55,12 @@ int main(int argc, char** argv) {
     std::cout << "Compute Capability: " << prop.major << "." << prop.minor << "\n";
     std::cout << "SMs: " << prop.multiProcessorCount << "\n\n";
     
+    // Configure device limits for WMMA kernel (standing on NVIDIA's shoulders!)
     // Increase per-thread stack size for WMMA fragments
-    // Default is 1KB, WMMA needs more
-    size_t stackSize = 8 * 1024;  // 8KB per thread
+    size_t stackSize = 16 * 1024;  // 16KB per thread (generous headroom)
     cudaDeviceSetLimit(cudaLimitStackSize, stackSize);
-    std::cout << "Set stack size: " << (stackSize / 1024) << "KB per thread\n\n";
+    std::cout << "Set stack size: " << (stackSize / 1024) << "KB per thread\n";
+    std::cout << "(Shared memory carveout configured in kernel launch)\n\n";
     
     if (prop.major < 9) {
         std::cerr << "ERROR: This kernel requires Hopper (sm_90+)\n";

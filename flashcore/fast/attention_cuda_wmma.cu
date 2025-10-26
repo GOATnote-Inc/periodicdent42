@@ -270,12 +270,21 @@ void launch_attention_wmma(
     dim3 grid(B * H, (S + BLOCK_M - 1) / BLOCK_M);
     dim3 block(256);  // 8 warps
     
-    // Request 70KB shared memory (we use 66KB)
+    // Configure shared memory carveout for Hopper
+    // We use 66KB static shared memory (> 49KB default limit)
     // H100 supports up to 228KB per block
+    // Set carveout to 100% shared memory (0% L1 cache)
+    cudaFuncSetAttribute(
+        attention_wmma,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        100  // 100% of L1/shared pool allocated to shared memory
+    );
+    
+    // Also set max shared memory size
     cudaFuncSetAttribute(
         attention_wmma,
         cudaFuncAttributeMaxDynamicSharedMemorySize,
-        70 * 1024
+        100 * 1024  // Allow up to 100KB (we use 66KB static)
     );
     
     attention_wmma<<<grid, block, 0, stream>>>(
