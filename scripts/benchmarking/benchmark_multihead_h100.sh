@@ -4,7 +4,7 @@
 
 set -e
 
-# RunPod credentials (from memory)
+# RunPod credentials (updated)
 IP="154.57.34.98"
 PORT="36088"
 SSH_OPTS="-o StrictHostKeyChecking=no -o TCPKeepAlive=yes -o ServerAliveInterval=20"

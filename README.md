@@ -3,7 +3,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![CUDA](https://img.shields.io/badge/CUDA-12.4%2B-76B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python)](https://www.python.org/)
-[![Validated](https://img.shields.io/badge/Validated-H100%20%2B%20L4-success)](CROSS_GPU_VALIDATION_REPORT.md)
+[![Validated](https://img.shields.io/badge/Validated-H100%20%2B%20L4-success)](docs/validation/CROSS_GPU_VALIDATION_REPORT.md)
 
 **Ultra-fast attention kernel achieving sub-5 microsecond latency per sequence on NVIDIA H100.**
 
@@ -67,7 +67,7 @@ output = attention(q, k, v)  # < 5 μs per sequence on H100!
 
 **Target**: < 5 μs per sequence | **Achievement**: **9/9 configurations pass**
 
-Full results: [EXPERT_VALIDATION_REPORT.md](EXPERT_VALIDATION_REPORT.md)
+Full results: [EXPERT_VALIDATION_REPORT.md](docs/validation/EXPERT_VALIDATION_REPORT.md)
 
 ### NVIDIA L4 (Production)
 
@@ -77,7 +77,7 @@ Full results: [EXPERT_VALIDATION_REPORT.md](EXPERT_VALIDATION_REPORT.md)
 | 256        | 32         | **4.00 μs**   | ✅ 100%     | ✅ |
 | 512        | 16         | **12.80 μs**  | ✅ 100%     | ✅ |
 
-**Cross-GPU validation**: [CROSS_GPU_VALIDATION_REPORT.md](CROSS_GPU_VALIDATION_REPORT.md)
+**Cross-GPU validation**: [CROSS_GPU_VALIDATION_REPORT.md](docs/validation/CROSS_GPU_VALIDATION_REPORT.md)
 
 ---
 
@@ -119,8 +119,8 @@ Full results: [EXPERT_VALIDATION_REPORT.md](EXPERT_VALIDATION_REPORT.md)
 ## 📖 Documentation
 
 - **[Getting Started](docs/GETTING_STARTED.md)** - Installation and first steps
-- **[Expert Validation](EXPERT_VALIDATION_REPORT.md)** - 9,000 measurements on H100
-- **[Cross-GPU Validation](CROSS_GPU_VALIDATION_REPORT.md)** - 18,000 total measurements
+- **[Expert Validation](docs/validation/EXPERT_VALIDATION_REPORT.md)** - 9,000 measurements on H100
+- **[Cross-GPU Validation](docs/validation/CROSS_GPU_VALIDATION_REPORT.md)** - 18,000 total measurements
 - **[Technical Deep-Dive](PHASE_D_COMPLETE_EXCELLENCE.md)** - Architecture and optimization journey
 - **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
 - **[Performance Guide](docs/PERFORMANCE_GUIDE.md)** - Tuning and optimization tips
