@@ -445,10 +445,11 @@ def attention_with_kv_cache(
     group_size = H_q // H_kv
     
     # Auto-select block size for small sequences (fixes S<64 precision issues)
+    # Note: Triton matmul requires dimensions ≥16, so use 32 as safe minimum
     if S_q < 64 and (block_m == 64 or block_n == 64):
-        # Use smaller blocks that evenly divide the sequence length
-        block_m = min(32, S_q)
-        block_n = min(32, S_q)
+        # Use smaller blocks (but ≥16 for Triton matmul)
+        block_m = 32
+        block_n = 32
     
     # Default scale
     if scale is None:
