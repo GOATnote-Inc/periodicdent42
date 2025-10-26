@@ -96,21 +96,43 @@ int main(int argc, char** argv) {
     // Compute scale
     float scale = 1.0f / std::sqrt(static_cast<float>(D));
     
-    // Warmup
+    // Warmup with detailed error checking
     std::cout << "[1/3] Warmup (10 iterations)...\n";
+    
+    // Check device limits
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
+    std::cout << "Device limits:\n";
+    std::cout << "  Max shared memory per block: " << prop.sharedMemPerBlock << " bytes\n";
+    std::cout << "  Max shared memory per SM:    " << prop.sharedMemPerMultiprocessor << " bytes\n";
+    std::cout << "  Max registers per block:     " << prop.regsPerBlock << "\n";
+    std::cout << "  Max threads per block:       " << prop.maxThreadsPerBlock << "\n\n";
+    
     for (int i = 0; i < 10; ++i) {
         launch_attention_wmma(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess) {
-            std::cerr << "❌ Kernel launch failed: " << cudaGetErrorString(err) << "\n";
+            std::cerr << "❌ Kernel launch failed at iteration " << i << ": " << cudaGetErrorString(err) << "\n";
+            std::cerr << "Grid config: (" << (B * H) << ", " << ((S + 64 - 1) / 64) << ")\n";
+            std::cerr << "Block config: 256 threads\n";
+            std::cerr << "Expected smem: ~66KB\n";
             return 1;
         }
-    }
-    cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        std::cerr << "❌ Kernel execution failed: " << cudaGetErrorString(err) << "\n";
-        return 1;
+        
+        cudaDeviceSynchronize();
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "❌ Kernel execution failed at iteration " << i << ": " << cudaGetErrorString(err) << "\n";
+            std::cerr << "This usually means:\n";
+            std::cerr << "  1. Invalid memory access in kernel\n";
+            std::cerr << "  2. WMMA operation failure\n";
+            std::cerr << "  3. Shared memory bank conflict or overflow\n";
+            return 1;
+        }
+        
+        if (i == 0) {
+            std::cout << "✅ First iteration successful\n";
+        }
     }
     std::cout << "✅ Warmup complete (no errors)\n\n";
     
