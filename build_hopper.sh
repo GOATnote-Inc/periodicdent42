@@ -8,6 +8,19 @@ echo "BUILDING FLASHCORE HOPPER KERNEL"
 echo "========================================"
 echo ""
 
+# Find and set CUDA path
+if ! command -v nvcc &> /dev/null; then
+    # Try common CUDA locations
+    for cuda_path in /usr/local/cuda-12.4 /usr/local/cuda-12 /usr/local/cuda; do
+        if [ -f "$cuda_path/bin/nvcc" ]; then
+            export PATH="$cuda_path/bin:$PATH"
+            export LD_LIBRARY_PATH="$cuda_path/lib64:$LD_LIBRARY_PATH"
+            echo "Found CUDA at: $cuda_path"
+            break
+        fi
+    done
+fi
+
 # Check CUDA version
 if ! command -v nvcc &> /dev/null; then
     echo "❌ ERROR: nvcc not found. Install CUDA Toolkit 12.0+"
