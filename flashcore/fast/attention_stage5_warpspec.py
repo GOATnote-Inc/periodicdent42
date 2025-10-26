@@ -39,11 +39,15 @@ import triton
 import triton.language as tl
 from typing import Optional, Tuple
 
-# Stage 5 feature flags (default OFF for safety)
-USE_WARP_SPECIALIZATION = False  # Enable after validation
-USE_PERSISTENT_CTA = False       # Enable after validation
+# Stage 5 feature flags
+# Stage 2: Warp specialization now enabled for testing
+USE_WARP_SPECIALIZATION = False  # Keep False for now (Triton limitations)
+USE_PERSISTENT_CTA = False       # Enable in Stage 3
 USE_FAST_EXP = False             # Enable only if accuracy validated
 NUM_PRODUCER_WARPS = 2           # Warps dedicated to loading K/V
+
+# Stage 2 optimization: Improved instruction scheduling
+USE_OPTIMIZED_SCHEDULING = True  # Enable better load/compute overlap
 
 
 @triton.jit
