@@ -207,28 +207,40 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
                 )
             
             # Handle cache format conversion (HuggingFace -> FlashCore)
+            layer_idx = self.layer_idx if hasattr(self, 'layer_idx') else 0
+            
             if past_key_value is not None:
                 # Check if using new DynamicCache format (transformers 4.36+)
                 if hasattr(past_key_value, 'key_cache'):
-                    # New format: DynamicCache object
-                    # Note: DynamicCache doesn't track seq_lens, so we can't use it directly
-                    # FlashCore will need to maintain its own 3-tuple format
-                    raise NotImplementedError(
-                        "DynamicCache format not yet supported. "
-                        "Use tuple format for now: past_key_value=(K, V, seq_lens)"
-                    )
+                    # DynamicCache format: Extract K/V for this layer
+                    # DynamicCache stores list of tensors, one per layer
+                    if len(past_key_value.key_cache) > layer_idx:
+                        K_cache = past_key_value.key_cache[layer_idx]
+                        V_cache = past_key_value.value_cache[layer_idx]
+                        # Infer seq_lens from cached K shape: [B, H_kv, seq_len, D]
+                        seq_lens = torch.tensor(
+                            [K_cache.shape[2]] * bsz,
+                            dtype=torch.int32,
+                            device=K_cache.device
+                        )
+                        past_kv_tuple = (K_cache, V_cache, seq_lens)
+                    else:
+                        # First call for this layer (cache not yet populated)
+                        past_kv_tuple = None
                 else:
                     # Tuple format: check if FlashCore 3-tuple or HuggingFace 2-tuple
                     if len(past_key_value) == 3:
                         # Already FlashCore format (K, V, seq_lens)
                         past_kv_tuple = past_key_value
                     elif len(past_key_value) == 2:
-                        # HuggingFace 2-tuple: This is ambiguous! We don't know the fill length.
-                        # For now, reject it and require 3-tuple format
-                        raise ValueError(
-                            "2-tuple cache format is ambiguous (no seq_lens tracking). "
-                            "Please use FlashCore 3-tuple format: (K_cache, V_cache, seq_lens)"
+                        # HuggingFace 2-tuple: Infer seq_lens from shape
+                        K_cache, V_cache = past_key_value
+                        seq_lens = torch.tensor(
+                            [K_cache.shape[2]] * bsz,
+                            dtype=torch.int32,
+                            device=K_cache.device
                         )
+                        past_kv_tuple = (K_cache, V_cache, seq_lens)
                     else:
                         raise ValueError(f"Unexpected cache tuple length: {len(past_key_value)}")
             else:
@@ -255,10 +267,18 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
             # Output projection (unchanged from original)
             attn_output = self.o_proj(attn_output)
             
-            # Return cache in FlashCore 3-tuple format
-            # (LLaMA generation loops need to pass this back to us)
-            if use_cache:
-                cache_to_return = updated_cache  # (K_cache, V_cache, seq_lens)
+            # Handle cache return format (convert back to HuggingFace format if needed)
+            if use_cache and updated_cache is not None:
+                K_updated, V_updated, seq_lens_updated = updated_cache
+                
+                # If input was DynamicCache, update it and return it
+                if past_key_value is not None and hasattr(past_key_value, 'key_cache'):
+                    # Update DynamicCache in-place
+                    past_key_value.update(K_updated, V_updated, layer_idx)
+                    cache_to_return = past_key_value
+                else:
+                    # Return 3-tuple for direct usage or tuple-based caching
+                    cache_to_return = updated_cache
             else:
                 cache_to_return = None
             
