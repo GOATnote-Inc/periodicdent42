@@ -65,12 +65,9 @@ def _attention_fp8_kernel(
     v_base = V + b * stride_vb + h * stride_vh
     o_base = Out + b * stride_ob + h * stride_oh
     
-    # Load Q block [BLOCK_M, D] - FP8 input
+    # Load Q block [BLOCK_M, D] - FP8 input, explicit FP16 conversion
     Q_ptrs = q_base + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
-    q = tl.load(Q_ptrs, mask=offs_m[:, None] < N, other=0.0)
-    
-    # Convert to FP16 for computation (hardware automatic)
-    # Triton handles FP8->FP16 conversion transparently
+    q = tl.load(Q_ptrs, mask=offs_m[:, None] < N, other=0.0).to(tl.float16)
     
     # Online softmax accumulators (FP32)
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
@@ -81,13 +78,13 @@ def _attention_fp8_kernel(
     for start_n in range(0, N, BLOCK_N):
         offs_n_cur = start_n + offs_n
         
-        # Load K^T [D, BLOCK_N] - FP8 input
+        # Load K^T [D, BLOCK_N] - FP8 input, explicit FP16 conversion
         K_ptrs = k_base + offs_n_cur[None, :] * stride_km + offs_d[:, None] * stride_kk
-        k = tl.load(K_ptrs, mask=offs_n_cur[None, :] < N, other=0.0)
+        k = tl.load(K_ptrs, mask=offs_n_cur[None, :] < N, other=0.0).to(tl.float16)
         
-        # Load V [BLOCK_N, D] - FP8 input
+        # Load V [BLOCK_N, D] - FP8 input, explicit FP16 conversion
         V_ptrs = v_base + offs_n_cur[:, None] * stride_vm + offs_d[None, :] * stride_vk
-        v = tl.load(V_ptrs, mask=offs_n_cur[:, None] < N, other=0.0)
+        v = tl.load(V_ptrs, mask=offs_n_cur[:, None] < N, other=0.0).to(tl.float16)
         
         # QK^T matmul (FP16 hardware, FP32 accumulation)
         qk = tl.dot(q, k, out_dtype=tl.float32)
@@ -101,8 +98,8 @@ def _attention_fp8_kernel(
         alpha = tl.exp(m_i - m_ij)
         acc = acc * alpha[:, None]
         
-        # P@V matmul (FP32 accumulation)
-        acc += tl.dot(p.to(v.dtype), v, out_dtype=tl.float32)
+        # P@V matmul (FP32 accumulation, v already FP16)
+        acc += tl.dot(p.to(tl.float16), v, out_dtype=tl.float32)
         
         # Update stats
         l_i = alpha * l_i + tl.sum(p, 1)
