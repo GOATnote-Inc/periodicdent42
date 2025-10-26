@@ -109,33 +109,31 @@ attention_wmma(
         //======================================================================
         
         // 64×64 matrix = 4×4 grid of 16×16 tiles = 16 tiles total
-        // 8 warps → each warp computes 2 tiles
-        // Warp i computes tiles (2*i) and (2*i+1)
+        // 8 warps: Each warp processes 2 tiles sequentially (avoiding stack overflow)
         
-        for (int tile_idx = warp_id * 2; tile_idx < (warp_id + 1) * 2; ++tile_idx) {
-            if (tile_idx < 16) {  // 4×4 = 16 tiles
-                int tile_row = tile_idx / 4;
-                int tile_col = tile_idx % 4;
-                int warp_m = tile_row * 16;
-                int warp_n = tile_col * 16;
-                
-                // WMMA fragments for Q@K^T
-                wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> q_frag;
-                wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> k_frag;
-                wmma::fragment<wmma::accumulator, 16, 16, 16, float> s_frag;
-                
-                wmma::fill_fragment(s_frag, 0.0f);
-                
-                // Compute Q[warp_m:warp_m+16, :] @ K^T[:, warp_n:warp_n+16]
-                for (int k = 0; k < BLOCK_D; k += 16) {
-                    wmma::load_matrix_sync(q_frag, &Q_smem[warp_m * BLOCK_D + k], BLOCK_D);
-                    wmma::load_matrix_sync(k_frag, &K_smem[k * BLOCK_N + warp_n], BLOCK_N);
-                    wmma::mma_sync(s_frag, q_frag, k_frag, s_frag);
-                }
-                
-                // Store to shared memory
-                wmma::store_matrix_sync(&S_smem[warp_m * BLOCK_N + warp_n], s_frag, BLOCK_N, wmma::mem_row_major);
+        // WMMA fragments (declared ONCE to avoid stack issues)
+        wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> q_frag;
+        wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> k_frag;
+        wmma::fragment<wmma::accumulator, 16, 16, 16, float> s_frag;
+        
+        // Each warp computes 2 tiles: (2*warp_id) and (2*warp_id+1)
+        for (int tile_idx = warp_id * 2; tile_idx < warp_id * 2 + 2 && tile_idx < 16; ++tile_idx) {
+            int tile_row = tile_idx / 4;
+            int tile_col = tile_idx % 4;
+            int warp_m = tile_row * 16;
+            int warp_n = tile_col * 16;
+            
+            wmma::fill_fragment(s_frag, 0.0f);
+            
+            // Compute Q[warp_m:warp_m+16, :] @ K^T[:, warp_n:warp_n+16]
+            for (int k = 0; k < BLOCK_D; k += 16) {
+                wmma::load_matrix_sync(q_frag, &Q_smem[warp_m * BLOCK_D + k], BLOCK_D);
+                wmma::load_matrix_sync(k_frag, &K_smem[k * BLOCK_N + warp_n], BLOCK_N);
+                wmma::mma_sync(s_frag, q_frag, k_frag, s_frag);
             }
+            
+            // Store to shared memory
+            wmma::store_matrix_sync(&S_smem[warp_m * BLOCK_N + warp_n], s_frag, BLOCK_N, wmma::mem_row_major);
         }
         __syncthreads();
         
@@ -201,40 +199,39 @@ attention_wmma(
         __syncthreads();
         
         // 64×64 matrix = 4×4 grid of 16×16 tiles = 16 tiles total
-        // 8 warps → each warp computes 2 tiles
+        // 8 warps: Each warp processes 2 tiles sequentially (avoiding stack overflow)
         
-        for (int tile_idx = warp_id * 2; tile_idx < (warp_id + 1) * 2; ++tile_idx) {
-            if (tile_idx < 16) {  // 4×4 = 16 tiles
-                int tile_row = tile_idx / 4;
-                int tile_col = tile_idx % 4;
-                int warp_m = tile_row * 16;
-                int warp_d = tile_col * 16;
-                
-                // WMMA fragments for P@V
-                wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> p_frag;
-                wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::row_major> v_frag;
-                wmma::fragment<wmma::accumulator, 16, 16, 16, float> o_frag;
-                
-                wmma::fill_fragment(o_frag, 0.0f);
-                
-                // Compute P[warp_m:warp_m+16, :] @ V[:, warp_d:warp_d+16]
-                for (int k = 0; k < BLOCK_N; k += 16) {
-                    wmma::load_matrix_sync(p_frag, &P_smem[warp_m * BLOCK_N + k], BLOCK_N);
-                    wmma::load_matrix_sync(v_frag, &V_smem[k * BLOCK_D + warp_d], BLOCK_D);
-                    wmma::mma_sync(o_frag, p_frag, v_frag, o_frag);
-                }
-                
-                // Accumulate to output
-                float o_tile[256];  // 16×16
-                wmma::store_matrix_sync(o_tile, o_frag, 16, wmma::mem_row_major);
-                
-                for (int i = 0; i < 16; ++i) {
-                    for (int j = 0; j < 16; ++j) {
-                        int m = warp_m + i;
-                        int d = warp_d + j;
-                        if (m < BLOCK_M && d < BLOCK_D) {
-                            atomicAdd(&O_smem[m * BLOCK_D + d], o_tile[i * 16 + j]);
-                        }
+        // WMMA fragments (declared ONCE to avoid stack issues)
+        wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> p_frag;
+        wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::row_major> v_frag;
+        wmma::fragment<wmma::accumulator, 16, 16, 16, float> o_frag;
+        
+        // Each warp computes 2 tiles: (2*warp_id) and (2*warp_id+1)
+        for (int tile_idx = warp_id * 2; tile_idx < warp_id * 2 + 2 && tile_idx < 16; ++tile_idx) {
+            int tile_row = tile_idx / 4;
+            int tile_col = tile_idx % 4;
+            int warp_m = tile_row * 16;
+            int warp_d = tile_col * 16;
+            
+            wmma::fill_fragment(o_frag, 0.0f);
+            
+            // Compute P[warp_m:warp_m+16, :] @ V[:, warp_d:warp_d+16]
+            for (int k = 0; k < BLOCK_N; k += 16) {
+                wmma::load_matrix_sync(p_frag, &P_smem[warp_m * BLOCK_N + k], BLOCK_N);
+                wmma::load_matrix_sync(v_frag, &V_smem[k * BLOCK_D + warp_d], BLOCK_D);
+                wmma::mma_sync(o_frag, p_frag, v_frag, o_frag);
+            }
+            
+            // Accumulate to output
+            float o_tile[256];  // 16×16
+            wmma::store_matrix_sync(o_tile, o_frag, 16, wmma::mem_row_major);
+            
+            for (int i = 0; i < 16; ++i) {
+                for (int j = 0; j < 16; ++j) {
+                    int m = warp_m + i;
+                    int d = warp_d + j;
+                    if (m < BLOCK_M && d < BLOCK_D) {
+                        atomicAdd(&O_smem[m * BLOCK_D + d], o_tile[i * 16 + j]);
                     }
                 }
             }
