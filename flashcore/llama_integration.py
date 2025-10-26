@@ -73,23 +73,32 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
     
     from flashcore.fast.attention_production import attention_with_kv_cache
     
-    def _rope_cos_sin(rope, ref_tensor, seq_len):
+    def _rope_cos_sin(rope, ref_tensor, position_ids):
         """
         Robust RoPE invocation across HF transformers versions.
         
         HF changed LlamaRotaryEmbedding.forward signatures across releases.
         This helper tries common variants to maintain cross-version compatibility.
+        
+        Args:
+            rope: LlamaRotaryEmbedding instance
+            ref_tensor: Reference tensor for shape (usually value_states)
+            position_ids: Position IDs tensor
+        
+        Returns:
+            (cos, sin) tensors for rotary embeddings
         """
         try:
-            # HF 4.35-4.47 style
-            return rope(ref_tensor, seq_len=seq_len)
+            # HF 4.47+ style: forward(x, position_ids)
+            return rope(ref_tensor, position_ids)
         except TypeError:
             try:
-                # Some newer patches
-                return rope(seq_len)
+                # Some versions: forward(x, seq_len=...)
+                seq_len = position_ids.max().item() + 1 if hasattr(position_ids, 'max') else position_ids
+                return rope(ref_tensor, seq_len=seq_len)
             except TypeError:
-                # Fallback variant
-                return rope(ref_tensor, seq_len)
+                # Fallback: just the tensor
+                return rope(ref_tensor)
     
     # Define the FlashCore attention class inside this function to ensure
     # it has access to the attention_with_kv_cache function
@@ -184,14 +193,7 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
             
             # Apply RoPE (done BEFORE attention, unchanged from original)
             # Use robust invocation for cross-version compatibility
-            kv_seq_len = key_states.shape[-2]
-            if past_key_value is not None:
-                if hasattr(past_key_value, 'get_usable_length'):
-                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, 0)
-                elif isinstance(past_key_value, tuple):
-                    kv_seq_len += past_key_value[0].shape[-2]
-            
-            cos, sin = _rope_cos_sin(self.rotary_emb, value_states, kv_seq_len)
+            cos, sin = _rope_cos_sin(self.rotary_emb, value_states, position_ids)
             
             # Apply RoPE with signature tolerance
             try:
