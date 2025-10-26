@@ -94,7 +94,7 @@ def test_kv_cache_vs_pytorch_prefill_decode():
         return True
     else:
         print("\n❌ FAIL: KV cache differs from reference")
-        print(f"   Max difference {max_diff} exceeds threshold 1e-3")
+        print(f"   Max difference {max_diff} exceeds tolerance (rtol=1e-3, atol=2e-3)")
         return False
 
 
@@ -175,15 +175,14 @@ def test_kv_cache_single_decode_step():
     k_full = torch.cat([K_cache[:, :, :S_cache, :], k_new], dim=2)
     v_full = torch.cat([V_cache[:, :, :S_cache, :], v_new], dim=2)
     
-    # PyTorch reference (causal: new token only sees cache + itself, not future)
-    expected = F.scaled_dot_product_attention(q_full, k_full, v_full, is_causal=True)
+    # PyTorch reference (no is_causal needed: single query token is last position, no future to mask)
+    expected = F.scaled_dot_product_attention(q_full, k_full, v_full)
     
-    # FlashCore with cache (causal)
+    # FlashCore with cache (no causal: single decode token scenario)
     result, _ = attention_with_kv_cache(
         q_new, k_new, v_new,
         past_key_value=cache,
-        update_cache=False,  # Don't modify cache for this test
-        is_causal=True  # Causal masking in decode
+        update_cache=False  # Don't modify cache for this test
     )
     
     # Compare
