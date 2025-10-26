@@ -176,6 +176,253 @@ def attention(
     return out
 
 
+@triton.jit
+def _attention_kv_cache_fwd_kernel(
+    Q, K_new, V_new,
+    K_cache, V_cache, seq_lens, Out,
+    stride_qb, stride_qh, stride_qm, stride_qd,
+    stride_knb, stride_knh, stride_knm, stride_knd,
+    stride_vnb, stride_vnh, stride_vnm, stride_vnd,
+    stride_kcb, stride_kch, stride_kcm, stride_kcd,
+    stride_vcb, stride_vch, stride_vcm, stride_vcd,
+    stride_ob, stride_oh, stride_om, stride_od,
+    B: tl.constexpr, H: tl.constexpr,
+    S_q: tl.constexpr, S_max: tl.constexpr, D: tl.constexpr,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
+    SCALE: tl.constexpr
+):
+    """
+    FlashAttention-style forward pass with KV cache support
+    
+    Processes attention over concatenated cache + new tokens:
+    - Attends to cached K/V [0:seq_lens[b]]
+    - Attends to new K/V [0:S_q]
+    - Uses online softmax for memory efficiency
+    
+    Each program processes BLOCK_M queries for one head in one batch
+    """
+    pid_m = tl.program_id(0)  # Query block index
+    pid_bh = tl.program_id(1)  # Batch × Head index
+    
+    # Decode batch and head indices
+    b = pid_bh // H
+    h = pid_bh % H
+    
+    # Load sequence length for this batch (number of cached tokens)
+    seq_len_cache = tl.load(seq_lens + b)
+    
+    # Offsets
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tl.arange(0, BLOCK_N)
+    offs_d = tl.arange(0, D)
+    
+    # Load Q block [BLOCK_M, D]
+    Q_ptrs = (Q + b * stride_qb + h * stride_qh +
+              offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qd)
+    q = tl.load(Q_ptrs, mask=offs_m[:, None] < S_q, other=0.0)
+    
+    # Initialize online softmax accumulators
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, D], dtype=tl.float32)
+    
+    # STEP A: Process cached keys/values [0:seq_len_cache)
+    for start_n in range(0, seq_len_cache, BLOCK_N):
+        offs_n_cur = start_n + offs_n
+        
+        # Load K_cache block [D, BLOCK_N] (transposed for matmul)
+        K_ptrs = (K_cache + b * stride_kcb + h * stride_kch +
+                  offs_n_cur[None, :] * stride_kcm + offs_d[:, None] * stride_kcd)
+        k = tl.load(K_ptrs, mask=offs_n_cur[None, :] < seq_len_cache, other=0.0)
+        
+        # Load V_cache block [BLOCK_N, D]
+        V_ptrs = (V_cache + b * stride_vcb + h * stride_vch +
+                  offs_n_cur[:, None] * stride_vcm + offs_d[None, :] * stride_vcd)
+        v = tl.load(V_ptrs, mask=offs_n_cur[:, None] < seq_len_cache, other=0.0)
+        
+        # Compute attention scores: QK^T [BLOCK_M, BLOCK_N]
+        qk = tl.dot(q, k, out_dtype=tl.float32)
+        qk *= SCALE
+        
+        # Online softmax update
+        m_ij = tl.maximum(m_i, tl.max(qk, 1))
+        p = tl.exp(qk - m_ij[:, None])
+        
+        # Rescale previous accumulator
+        alpha = tl.exp(m_i - m_ij)
+        acc = acc * alpha[:, None]
+        
+        # Accumulate weighted values
+        acc += tl.dot(p.to(v.dtype), v, out_dtype=tl.float32)
+        
+        # Update softmax statistics
+        l_i = alpha * l_i + tl.sum(p, 1)
+        m_i = m_ij
+    
+    # STEP B: Process new keys/values [0:S_q)
+    for start_n in range(0, S_q, BLOCK_N):
+        offs_n_cur = start_n + offs_n
+        
+        # Load K_new block [D, BLOCK_N]
+        K_ptrs = (K_new + b * stride_knb + h * stride_knh +
+                  offs_n_cur[None, :] * stride_knm + offs_d[:, None] * stride_knd)
+        k = tl.load(K_ptrs, mask=offs_n_cur[None, :] < S_q, other=0.0)
+        
+        # Load V_new block [BLOCK_N, D]
+        V_ptrs = (V_new + b * stride_vnb + h * stride_vnh +
+                  offs_n_cur[:, None] * stride_vnm + offs_d[None, :] * stride_vnd)
+        v = tl.load(V_ptrs, mask=offs_n_cur[:, None] < S_q, other=0.0)
+        
+        # Compute attention scores: QK^T [BLOCK_M, BLOCK_N]
+        qk = tl.dot(q, k, out_dtype=tl.float32)
+        qk *= SCALE
+        
+        # Online softmax update
+        m_ij = tl.maximum(m_i, tl.max(qk, 1))
+        p = tl.exp(qk - m_ij[:, None])
+        
+        # Rescale previous accumulator
+        alpha = tl.exp(m_i - m_ij)
+        acc = acc * alpha[:, None]
+        
+        # Accumulate weighted values
+        acc += tl.dot(p.to(v.dtype), v, out_dtype=tl.float32)
+        
+        # Update softmax statistics
+        l_i = alpha * l_i + tl.sum(p, 1)
+        m_i = m_ij
+    
+    # Final normalization
+    acc = acc / l_i[:, None]
+    
+    # Store output
+    O_ptrs = (Out + b * stride_ob + h * stride_oh +
+              offs_m[:, None] * stride_om + offs_d[None, :] * stride_od)
+    tl.store(O_ptrs, acc.to(Out.dtype.element_ty), mask=offs_m[:, None] < S_q)
+
+
+def attention_with_kv_cache(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    seq_lens: Optional[torch.Tensor] = None,
+    cache_max_len: int = 4096,
+    update_cache: bool = True,
+    block_m: int = 64,
+    block_n: int = 64,
+    scale: Optional[float] = None
+) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
+    """
+    Scaled dot-product attention with KV cache support for incremental inference
+    
+    Enables efficient autoregressive generation by caching previous key/value tensors:
+    - Prefill phase: Process initial prompt, create cache
+    - Decode phase: Process one new token, attend to full cache + new token
+    
+    Args:
+        query: Query tensor [B, H, S_q, D] - new queries to process
+        key: Key tensor [B, H, S_q, D] - new keys to add to cache
+        value: Value tensor [B, H, S_q, D] - new values to add to cache
+        past_key_value: Optional (K_cache, V_cache) from previous step
+                        Each cache tensor: [B, H, S_max, D]
+        seq_lens: Optional [B] tensor with valid cache length per batch
+                  If None, inferred from cache or initialized to 0
+        cache_max_len: Maximum cache capacity (default: 4096)
+        update_cache: Whether to return updated cache (default: True)
+        block_m, block_n: Block sizes for performance tuning
+        scale: Attention scale factor (default: 1/sqrt(D))
+    
+    Returns:
+        output: Attention output [B, H, S_q, D]
+        cache: Updated (K_cache, V_cache) if update_cache=True, else None
+    
+    Example:
+        # Prefill
+        output, cache = attention_with_kv_cache(q_prefill, k_prefill, v_prefill)
+        
+        # Decode loop
+        for step in range(100):
+            q_new = model.get_query(next_token)  # [B, H, 1, D]
+            k_new = model.get_key(next_token)
+            v_new = model.get_value(next_token)
+            output, cache = attention_with_kv_cache(
+                q_new, k_new, v_new, past_key_value=cache
+            )
+    """
+    B, H, S_q, D = query.shape
+    
+    # Input validation
+    assert query.shape == key.shape == value.shape, "Q, K, V must have same shape"
+    assert query.is_cuda and key.is_cuda and value.is_cuda, "Tensors must be on CUDA"
+    
+    # Default scale
+    if scale is None:
+        scale = 1.0 / (D ** 0.5)
+    
+    # Handle cache initialization
+    if past_key_value is None:
+        # First call: initialize empty cache
+        K_cache = torch.empty(B, H, cache_max_len, D, device=query.device, dtype=query.dtype)
+        V_cache = torch.empty(B, H, cache_max_len, D, device=query.device, dtype=query.dtype)
+        if seq_lens is None:
+            seq_lens = torch.zeros(B, dtype=torch.int32, device=query.device)
+    else:
+        K_cache, V_cache = past_key_value
+        if seq_lens is None:
+            # Infer from cache shape (assume all filled to shape[2])
+            seq_lens = torch.full((B,), K_cache.shape[2], dtype=torch.int32, device=query.device)
+    
+    # Allocate output
+    output = torch.empty_like(query)
+    
+    # Launch kernel
+    grid = (triton.cdiv(S_q, block_m), B * H)
+    
+    _attention_kv_cache_fwd_kernel[grid](
+        query, key, value,
+        K_cache, V_cache, seq_lens, output,
+        # Query strides
+        query.stride(0), query.stride(1), query.stride(2), query.stride(3),
+        # Key strides
+        key.stride(0), key.stride(1), key.stride(2), key.stride(3),
+        # Value strides
+        value.stride(0), value.stride(1), value.stride(2), value.stride(3),
+        # Cache strides
+        K_cache.stride(0), K_cache.stride(1), K_cache.stride(2), K_cache.stride(3),
+        V_cache.stride(0), V_cache.stride(1), V_cache.stride(2), V_cache.stride(3),
+        # Output strides
+        output.stride(0), output.stride(1), output.stride(2), output.stride(3),
+        # Dimensions
+        B, H, S_q, cache_max_len, D,
+        # Block sizes
+        BLOCK_M=block_m, BLOCK_N=block_n,
+        # Scale
+        SCALE=scale
+    )
+    
+    # Update cache if requested
+    if update_cache:
+        # Append new K/V to cache
+        for b in range(B):
+            start_idx = seq_lens[b].item()
+            end_idx = start_idx + S_q
+            if end_idx <= cache_max_len:
+                K_cache[b, :, start_idx:end_idx, :] = key[b]
+                V_cache[b, :, start_idx:end_idx, :] = value[b]
+                seq_lens[b] += S_q
+            else:
+                raise RuntimeError(
+                    f"Cache overflow for batch {b}: "
+                    f"tried to add {S_q} tokens to cache at position {start_idx}, "
+                    f"but cache_max_len={cache_max_len}"
+                )
+        
+        return output, (K_cache, V_cache)
+    else:
+        return output, None
+
+
 def auto_tune_config(seq_len: int, batch_size: int) -> Tuple[int, int]:
     """
     Returns optimal (block_m, block_n) for given sequence length and batch
