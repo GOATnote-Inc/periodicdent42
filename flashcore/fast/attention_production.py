@@ -444,6 +444,12 @@ def attention_with_kv_cache(
     
     group_size = H_q // H_kv
     
+    # Auto-select block size for small sequences (fixes S<64 precision issues)
+    if S_q < 64 and (block_m == 64 or block_n == 64):
+        # Use smaller blocks that evenly divide the sequence length
+        block_m = min(32, S_q)
+        block_n = min(32, S_q)
+    
     # Default scale
     if scale is None:
         scale = 1.0 / (D ** 0.5)
