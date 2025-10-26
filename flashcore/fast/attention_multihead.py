@@ -85,7 +85,8 @@ def _multihead_attention_kernel(
         v = tl.load(V_ptrs, mask=offs_n_cur[:, None] < N, other=0.0)
         
         # Attention scores: QK^T [BLOCK_M, BLOCK_N]
-        qk = tl.dot(q, k)
+        # Force FP32 accumulation for numerical stability with large H
+        qk = tl.dot(q, k, out_dtype=tl.float32)
         qk *= SCALE
         
         # Online softmax update
@@ -96,8 +97,8 @@ def _multihead_attention_kernel(
         alpha = tl.exp(m_i - m_ij)
         acc = acc * alpha[:, None]
         
-        # Accumulate
-        acc += tl.dot(p.to(v.dtype), v)
+        # Accumulate with FP32 (critical for H=96+ correctness)
+        acc += tl.dot(p.to(v.dtype), v, out_dtype=tl.float32)
         
         # Update stats
         l_i = alpha * l_i + tl.sum(p, 1)
