@@ -186,27 +186,40 @@ def _attention_kv_cache_fwd_kernel(
     stride_kcb, stride_kch, stride_kcm, stride_kcd,
     stride_vcb, stride_vch, stride_vcm, stride_vcd,
     stride_ob, stride_oh, stride_om, stride_od,
-    B: tl.constexpr, H: tl.constexpr,
+    B: tl.constexpr, H_q: tl.constexpr, H_kv: tl.constexpr,
     S_q: tl.constexpr, S_max: tl.constexpr, D: tl.constexpr,
     BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
     SCALE: tl.constexpr
 ):
     """
-    FlashAttention-style forward pass with KV cache support
+    FlashAttention-style forward pass with KV cache and GQA support
+    
+    Supports Grouped-Query Attention (GQA) where H_q != H_kv:
+    - Query heads: H_q (e.g., 32 for LLaMA 3.1)
+    - KV heads: H_kv (e.g., 8 for LLaMA 3.1)
+    - Each KV head is shared by group_size = H_q // H_kv query heads
     
     Processes attention over concatenated cache + new tokens:
-    - Attends to cached K/V [0:seq_lens[b]]
-    - Attends to new K/V [0:S_q]
+    - Attends to cached K/V [0:seq_lens[b]] from K_cache, V_cache
+    - Attends to new K/V [0:S_q] from K_new, V_new
     - Uses online softmax for memory efficiency
+    
+    Memory savings: Cache stored as [B, H_kv, S_max, D] instead of [B, H_q, S_max, D]
+    For LLaMA (H_q=32, H_kv=8): 4× reduction in cache memory
     
     Each program processes BLOCK_M queries for one head in one batch
     """
     pid_m = tl.program_id(0)  # Query block index
-    pid_bh = tl.program_id(1)  # Batch × Head index
+    pid_bh = tl.program_id(1)  # Batch × Query Head index
     
-    # Decode batch and head indices
-    b = pid_bh // H
-    h = pid_bh % H
+    # Decode batch and query head indices
+    b = pid_bh // H_q
+    q_head_idx = pid_bh % H_q
+    
+    # Compute which KV head to use (GQA mapping)
+    # group_size = H_q // H_kv (e.g., 32 // 8 = 4)
+    # Query heads [0,1,2,3] → KV head 0, [4,5,6,7] → KV head 1, etc.
+    kv_head_idx = q_head_idx // (H_q // H_kv)
     
     # Load sequence length for this batch (number of cached tokens)
     seq_len_cache = tl.load(seq_lens + b)
@@ -216,8 +229,8 @@ def _attention_kv_cache_fwd_kernel(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, D)
     
-    # Load Q block [BLOCK_M, D]
-    Q_ptrs = (Q + b * stride_qb + h * stride_qh +
+    # Load Q block [BLOCK_M, D] - use q_head_idx
+    Q_ptrs = (Q + b * stride_qb + q_head_idx * stride_qh +
               offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qd)
     q = tl.load(Q_ptrs, mask=offs_m[:, None] < S_q, other=0.0)
     
@@ -230,13 +243,13 @@ def _attention_kv_cache_fwd_kernel(
     for start_n in range(0, seq_len_cache, BLOCK_N):
         offs_n_cur = start_n + offs_n
         
-        # Load K_cache block [D, BLOCK_N] (transposed for matmul)
-        K_ptrs = (K_cache + b * stride_kcb + h * stride_kch +
+        # Load K_cache block [D, BLOCK_N] (transposed for matmul) - use kv_head_idx
+        K_ptrs = (K_cache + b * stride_kcb + kv_head_idx * stride_kch +
                   offs_n_cur[None, :] * stride_kcm + offs_d[:, None] * stride_kcd)
         k = tl.load(K_ptrs, mask=offs_n_cur[None, :] < seq_len_cache, other=0.0)
         
-        # Load V_cache block [BLOCK_N, D]
-        V_ptrs = (V_cache + b * stride_vcb + h * stride_vch +
+        # Load V_cache block [BLOCK_N, D] - use kv_head_idx
+        V_ptrs = (V_cache + b * stride_vcb + kv_head_idx * stride_vch +
                   offs_n_cur[:, None] * stride_vcm + offs_d[None, :] * stride_vcd)
         v = tl.load(V_ptrs, mask=offs_n_cur[:, None] < seq_len_cache, other=0.0)
         
@@ -263,13 +276,13 @@ def _attention_kv_cache_fwd_kernel(
     for start_n in range(0, S_q, BLOCK_N):
         offs_n_cur = start_n + offs_n
         
-        # Load K_new block [D, BLOCK_N]
-        K_ptrs = (K_new + b * stride_knb + h * stride_knh +
+        # Load K_new block [D, BLOCK_N] - use kv_head_idx
+        K_ptrs = (K_new + b * stride_knb + kv_head_idx * stride_knh +
                   offs_n_cur[None, :] * stride_knm + offs_d[:, None] * stride_knd)
         k = tl.load(K_ptrs, mask=offs_n_cur[None, :] < S_q, other=0.0)
         
-        # Load V_new block [BLOCK_N, D]
-        V_ptrs = (V_new + b * stride_vnb + h * stride_vnh +
+        # Load V_new block [BLOCK_N, D] - use kv_head_idx
+        V_ptrs = (V_new + b * stride_vnb + kv_head_idx * stride_vnh +
                   offs_n_cur[:, None] * stride_vnm + offs_d[None, :] * stride_vnd)
         v = tl.load(V_ptrs, mask=offs_n_cur[:, None] < S_q, other=0.0)
         
@@ -295,8 +308,8 @@ def _attention_kv_cache_fwd_kernel(
     # Final normalization
     acc = acc / l_i[:, None]
     
-    # Store output
-    O_ptrs = (Out + b * stride_ob + h * stride_oh +
+    # Store output - use q_head_idx
+    O_ptrs = (Out + b * stride_ob + q_head_idx * stride_oh +
               offs_m[:, None] * stride_om + offs_d[None, :] * stride_od)
     tl.store(O_ptrs, acc.to(Out.dtype.element_ty), mask=offs_m[:, None] < S_q)
 
@@ -309,75 +322,115 @@ def attention_with_kv_cache(
     seq_lens: Optional[torch.Tensor] = None,
     cache_max_len: int = 4096,
     update_cache: bool = True,
+    num_query_heads: Optional[int] = None,
+    num_kv_heads: Optional[int] = None,
     block_m: int = 64,
     block_n: int = 64,
     scale: Optional[float] = None
 ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
     """
-    Scaled dot-product attention with KV cache support for incremental inference
+    Scaled dot-product attention with KV cache and GQA support for incremental inference
+    
+    Supports Grouped-Query Attention (GQA) where num_query_heads != num_kv_heads:
+    - Multi-Head Attention (MHA): num_query_heads == num_kv_heads (e.g., 32 == 32)
+    - Grouped-Query Attention (GQA): num_query_heads > num_kv_heads (e.g., 32 > 8)
+    - Multi-Query Attention (MQA): num_query_heads > 1, num_kv_heads == 1
+    
+    Memory savings: Cache stored as [B, H_kv, S_max, D] instead of [B, H_q, S_max, D]
+    For LLaMA 3.1 (H_q=32, H_kv=8): 4× reduction in cache memory
     
     Enables efficient autoregressive generation by caching previous key/value tensors:
     - Prefill phase: Process initial prompt, create cache
     - Decode phase: Process one new token, attend to full cache + new token
     
     Args:
-        query: Query tensor [B, H, S_q, D] - new queries to process
-        key: Key tensor [B, H, S_q, D] - new keys to add to cache
-        value: Value tensor [B, H, S_q, D] - new values to add to cache
+        query: Query tensor [B, H_q, S_q, D] - new queries to process
+        key: Key tensor [B, H_kv, S_q, D] - new keys to add to cache
+        value: Value tensor [B, H_kv, S_q, D] - new values to add to cache
         past_key_value: Optional (K_cache, V_cache) from previous step
-                        Each cache tensor: [B, H, S_max, D]
+                        Each cache tensor: [B, H_kv, S_max, D]
         seq_lens: Optional [B] tensor with valid cache length per batch
                   If None, inferred from cache or initialized to 0
         cache_max_len: Maximum cache capacity (default: 4096)
         update_cache: Whether to return updated cache (default: True)
+        num_query_heads: Number of query heads (H_q). If None, inferred from query shape
+        num_kv_heads: Number of KV heads (H_kv). If None, inferred from key shape
         block_m, block_n: Block sizes for performance tuning
         scale: Attention scale factor (default: 1/sqrt(D))
     
     Returns:
-        output: Attention output [B, H, S_q, D]
+        output: Attention output [B, H_q, S_q, D]
         cache: Updated (K_cache, V_cache) if update_cache=True, else None
     
-    Example:
-        # Prefill
-        output, cache = attention_with_kv_cache(q_prefill, k_prefill, v_prefill)
-        
-        # Decode loop
-        for step in range(100):
-            q_new = model.get_query(next_token)  # [B, H, 1, D]
-            k_new = model.get_key(next_token)
-            v_new = model.get_value(next_token)
-            output, cache = attention_with_kv_cache(
-                q_new, k_new, v_new, past_key_value=cache
-            )
+    Example (MHA - Multi-Head Attention):
+        # Q, K, V all have same number of heads
+        q = torch.randn(B, 32, S, D, device='cuda', dtype=torch.float16)
+        k = torch.randn(B, 32, S, D, device='cuda', dtype=torch.float16)
+        v = torch.randn(B, 32, S, D, device='cuda', dtype=torch.float16)
+        output, cache = attention_with_kv_cache(q, k, v)
+    
+    Example (GQA - Grouped-Query Attention, LLaMA 3.1):
+        # Query: 32 heads, K/V: 8 heads (4× memory savings)
+        q = torch.randn(B, 32, S, D, device='cuda', dtype=torch.float16)
+        k = torch.randn(B, 8, S, D, device='cuda', dtype=torch.float16)
+        v = torch.randn(B, 8, S, D, device='cuda', dtype=torch.float16)
+        output, cache = attention_with_kv_cache(q, k, v, num_query_heads=32, num_kv_heads=8)
+        # Cache shape: [B, 8, S_max, D] instead of [B, 32, S_max, D] → 4× savings
     """
-    B, H, S_q, D = query.shape
+    B, H_q, S_q, D = query.shape
+    _, H_kv, _, _ = key.shape
+    
+    # Infer head counts if not provided
+    if num_query_heads is None:
+        num_query_heads = H_q
+    if num_kv_heads is None:
+        num_kv_heads = H_kv
     
     # Input validation
-    assert query.shape == key.shape == value.shape, "Q, K, V must have same shape"
+    assert query.shape[0] == key.shape[0] == value.shape[0], "Batch sizes must match"
+    assert query.shape[2] == key.shape[2] == value.shape[2], "Sequence lengths must match"
+    assert query.shape[3] == key.shape[3] == value.shape[3], "Head dimensions must match"
+    assert key.shape == value.shape, "K and V must have same shape"
     assert query.is_cuda and key.is_cuda and value.is_cuda, "Tensors must be on CUDA"
+    assert H_q == num_query_heads, f"Query tensor has {H_q} heads but num_query_heads={num_query_heads}"
+    assert H_kv == num_kv_heads, f"Key tensor has {H_kv} heads but num_kv_heads={num_kv_heads}"
+    
+    # Validate GQA constraint
+    if H_q % H_kv != 0:
+        raise ValueError(
+            f"num_query_heads ({H_q}) must be divisible by num_kv_heads ({H_kv}). "
+            f"Got group_size = {H_q / H_kv:.2f} (must be integer)."
+        )
+    
+    group_size = H_q // H_kv
     
     # Default scale
     if scale is None:
         scale = 1.0 / (D ** 0.5)
     
-    # Handle cache initialization
+    # Handle cache initialization (cache stored with H_kv heads for memory savings)
     if past_key_value is None:
-        # First call: initialize empty cache
-        K_cache = torch.empty(B, H, cache_max_len, D, device=query.device, dtype=query.dtype)
-        V_cache = torch.empty(B, H, cache_max_len, D, device=query.device, dtype=query.dtype)
+        # First call: initialize empty cache with H_kv heads
+        K_cache = torch.empty(B, H_kv, cache_max_len, D, device=query.device, dtype=query.dtype)
+        V_cache = torch.empty(B, H_kv, cache_max_len, D, device=query.device, dtype=query.dtype)
         if seq_lens is None:
             seq_lens = torch.zeros(B, dtype=torch.int32, device=query.device)
     else:
         K_cache, V_cache = past_key_value
+        # Validate cache has H_kv heads
+        assert K_cache.shape[1] == H_kv, \
+            f"Cache has {K_cache.shape[1]} heads, expected {H_kv} (num_kv_heads)"
+        assert V_cache.shape[1] == H_kv, \
+            f"Cache has {V_cache.shape[1]} heads, expected {H_kv} (num_kv_heads)"
         if seq_lens is None:
             # Infer from cache shape (assume all filled to shape[2])
             seq_lens = torch.full((B,), K_cache.shape[2], dtype=torch.int32, device=query.device)
     
-    # Allocate output
+    # Allocate output (H_q heads)
     output = torch.empty_like(query)
     
-    # Launch kernel
-    grid = (triton.cdiv(S_q, block_m), B * H)
+    # Launch kernel (grid uses H_q for number of query heads)
+    grid = (triton.cdiv(S_q, block_m), B * H_q)
     
     _attention_kv_cache_fwd_kernel[grid](
         query, key, value,
@@ -393,8 +446,8 @@ def attention_with_kv_cache(
         V_cache.stride(0), V_cache.stride(1), V_cache.stride(2), V_cache.stride(3),
         # Output strides
         output.stride(0), output.stride(1), output.stride(2), output.stride(3),
-        # Dimensions
-        B, H, S_q, cache_max_len, D,
+        # Dimensions (now separate H_q and H_kv)
+        B, H_q, H_kv, S_q, cache_max_len, D,
         # Block sizes
         BLOCK_M=block_m, BLOCK_N=block_n,
         # Scale
