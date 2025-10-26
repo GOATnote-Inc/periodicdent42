@@ -270,6 +270,14 @@ void launch_attention_wmma(
     dim3 grid(B * H, (S + BLOCK_M - 1) / BLOCK_M);
     dim3 block(256);  // 8 warps
     
+    // Request 70KB shared memory (we use 66KB)
+    // H100 supports up to 228KB per block
+    cudaFuncSetAttribute(
+        attention_wmma,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        70 * 1024
+    );
+    
     attention_wmma<<<grid, block, 0, stream>>>(
         (const __half*)Q, (const __half*)K, (const __half*)V, (__half*)O,
         B, H, S, D, scale, is_causal
