@@ -195,16 +195,18 @@ attention_hopper_warpspec(
     int num_ctas = gridDim.x;
     int tile_m = blockIdx.y;
     
-    // Per-warp accumulator and softmax state (for consumer warps)
-    float acc[256];  // 16×16 tile per warp
-    SoftmaxState softmax_state;
+    // Shared accumulator and softmax state
+    __shared__ float acc_smem[BLOCK_M * BLOCK_D];
+    __shared__ SoftmaxState softmax_states[BLOCK_M];
     
-    if (!is_producer) {
-        #pragma unroll
-        for (int i = 0; i < 256; ++i) {
-            acc[i] = 0.0f;
-        }
+    // Initialize (all threads collaborate)
+    for (int idx = threadIdx.x; idx < BLOCK_M * BLOCK_D; idx += blockDim.x) {
+        acc_smem[idx] = 0.0f;
     }
+    for (int idx = threadIdx.x; idx < BLOCK_M; idx += blockDim.x) {
+        softmax_states[idx] = SoftmaxState();
+    }
+    __syncthreads();
     
     // Loop over batch/head pairs (persistent CTAs)
     for (int batch_idx = cta_id; batch_idx < B * H; batch_idx += num_ctas) {
@@ -242,8 +244,8 @@ attention_hopper_warpspec(
                     Q_smem,
                     K_smem[stage],
                     V_smem[stage],
-                    acc,
-                    &softmax_state,
+                    acc_smem,
+                    softmax_states,
                     tile_n,
                     warp_id,
                     lane_id,
@@ -256,25 +258,24 @@ attention_hopper_warpspec(
             __syncthreads();
         }
         
-        // Store output (consumer warps only)
-        if (!is_producer) {
-            store_output(
-                O + (b * H + h) * S * D,
-                acc,
-                softmax_state,
-                b, h, tile_m,
-                warp_id, lane_id,
-                S, D
-            );
-        }
+        // Wait for all compute to finish
+        __syncthreads();
         
-        // Reset for next batch
-        if (!is_producer) {
-            #pragma unroll
-            for (int i = 0; i < 256; ++i) {
-                acc[i] = 0.0f;
-            }
-            softmax_state = SoftmaxState();
+        // Store output (all threads collaborate)
+        store_output(
+            O,
+            acc_smem,
+            softmax_states,
+            b, h, tile_m,
+            S, D
+        );
+        
+        // Reset for next batch (all threads)
+        for (int idx = threadIdx.x; idx < BLOCK_M * BLOCK_D; idx += blockDim.x) {
+            acc_smem[idx] = 0.0f;
+        }
+        for (int idx = threadIdx.x; idx < BLOCK_M; idx += blockDim.x) {
+            softmax_states[idx] = SoftmaxState();
         }
         
         __syncthreads();
@@ -468,10 +469,11 @@ __device__ __forceinline__ void producer_warp_load(
 
 
 /**
- * Consumer Warp: Compute Q@K^T, softmax, P@V using WMMA
+ * Consumer Warp: Compute Q@K^T, softmax, P@V (simplified for Phase 1)
  * 
- * Phase 1: Uses WMMA (Ampere/Ada/Hopper compatible)
- * Phase 2: Will use WGMMA for Hopper (3× faster)
+ * Phase 1: Standard CUDA without WMMA (get working first)
+ * Phase 1b: Add WMMA tensor cores
+ * Phase 2: WGMMA for Hopper (3× faster)
  */
 __device__ __forceinline__ void consumer_warp_compute(
     const __half* Q_smem,
@@ -485,98 +487,74 @@ __device__ __forceinline__ void consumer_warp_compute(
     float scale,
     bool is_causal
 ) {
-    using namespace nvcuda::wmma;
+    // Simplified for Phase 1: Each thread computes a few elements
+    // Consumer warp: warp_id 2-7 (6 warps)
+    int consumer_warp_idx = warp_id - PRODUCER_WARPS;
     
-    // WMMA fragments
-    fragment<matrix_a, 16, 16, 16, __half, row_major> a_frag;
-    fragment<matrix_b, 16, 16, 16, __half, col_major> b_frag;
-    fragment<accumulator, 16, 16, 16, float> qk_frag;
-    fragment<accumulator, 16, 16, 16, float> pv_frag;
+    // Each consumer warp handles part of the M dimension
+    int warp_m_start = consumer_warp_idx * (BLOCK_M / CONSUMER_WARPS);
+    int warp_m_end = warp_m_start + (BLOCK_M / CONSUMER_WARPS);
     
-    // Warp tile: each consumer warp handles 16×16 tile
-    int warp_m = ((warp_id - PRODUCER_WARPS) / 2) * 16;
-    int warp_n = ((warp_id - PRODUCER_WARPS) % 2) * 16;
-    
-    // Load Q fragment
-    load_matrix_sync(a_frag, Q_smem + warp_m * BLOCK_D, BLOCK_D);
-    
-    // Compute Q@K^T
-    fill_fragment(qk_frag, 0.0f);
-    for (int k = 0; k < BLOCK_D; k += 16) {
-        load_matrix_sync(b_frag, K_smem + k * BLOCK_N + warp_n, BLOCK_N);
-        mma_sync(qk_frag, a_frag, b_frag, qk_frag);
-    }
-    
-    // Apply scale and causal mask
-    #pragma unroll
-    for (int i = 0; i < qk_frag.num_elements; ++i) {
-        qk_frag.x[i] *= scale;
+    // Each thread in warp handles some rows
+    for (int m = warp_m_start + (lane_id / 4); m < warp_m_end; m += 8) {
+        if (m >= BLOCK_M) continue;
         
-        // Causal masking (predicated, not branching!)
-        if (is_causal) {
-            int row = i / 16;
-            int col = i % 16;
-            int global_m = warp_m + row;
-            int global_n = tile_n * BLOCK_N + warp_n + col;
-            if (global_m < global_n) {
-                qk_frag.x[i] = -INFINITY;
+        // Compute Q@K^T for this row
+        float row_max = -INFINITY;
+        float qk_vals[BLOCK_N];
+        
+        for (int n = 0; n < BLOCK_N; ++n) {
+            float qk = 0.0f;
+            for (int d = 0; d < BLOCK_D; ++d) {
+                float q_val = __half2float(Q_smem[m * BLOCK_D + d]);
+                float k_val = __half2float(K_smem[d * BLOCK_N + n]);
+                qk += q_val * k_val;
             }
+            
+            qk *= scale;
+            
+            // Causal mask
+            if (is_causal) {
+                int global_m = m;
+                int global_n = tile_n * BLOCK_N + n;
+                if (global_m < global_n) {
+                    qk = -INFINITY;
+                }
+            }
+            
+            qk_vals[n] = qk;
+            row_max = fmaxf(row_max, qk);
         }
-    }
-    
-    // Online softmax: compute row-wise max and sum
-    float tile_max = -INFINITY;
-    float tile_sum = 0.0f;
-    
-    #pragma unroll
-    for (int i = 0; i < qk_frag.num_elements; ++i) {
-        tile_max = fmaxf(tile_max, qk_frag.x[i]);
-    }
-    
-    // Warp reduce for max
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset /= 2) {
-        tile_max = fmaxf(tile_max, __shfl_down_sync(0xffffffff, tile_max, offset));
-    }
-    
-    // Compute exp and sum
-    #pragma unroll
-    for (int i = 0; i < qk_frag.num_elements; ++i) {
-        float p = expf(qk_frag.x[i] - tile_max);
-        qk_frag.x[i] = p;
-        tile_sum += p;
-    }
-    
-    // Warp reduce for sum
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset /= 2) {
-        tile_sum += __shfl_down_sync(0xffffffff, tile_sum, offset);
-    }
-    
-    // Update global softmax state
-    softmax_state->update(tile_max, tile_sum);
-    
-    // Compute P@V
-    fill_fragment(pv_frag, 0.0f);
-    
-    // Convert P back to half for WMMA
-    fragment<matrix_a, 16, 16, 16, __half, row_major> p_frag;
-    #pragma unroll
-    for (int i = 0; i < p_frag.num_elements; ++i) {
-        p_frag.x[i] = __float2half(qk_frag.x[i]);
-    }
-    
-    for (int k = 0; k < BLOCK_N; k += 16) {
-        fragment<matrix_b, 16, 16, 16, __half, row_major> v_frag;
-        load_matrix_sync(v_frag, V_smem + (warp_n + k) * BLOCK_D, BLOCK_D);
-        mma_sync(pv_frag, p_frag, v_frag, pv_frag);
-    }
-    
-    // Accumulate to output (scaled by softmax state)
-    float scale_factor = expf(tile_max - softmax_state->max_val);
-    #pragma unroll
-    for (int i = 0; i < pv_frag.num_elements; ++i) {
-        acc[i] = acc[i] * scale_factor + pv_frag.x[i];
+        
+        // Softmax: compute exp and sum
+        float row_sum = 0.0f;
+        for (int n = 0; n < BLOCK_N; ++n) {
+            float p = expf(qk_vals[n] - row_max);
+            qk_vals[n] = p;
+            row_sum += p;
+        }
+        
+        // Update global softmax state (per-row)
+        float old_max = softmax_state[m].max_val;
+        float new_max = fmaxf(old_max, row_max);
+        float old_scale = expf(old_max - new_max);
+        float new_scale = expf(row_max - new_max);
+        
+        softmax_state[m].max_val = new_max;
+        softmax_state[m].sum_exp = softmax_state[m].sum_exp * old_scale + row_sum * new_scale;
+        
+        // Compute P@V for this row
+        float pv_scale = new_scale;
+        for (int d = 0; d < BLOCK_D; ++d) {
+            float pv = 0.0f;
+            for (int n = 0; n < BLOCK_N; ++n) {
+                float v_val = __half2float(V_smem[n * BLOCK_D + d]);
+                pv += qk_vals[n] * v_val;
+            }
+            
+            // Accumulate with rescaling
+            acc[m * BLOCK_D + d] = acc[m * BLOCK_D + d] * old_scale + pv * pv_scale;
+        }
     }
 }
 
@@ -586,29 +564,27 @@ __device__ __forceinline__ void consumer_warp_compute(
  */
 __device__ __forceinline__ void store_output(
     __half* O_global,
-    const float* acc,
-    const SoftmaxState& softmax_state,
-    int batch_idx,
-    int head_idx,
+    const float* acc_smem,
+    const SoftmaxState* softmax_states,
+    int b,
+    int h,
     int tile_m,
-    int warp_id,
-    int lane_id,
     int S,
     int D
 ) {
-    // Each consumer warp writes its 16×16 tile
-    int warp_m = ((warp_id - PRODUCER_WARPS) / 2) * 16;
-    int warp_d = ((warp_id - PRODUCER_WARPS) % 2) * 16;
+    // All threads collaborate to store output
+    int tid = threadIdx.x;
+    int num_threads = blockDim.x;
     
-    for (int i = 0; i < 16; ++i) {
-        int global_m = tile_m * BLOCK_M + warp_m + i;
-        if (global_m < S && lane_id < 16) {
-            int global_d = warp_d + lane_id;
-            if (global_d < D) {
-                float normalized = softmax_state.normalize(acc[i * 16 + lane_id]);
-                int global_idx = batch_idx * head_idx * S * D + global_m * D + global_d;
-                O_global[global_idx] = __float2half(normalized);
-            }
+    for (int idx = tid; idx < BLOCK_M * BLOCK_D; idx += num_threads) {
+        int m = idx / BLOCK_D;
+        int d = idx % BLOCK_D;
+        int global_m = tile_m * BLOCK_M + m;
+        
+        if (global_m < S && d < D) {
+            float normalized = softmax_states[m].normalize(acc_smem[idx]);
+            int global_idx = (b * H + h) * S * D + global_m * D + d;
+            O_global[global_idx] = __float2half(normalized);
         }
     }
 }
