@@ -217,9 +217,18 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
                     if len(past_key_value.key_cache) > layer_idx:
                         K_cache = past_key_value.key_cache[layer_idx]
                         V_cache = past_key_value.value_cache[layer_idx]
-                        # Infer seq_lens from cached K shape: [B, H_kv, seq_len, D]
+                        # Get actual filled length from DynamicCache (not max shape!)
+                        # Use get_seq_length() or get_usable_length() if available
+                        if hasattr(past_key_value, 'get_seq_length'):
+                            cache_len = past_key_value.get_seq_length(layer_idx)
+                        elif hasattr(past_key_value, 'get_usable_length'):
+                            cache_len = past_key_value.get_usable_length(K_cache.shape[2], layer_idx)
+                        else:
+                            # Fallback: assume cache is filled up to current position
+                            cache_len = K_cache.shape[2]
+                        
                         seq_lens = torch.tensor(
-                            [K_cache.shape[2]] * bsz,
+                            [cache_len] * bsz,
                             dtype=torch.int32,
                             device=K_cache.device
                         )
