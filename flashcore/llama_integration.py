@@ -144,12 +144,26 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
                 # Check if using new DynamicCache format (transformers 4.36+)
                 if hasattr(past_key_value, 'key_cache'):
                     # New format: DynamicCache object
-                    cache_k = past_key_value.key_cache[self.layer_idx]
-                    cache_v = past_key_value.value_cache[self.layer_idx]
-                    past_kv_tuple = (cache_k, cache_v) if cache_k is not None else None
+                    # Note: DynamicCache doesn't track seq_lens, so we can't use it directly
+                    # FlashCore will need to maintain its own 3-tuple format
+                    raise NotImplementedError(
+                        "DynamicCache format not yet supported. "
+                        "Use tuple format for now: past_key_value=(K, V, seq_lens)"
+                    )
                 else:
-                    # Old format: tuple of tensors
-                    past_kv_tuple = past_key_value
+                    # Tuple format: check if FlashCore 3-tuple or HuggingFace 2-tuple
+                    if len(past_key_value) == 3:
+                        # Already FlashCore format (K, V, seq_lens)
+                        past_kv_tuple = past_key_value
+                    elif len(past_key_value) == 2:
+                        # HuggingFace 2-tuple: This is ambiguous! We don't know the fill length.
+                        # For now, reject it and require 3-tuple format
+                        raise ValueError(
+                            "2-tuple cache format is ambiguous (no seq_lens tracking). "
+                            "Please use FlashCore 3-tuple format: (K_cache, V_cache, seq_lens)"
+                        )
+                    else:
+                        raise ValueError(f"Unexpected cache tuple length: {len(past_key_value)}")
             else:
                 past_kv_tuple = None
             
@@ -173,17 +187,10 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
             # Output projection (unchanged from original)
             attn_output = self.o_proj(attn_output)
             
-            # Convert cache format back to HuggingFace format
+            # Return cache in FlashCore 3-tuple format
+            # (LLaMA generation loops need to pass this back to us)
             if use_cache:
-                if past_key_value is not None and hasattr(past_key_value, 'update'):
-                    # New DynamicCache format: update in-place
-                    past_key_value.update(
-                        updated_cache[0], updated_cache[1], self.layer_idx
-                    )
-                    cache_to_return = past_key_value
-                else:
-                    # Old tuple format: return new tuple
-                    cache_to_return = updated_cache
+                cache_to_return = updated_cache  # (K_cache, V_cache, seq_lens)
             else:
                 cache_to_return = None
             

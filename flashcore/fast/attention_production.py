@@ -346,8 +346,7 @@ def attention_with_kv_cache(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-    seq_lens: Optional[torch.Tensor] = None,
+    past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     cache_max_len: int = 4096,
     update_cache: bool = True,
     is_causal: bool = False,
@@ -356,7 +355,7 @@ def attention_with_kv_cache(
     block_m: int = 64,
     block_n: int = 64,
     scale: Optional[float] = None
-) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
+) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]]:
     """
     Scaled dot-product attention with KV cache, GQA, and causal masking for incremental inference
     
@@ -381,10 +380,9 @@ def attention_with_kv_cache(
         query: Query tensor [B, H_q, S_q, D] - new queries to process
         key: Key tensor [B, H_kv, S_q, D] - new keys to add to cache
         value: Value tensor [B, H_kv, S_q, D] - new values to add to cache
-        past_key_value: Optional (K_cache, V_cache) from previous step
-                        Each cache tensor: [B, H_kv, S_max, D]
-        seq_lens: Optional [B] tensor with valid cache length per batch
-                  If None, inferred from cache or initialized to 0
+        past_key_value: Optional (K_cache, V_cache, seq_lens) from previous step
+                        K_cache, V_cache: [B, H_kv, S_max, D]
+                        seq_lens: [B] tensor tracking filled cache length per batch
         cache_max_len: Maximum cache capacity (default: 4096)
         update_cache: Whether to return updated cache (default: True)
         is_causal: Whether to apply causal masking (default: False)
@@ -396,7 +394,7 @@ def attention_with_kv_cache(
     
     Returns:
         output: Attention output [B, H_q, S_q, D]
-        cache: Updated (K_cache, V_cache) if update_cache=True, else None
+        cache: Updated (K_cache, V_cache, seq_lens) if update_cache=True, else None
     
     Example (MHA - Multi-Head Attention):
         # Q, K, V all have same number of heads
@@ -449,18 +447,17 @@ def attention_with_kv_cache(
         # First call: initialize empty cache with H_kv heads
         K_cache = torch.empty(B, H_kv, cache_max_len, D, device=query.device, dtype=query.dtype)
         V_cache = torch.empty(B, H_kv, cache_max_len, D, device=query.device, dtype=query.dtype)
-        if seq_lens is None:
-            seq_lens = torch.zeros(B, dtype=torch.int32, device=query.device)
+        seq_lens = torch.zeros(B, dtype=torch.int32, device=query.device)
     else:
-        K_cache, V_cache = past_key_value
+        # Extract cache and sequence lengths
+        K_cache, V_cache, seq_lens = past_key_value
         # Validate cache has H_kv heads
         assert K_cache.shape[1] == H_kv, \
             f"Cache has {K_cache.shape[1]} heads, expected {H_kv} (num_kv_heads)"
         assert V_cache.shape[1] == H_kv, \
             f"Cache has {V_cache.shape[1]} heads, expected {H_kv} (num_kv_heads)"
-        if seq_lens is None:
-            # Infer from cache shape (assume all filled to shape[2])
-            seq_lens = torch.full((B,), K_cache.shape[2], dtype=torch.int32, device=query.device)
+        assert seq_lens.shape[0] == B, \
+            f"seq_lens batch size {seq_lens.shape[0]} doesn't match input batch size {B}"
     
     # Allocate output (H_q heads)
     output = torch.empty_like(query)
@@ -509,7 +506,7 @@ def attention_with_kv_cache(
                     f"but cache_max_len={cache_max_len}"
                 )
         
-        return output, (K_cache, V_cache)
+        return output, (K_cache, V_cache, seq_lens)
     else:
         return output, None
 
