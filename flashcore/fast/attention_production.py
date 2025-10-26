@@ -101,8 +101,10 @@ def _attention_fwd_kernel(
         alpha = tl.exp(m_i - m_ij)
         acc = acc * alpha[:, None]
         
-        # Accumulate weighted values
-        acc += tl.dot(p.to(v.dtype), v)
+        # Accumulate weighted values (keep p in FP32 for precision!)
+        # Convert v to FP32 to avoid FP16 matmul precision loss
+        v_fp32 = v.to(tl.float32)
+        acc += tl.dot(p, v_fp32)
         
         # Update softmax statistics
         l_i = alpha * l_i + tl.sum(p, 1)
@@ -284,8 +286,10 @@ def _attention_kv_cache_fwd_kernel(
         alpha = tl.exp(m_i - m_ij)
         acc = acc * alpha[:, None]
         
-        # Accumulate weighted values
-        acc += tl.dot(p.to(v.dtype), v, out_dtype=tl.float32)
+        # Accumulate weighted values (keep p in FP32 for precision!)
+        # Convert v to FP32 to avoid FP16 matmul precision loss
+        v_fp32 = v.to(tl.float32)
+        acc += tl.dot(p, v_fp32)
         
         # Update softmax statistics
         l_i = alpha * l_i + tl.sum(p, 1)
@@ -326,8 +330,10 @@ def _attention_kv_cache_fwd_kernel(
         alpha = tl.exp(m_i - m_ij)
         acc = acc * alpha[:, None]
         
-        # Accumulate weighted values
-        acc += tl.dot(p.to(v.dtype), v, out_dtype=tl.float32)
+        # Accumulate weighted values (keep p in FP32 for precision!)
+        # Convert v to FP32 to avoid FP16 matmul precision loss
+        v_fp32 = v.to(tl.float32)
+        acc += tl.dot(p, v_fp32)
         
         # Update softmax statistics
         l_i = alpha * l_i + tl.sum(p, 1)
