@@ -170,19 +170,20 @@ def test_kv_cache_single_decode_step():
     k_new = torch.randn(B, H, 1, D, device='cuda', dtype=torch.float16)
     v_new = torch.randn(B, H, 1, D, device='cuda', dtype=torch.float16)
     
-    # Create full sequence for reference
+    # Create full sequence for reference (decode phase: new token attends to cache + itself)
     q_full = q_new
     k_full = torch.cat([K_cache[:, :, :S_cache, :], k_new], dim=2)
     v_full = torch.cat([V_cache[:, :, :S_cache, :], v_new], dim=2)
     
-    # PyTorch reference
-    expected = F.scaled_dot_product_attention(q_full, k_full, v_full)
+    # PyTorch reference (causal: new token only sees cache + itself, not future)
+    expected = F.scaled_dot_product_attention(q_full, k_full, v_full, is_causal=True)
     
-    # FlashCore with cache
+    # FlashCore with cache (causal)
     result, _ = attention_with_kv_cache(
         q_new, k_new, v_new,
         past_key_value=cache,
-        update_cache=False  # Don't modify cache for this test
+        update_cache=False,  # Don't modify cache for this test
+        is_causal=True  # Causal masking in decode
     )
     
     # Compare
