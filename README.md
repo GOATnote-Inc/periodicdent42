@@ -20,6 +20,32 @@ High-performance attention kernels for modern LLMs. Implements FlashAttention-st
 
 ---
 
+## ⚙️ Debug + Profile Workflow (NVIDIA Tools)
+
+**Professional-grade validation** matching FA3, CUTLASS, Triton-core methodology:
+
+```bash
+# Quick validation (baseline + sanitizer)
+./deploy_and_validate_h100.sh
+
+# Detailed profiling
+ssh -p 14727 root@154.57.34.90
+cd /workspace/flashcore_llama
+RUN_PROFILER=1 ./tools/run_debug_profile.sh
+```
+
+**Tools Integrated**:
+- **compute-sanitizer**: Memory errors, sync hazards, race conditions
+- **Nsight Compute (ncu)**: Kernel metrics, occupancy, tensor core utilization
+- **Automated**: Runs on every kernel iteration
+
+**Generated Reports**:
+- `build/memcheck.log` - Memory validation
+- `build/synccheck.log` - Synchronization validation
+- `build/profile.ncu-rep` - Nsight Compute report (open in GUI)
+
+---
+
 ## Installation
 
 ```bash
