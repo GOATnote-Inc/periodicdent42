@@ -174,10 +174,11 @@ def test_gqa_with_kv_cache():
     print(f"\n  Prefill: S={S_prefill}, cache initialized")
     
     # Verify cache shape (should be H_kv, not H_q)
-    K_cache, V_cache = cache
+    K_cache, V_cache, seq_lens = cache
     assert K_cache.shape == (B, H_kv, 4096, D), \
         f"Expected cache shape (B={B}, H_kv={H_kv}, S_max=4096, D={D}), got {K_cache.shape}"
     print(f"  Cache shape: {K_cache.shape} (✅ stored with H_kv={H_kv}, not H_q={H_q})")
+    print(f"  seq_lens: {seq_lens}")
     
     # Step 2: Decode
     outputs = [output_prefill]

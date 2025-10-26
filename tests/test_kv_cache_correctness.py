@@ -120,8 +120,8 @@ def test_kv_cache_first_call_no_cache():
     
     # Check cache was created
     assert cache is not None, "Cache should be returned when update_cache=True"
-    K_cache, V_cache = cache
-    print(f"Cache shape: K={K_cache.shape}, V={V_cache.shape}")
+    K_cache, V_cache, seq_lens = cache
+    print(f"Cache shape: K={K_cache.shape}, V={V_cache.shape}, seq_lens={seq_lens.shape}")
     
     passed = torch.allclose(result, expected, atol=1e-3, rtol=1e-3)
     
