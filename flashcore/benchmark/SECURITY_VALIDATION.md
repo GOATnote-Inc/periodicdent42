@@ -4,39 +4,44 @@
 
 ---
 
-## 🎯 **Implemented Security Controls**
+## 🎯 **Implemented Security Controls (3-Layer Defense)**
 
-### 1. **Determinism Validation** ✅
-**File**: `determinism_validator.py`
+### **Layer 1: Security Validation** ✅ **NEW**
+**File**: `security_validation.py`
 
-**Purpose**: Verify bitwise-identical outputs across 1000 trials
+**Purpose**: Pure Python security tests (no external dependencies)
 
 **What It Tests**:
-- No race conditions in kernel execution
-- Reproducible performance (< 1% jitter)
-- Suitable for production deployment
+- **Memory Bounds**: Oversized inputs, misaligned shapes, zero-batch
+- **Numerical Stability**: NaN/Inf injection resilience
+- **Timing Side-Channels**: Data-dependent timing detection
+- **Reproducibility Hash**: SHA256 output verification
+
+**Advantage**: Runs everywhere (no external tools required)
 
 **Usage**:
 ```bash
-python flashcore/benchmark/determinism_validator.py
+python flashcore/benchmark/security_validation.py
 ```
 
 **Output**:
-- Bitwise determinism: ✅/❌
-- Performance jitter: % variance
-- P50/P95/P99 latencies
-- JSON report: `logs/determinism_validation.json`
+- Memory bounds validation results
+- NaN/Inf contamination ratios
+- Timing side-channel p-value
+- SHA256 hash of output
+- JSON reports: `logs/security_validation_*.json`
 
 **Pass Criteria**:
-- ✅ All outputs bitwise identical
-- ✅ Performance jitter < 1.0%
+- ✅ Handles extreme inputs gracefully
+- ✅ NaN/Inf contamination < 0.01%
+- ✅ Constant-time (p-value > 0.05)
 
 ---
 
-### 2. **Memory Safety Validation** ✅
+### **Layer 2: Memory Safety Validation** ✅
 **File**: `memory_safety_validator.py`
 
-**Purpose**: Detect memory errors using NVIDIA compute-sanitizer
+**Purpose**: Low-level CUDA memory errors (requires compute-sanitizer)
 
 **What It Tests**:
 - **memcheck**: Memory leaks, illegal access
@@ -63,6 +68,33 @@ python flashcore/benchmark/memory_safety_validator.py
 
 ---
 
+### **Layer 3: Determinism Validation** ✅
+**File**: `determinism_validator.py`
+
+**Purpose**: Verify bitwise-identical outputs across 1000 trials
+
+**What It Tests**:
+- No race conditions in kernel execution
+- Reproducible performance (< 1% jitter)
+- Suitable for production deployment
+
+**Usage**:
+```bash
+python flashcore/benchmark/determinism_validator.py
+```
+
+**Output**:
+- Bitwise determinism: ✅/❌
+- Performance jitter: % variance
+- P50/P95/P99 latencies
+- JSON report: `logs/determinism_validation.json`
+
+**Pass Criteria**:
+- ✅ All outputs bitwise identical
+- ✅ Performance jitter < 1.0%
+
+---
+
 ## 🔬 **Validation Methodology**
 
 ### Based On:
@@ -80,47 +112,78 @@ python flashcore/benchmark/memory_safety_validator.py
 
 ---
 
-## 🚀 **Quick Start**
+## 🚀 **Quick Start (3-Layer Defense)**
 
 ### Run Full Security Validation:
 
 ```bash
-# 1. Determinism (5-10 minutes)
-python flashcore/benchmark/determinism_validator.py
+# Layer 1: Security Validation (2-3 minutes, no external deps)
+python flashcore/benchmark/security_validation.py
 
-# 2. Memory Safety (requires compute-sanitizer)
+# Layer 2: Memory Safety (requires compute-sanitizer, 5-10 minutes)
 python flashcore/benchmark/memory_safety_validator.py
 
-# 3. Review logs
+# Layer 3: Determinism (5-10 minutes)
+python flashcore/benchmark/determinism_validator.py
+
+# Review all logs
 ls -lh logs/
 ```
 
 ### Expected Results:
 
 ```
-✅ DETERMINISM VALIDATION
-  production: PASS (jitter: 0.32%)
-  multihead: PASS (jitter: 0.28%)
+✅ LAYER 1: SECURITY VALIDATION
+  Memory Bounds: PASS
+  Numerical Stability: PASS (NaN < 0.01%)
+  Timing Side-Channels: PASS (p=0.43)
+  Reproducibility: PASS
 
-✅ MEMORY SAFETY VALIDATION
+✅ LAYER 2: MEMORY SAFETY
   memcheck: 0 violations
   racecheck: 0 violations
   initcheck: 0 violations
+
+✅ LAYER 3: DETERMINISM
+  production: PASS (jitter: 0.32%)
+  multihead: PASS (jitter: 0.28%)
 ```
 
 ---
 
 ## 📊 **Integration with Existing Validation**
 
-FlashCore already has comprehensive validation:
+FlashCore now has comprehensive 5-layer validation:
 
-| Validation Type | Tool | Status |
-|----------------|------|--------|
-| **Correctness** | expert_validation.py | ✅ 18K measurements |
-| **Cross-GPU** | H100 + L4 | ✅ 100% correct |
-| **Security Audit** | Manual review | ✅ Completed |
-| **Determinism** | determinism_validator.py | ✅ **NEW** |
-| **Memory Safety** | memory_safety_validator.py | ✅ **NEW** |
+| Layer | Validation Type | Tool | Status |
+|-------|----------------|------|--------|
+| **L1** | **Security** | security_validation.py | ✅ **NEW** |
+| **L2** | **Memory Safety** | memory_safety_validator.py | ✅ **NEW** |
+| **L3** | **Determinism** | determinism_validator.py | ✅ **NEW** |
+| L4 | **Correctness** | expert_validation.py | ✅ 18K measurements |
+| L5 | **Cross-GPU** | H100 + L4 validation | ✅ 100% correct |
+
+### Why 3 Security Layers?
+
+**Layer 1 (Security Validation)**:
+- Pure Python tests (no external deps)
+- Runs everywhere (CI/CD, local, remote)
+- Fast (2-3 minutes)
+- Tests: bounds, NaN/Inf, timing, hashes
+
+**Layer 2 (Memory Safety)**:
+- CUDA-level validation (compute-sanitizer)
+- Requires CUDA Toolkit
+- Deep memory analysis
+- Tests: leaks, races, uninitialized memory
+
+**Layer 3 (Determinism)**:
+- 1000-trial reproducibility
+- Performance jitter analysis
+- MLPerf compliance
+- Tests: bitwise equality, timing variance
+
+**Result**: **Layered defense = comprehensive protection**
 
 ---
 
