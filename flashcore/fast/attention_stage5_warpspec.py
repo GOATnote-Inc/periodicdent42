@@ -137,11 +137,14 @@ def _attention_fwd_stage5(
     else:
         is_producer = False  # All warps are consumers (baseline path)
     
-    # Offsets for Q tile (consumer warps only)
+    # Offsets (shared by producer and consumer)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_d = tl.arange(0, D)
+    
+    # === CONSUMER PATH (BASELINE - ALL WARPS) ===
+    # For Stage 1, we run baseline path (USE_WARP_SPEC=False by default)
+    # Producer/consumer specialization will be enabled in Stage 2
     if not is_producer:
-        offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        offs_d = tl.arange(0, D)
-        
         # Load Q tile: [BLOCK_M, D]
         q_ptrs = (
             Q + pid_b * stride_qb + pid_h * stride_qh +
@@ -158,42 +161,6 @@ def _attention_fwd_stage5(
         m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')  # max
         l_i = tl.zeros([BLOCK_M], dtype=tl.float32)                  # sum
         acc = tl.zeros([BLOCK_M, D], dtype=tl.float32)               # output
-    
-    # === PRODUCER WARP PATH ===
-    if is_producer and USE_WARP_SPEC:
-        # Producer warp: Load K/V tiles asynchronously
-        # This path executes in parallel with consumer compute
-        
-        num_blocks_n = tl.cdiv(S, BLOCK_N)
-        for block_n_idx in range(num_blocks_n):
-            offs_n = block_n_idx * BLOCK_N + tl.arange(0, BLOCK_N)
-            
-            # Load K tile: [D, BLOCK_N]
-            k_ptrs = (
-                K + pid_b * stride_kb + pid_h * stride_kh +
-                offs_n[None, :] * stride_kn + offs_d[:, None] * stride_kd
-            )
-            mask_n = offs_n < S
-            k = tl.load(k_ptrs, mask=mask_n[None, :], other=0.0)
-            
-            # Load V tile: [BLOCK_N, D]
-            v_ptrs = (
-                V + pid_b * stride_vb + pid_h * stride_vh +
-                offs_n[:, None] * stride_vn + offs_d[None, :] * stride_vd
-            )
-            v = tl.load(v_ptrs, mask=mask_n[:, None], other=0.0)
-            
-            # Store to shared memory (simulated via registers for now)
-            # TODO: Implement actual shared memory handoff
-            # For Phase 1, we validate the structure without full smem
-            
-            # Signal: kv_ready for this tile
-            # Consumer will wait on this flag
-            tl.debug_barrier()  # Placeholder for producer→consumer sync
-    
-    # === CONSUMER WARP PATH ===
-    if not is_producer:
-        # Consumer warp: Compute attention using loaded K/V tiles
         
         num_blocks_n = tl.cdiv(S, BLOCK_N)
         for block_n_idx in range(num_blocks_n):
