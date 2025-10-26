@@ -7,7 +7,7 @@
 #include <cstdlib>
 
 // Forward declaration
-extern "C" void launch_attention_phase1(
+extern "C" void launch_attention_wmma(
     const void* Q,
     const void* K,
     const void* V,
@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     // Warmup
     std::cout << "[1/2] Warmup (10 iterations)...\n";
     for (int i = 0; i < 10; ++i) {
-        launch_attention_phase1(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+        launch_attention_wmma(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
     }
     cudaDeviceSynchronize();
     
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
     
     for (int i = 0; i < iters; ++i) {
         cudaEventRecord(start);
-        launch_attention_phase1(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+        launch_attention_wmma(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
         
