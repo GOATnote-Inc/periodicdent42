@@ -123,14 +123,19 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
             value_states = self.v_proj(hidden_states)
             
             # Reshape to multi-head format: [B, H, S, D]
+            # Get attributes from config (newer transformers API)
+            num_query_heads = getattr(self, 'num_heads', self.config.num_attention_heads)
+            num_kv_heads = getattr(self, 'num_key_value_heads', self.config.num_key_value_heads)
+            head_dim = getattr(self, 'head_dim', self.config.hidden_size // num_query_heads)
+            
             query_states = query_states.view(
-                bsz, q_len, self.num_heads, self.head_dim
+                bsz, q_len, num_query_heads, head_dim
             ).transpose(1, 2)
             key_states = key_states.view(
-                bsz, q_len, self.num_key_value_heads, self.head_dim
+                bsz, q_len, num_kv_heads, head_dim
             ).transpose(1, 2)
             value_states = value_states.view(
-                bsz, q_len, self.num_key_value_heads, self.head_dim
+                bsz, q_len, num_kv_heads, head_dim
             ).transpose(1, 2)
             
             # Apply RoPE (done BEFORE attention, unchanged from original)
@@ -176,13 +181,14 @@ def replace_llama_attention_with_flashcore(model, verbose: bool = True):
                 past_key_value=past_kv_tuple,            # Optional cached KV
                 is_causal=True,                           # LLaMA is autoregressive
                 update_cache=use_cache,                   # Update cache if requested
-                num_query_heads=self.num_heads,           # 32 for LLaMA 3.1 8B
-                num_kv_heads=self.num_key_value_heads,   # 8 for LLaMA 3.1 8B (GQA 4:1)
+                num_query_heads=num_query_heads,          # Use local variable
+                num_kv_heads=num_kv_heads,                # Use local variable
             )
             
             # Reshape output back to [B, S, H*D]
             attn_output = attn_output.transpose(1, 2).contiguous()
-            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+            hidden_size = getattr(self, 'hidden_size', self.config.hidden_size)
+            attn_output = attn_output.reshape(bsz, q_len, hidden_size)
             
             # Output projection (unchanged from original)
             attn_output = self.o_proj(attn_output)
