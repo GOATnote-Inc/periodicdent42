@@ -55,6 +55,12 @@ int main(int argc, char** argv) {
     std::cout << "Compute Capability: " << prop.major << "." << prop.minor << "\n";
     std::cout << "SMs: " << prop.multiProcessorCount << "\n\n";
     
+    // Increase per-thread stack size for WMMA fragments
+    // Default is 1KB, WMMA needs more
+    size_t stackSize = 8 * 1024;  // 8KB per thread
+    cudaDeviceSetLimit(cudaLimitStackSize, stackSize);
+    std::cout << "Set stack size: " << (stackSize / 1024) << "KB per thread\n\n";
+    
     if (prop.major < 9) {
         std::cerr << "ERROR: This kernel requires Hopper (sm_90+)\n";
         std::cerr << "       Your GPU is sm_" << prop.major << prop.minor << "\n";
