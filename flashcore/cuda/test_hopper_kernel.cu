@@ -71,6 +71,13 @@ extern "C" void launch_attention_phase5_wgmma(
     float scale, bool is_causal, cudaStream_t stream
 );
 
+// Phase 6: Native WGMMA + TMA (Target: 55-65 TFLOPS)
+extern "C" void launch_test_wgmma_single(
+    const void* A, const void* B, void* C,
+    int M, int N, int K,
+    cudaStream_t stream
+);
+
 // Select which kernel to test
 #ifndef KERNEL_PHASE
 #define KERNEL_PHASE 8  // Default to Phase 5 WGMMA!
