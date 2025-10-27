@@ -13,7 +13,7 @@ license = {text = "Proprietary - See LICENSE file for details"}
 [project.optional-dependencies]
 # Heavy scientific computing dependencies (require native libs/compilation)
 chem = [
-    "pyscf==2.3.0",
+    "pyscf==2.11.0",
     "rdkit==2023.9.1",
     "ase==3.22.1",
 ]
