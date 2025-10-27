@@ -59,14 +59,19 @@ attention_hopper_minimal(
     
     // Per-thread state (minimize stack usage!)
     const int num_threads = blockDim.x;
-    SoftmaxState my_softmax_state;
-    float my_output[HEAD_DIM_MAX];  // Will optimize to registers
     
-    // Initialize output
-    #pragma unroll
-    for (int d = 0; d < HEAD_DIM_MAX; ++d) {
-        my_output[d] = 0.0f;
+    // Shared memory for per-row softmax states and outputs
+    __shared__ SoftmaxState softmax_states[BLOCK_M];
+    __shared__ float output_acc[BLOCK_M * HEAD_DIM_MAX];
+    
+    // Initialize shared memory
+    for (int m = tid; m < BLOCK_M; m += num_threads) {
+        softmax_states[m] = SoftmaxState();
+        for (int d = 0; d < D; ++d) {
+            output_acc[m * D + d] = 0.0f;
+        }
     }
+    __syncthreads();
     
     //==========================================================================
     // LOAD Q TILE (cooperative across all threads)
@@ -164,14 +169,14 @@ attention_hopper_minimal(
             }
             
             // Update online softmax state
-            float old_max = my_softmax_state.m;
-            my_softmax_state.update(tile_max, tile_sum);
+            float old_max = softmax_states[m].m;
+            softmax_states[m].update(tile_max, tile_sum);
             
             // Rescale previous output accumulator
-            float rescale = expf(old_max - my_softmax_state.m);
+            float rescale = expf(old_max - softmax_states[m].m);
             #pragma unroll
             for (int d = 0; d < D; ++d) {
-                my_output[d] *= rescale;
+                output_acc[m * D + d] *= rescale;
             }
             
             // Accumulate P @ V
@@ -183,7 +188,7 @@ attention_hopper_minimal(
                     float v_val = __half2float(V_smem[n * D + d]);
                     pv += p_val * v_val;
                 }
-                my_output[d] += pv;
+                output_acc[m * D + d] += pv;
             }
         }
         __syncthreads();
@@ -196,8 +201,12 @@ attention_hopper_minimal(
         int global_m = tile_m * BLOCK_M + m;
         if (global_m >= S) continue;
         
+        // Guard against division by zero
+        float norm = softmax_states[m].l;
+        if (norm < 1e-10f) norm = 1e-10f;
+        
         for (int d = 0; d < D; ++d) {
-            float normalized = my_output[d] / my_softmax_state.l;
+            float normalized = output_acc[m * D + d] / norm;
             int gmem_idx = (b * H + h) * S * D + global_m * D + d;
             O[gmem_idx] = __float2half(normalized);
         }
