@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <numeric>
 
-// Forward declaration
-extern "C" void launch_attention_wmma(
+// Forward declaration - Hopper-native kernel
+extern "C" void launch_attention_hopper_128(
     const void* Q,
     const void* K,
     const void* V,
@@ -114,9 +114,9 @@ int main(int argc, char** argv) {
     std::cout << "  Max threads per block:       " << prop.maxThreadsPerBlock << "\n\n";
     
     cudaError_t err;
-    for (int i = 0; i < 10; ++i) {
-        launch_attention_wmma(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
-        err = cudaGetLastError();
+        for (int i = 0; i < 10; ++i) {
+            launch_attention_hopper_128(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+            err = cudaGetLastError();
         if (err != cudaSuccess) {
             std::cerr << "❌ Kernel launch failed at iteration " << i << ": " << cudaGetErrorString(err) << "\n";
             std::cerr << "Grid config: (" << (B * H) << ", " << ((S + 64 - 1) / 64) << ")\n";
@@ -155,9 +155,9 @@ int main(int argc, char** argv) {
     for (int i = 0; i < iters; ++i) {
         cudaDeviceSynchronize();  // Ensure previous work is done
         
-        cudaEventRecord(start, 0);
-        launch_attention_wmma(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
-        cudaEventRecord(stop, 0);
+            cudaEventRecord(start, 0);
+            launch_attention_hopper_128(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+            cudaEventRecord(stop, 0);
         
         cudaEventSynchronize(stop);
         
