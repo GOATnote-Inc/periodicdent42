@@ -155,12 +155,63 @@ __global__ void kernel_convert_fp32_to_fp16(const float* src, __half* dst, int n
 }
 
 // Fast NaN/Inf detector (DEBUG tool)
-__global__ void kernel_check_nan(const float* x, int n, int* flag) {
+__global__ void kernel_check_nan_fp32(const float* x, int n, int* flag) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
         float v = x[i];
         if (!isfinite(v)) atomicExch(flag, 1);
     }
+}
+
+__global__ void kernel_check_nan_fp16(const __half* x, int n, int* flag) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        float v = __half2float(x[i]);
+        if (!isfinite(v)) atomicExch(flag, 1);
+    }
+}
+
+// Inline NaN checker (call after each stage)
+inline int check_for_nan_fp32(const float* d_data, int n, cudaStream_t stream, const char* stage_name) {
+    int* d_flag;
+    cudaMalloc(&d_flag, sizeof(int));
+    cudaMemsetAsync(d_flag, 0, sizeof(int), stream);
+    
+    kernel_check_nan_fp32<<<(n+255)/256, 256, 0, stream>>>(d_data, n, d_flag);
+    
+    int h_flag = 0;
+    cudaMemcpyAsync(&h_flag, d_flag, sizeof(int), cudaMemcpyDeviceToHost, stream);
+    cudaStreamSynchronize(stream);
+    
+    if (h_flag) {
+        std::cout << "❌ [NaN Tracer] " << stage_name << ": NaN/Inf detected!\n" << std::flush;
+    } else {
+        std::cout << "✅ [NaN Tracer] " << stage_name << ": Clean\n" << std::flush;
+    }
+    
+    cudaFree(d_flag);
+    return h_flag;
+}
+
+inline int check_for_nan_fp16(const __half* d_data, int n, cudaStream_t stream, const char* stage_name) {
+    int* d_flag;
+    cudaMalloc(&d_flag, sizeof(int));
+    cudaMemsetAsync(d_flag, 0, sizeof(int), stream);
+    
+    kernel_check_nan_fp16<<<(n+255)/256, 256, 0, stream>>>(d_data, n, d_flag);
+    
+    int h_flag = 0;
+    cudaMemcpyAsync(&h_flag, d_flag, sizeof(int), cudaMemcpyDeviceToHost, stream);
+    cudaStreamSynchronize(stream);
+    
+    if (h_flag) {
+        std::cout << "❌ [NaN Tracer] " << stage_name << ": NaN/Inf detected!\n" << std::flush;
+    } else {
+        std::cout << "✅ [NaN Tracer] " << stage_name << ": Clean\n" << std::flush;
+    }
+    
+    cudaFree(d_flag);
+    return h_flag;
 }
 
 //------------------------------------------------------------------------------
@@ -535,6 +586,15 @@ extern "C" void launch_attention_cublaslt_splitk_sparse(
                     d_S_block, layout_Sb,
                     &qk_result.algo, d_workspace, workspace_bytes, stream), "matmul_qk");
                 
+                // NaN Tracer: Check S after Q@K^T (check ALL heads to find NaN source!)
+                if (p == 0) {  // Only first page per head to reduce spam
+                    char stage_name[256];
+                    snprintf(stage_name, sizeof(stage_name), "Q@K^T b=%d h=%d p=%d", b, h, p);
+                    if (check_for_nan_fp32(d_S_block, M * page_cols, stream, stage_name)) {
+                        std::cout << "🔴 [NaN Tracer] FOUND NaN in batch=" << b << " head=" << h << " page=" << p << "!\n" << std::flush;
+                    }
+                }
+                
                 // Online softmax: S (FP32) -> P (FP32)
                 {
                     dim3 block(256);
@@ -542,6 +602,14 @@ extern "C" void launch_attention_cublaslt_splitk_sparse(
                     kernel_online_softmax_block<<<grid, block, 0, stream>>>(
                         d_S_block, d_P_block, d_m, d_l, d_r,
                         M, page_cols, is_first_page);
+                }
+                
+                // NaN Tracer: Check P after softmax
+                if (b == 0 && h == 0 && p == 0) {
+                    check_for_nan_fp32(d_P_block, M * page_cols, stream, "Softmax output (P)");
+                    check_for_nan_fp32(d_m, M, stream, "Softmax state (m)");
+                    check_for_nan_fp32(d_l, M, stream, "Softmax state (l)");
+                    check_for_nan_fp32(d_r, M, stream, "Rescale factors (r)");
                 }
                 
                 // Rescale O by r (skip on first page - O is zero, 0*NaN=NaN!)
@@ -579,6 +647,20 @@ extern "C" void launch_attention_cublaslt_splitk_sparse(
                     &beta_pv, O_head, layout_O,
                     O_head, layout_O,
                     &pv_result.algo, d_workspace, workspace_bytes, stream), "matmul_pv");
+                
+                // NaN Tracer: Check O after P@V
+                if (b == 0 && h == 0 && p == 0) {
+                    check_for_nan_fp16(O_head, M * D, stream, "P@V output (O)");
+                }
+            }
+            
+            // NaN Tracer: Check EVERY head's final output to find NaN source
+            {
+                char stage_name[256];
+                snprintf(stage_name, sizeof(stage_name), "Final O b=%d h=%d", b, h);
+                if (check_for_nan_fp16(O_head, M * D, stream, stage_name)) {
+                    std::cout << "🔴 [NaN Tracer] FOUND NaN in final output: batch=" << b << " head=" << h << "!\n" << std::flush;
+                }
             }
             
             // Cleanup per-head
