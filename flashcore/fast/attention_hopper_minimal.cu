@@ -160,20 +160,34 @@ attention_hopper_minimal(
                 tile_max = fmaxf(tile_max, QK_smem[m * BLOCK_N + n]);
             }
             
-            // Compute exp and sum
+            // Compute exp and sum (guard against -Inf)
             float tile_sum = 0.0f;
-            for (int n = 0; n < BLOCK_N; ++n) {
-                float p = expf(QK_smem[m * BLOCK_N + n] - tile_max);
-                QK_smem[m * BLOCK_N + n] = p;  // Store P for P@V
-                tile_sum += p;
+            if (tile_max > -1e30f) {  // Not all masked
+                for (int n = 0; n < BLOCK_N; ++n) {
+                    float qk = QK_smem[m * BLOCK_N + n];
+                    float p = (qk > -1e30f) ? expf(qk - tile_max) : 0.0f;
+                    QK_smem[m * BLOCK_N + n] = p;  // Store P for P@V
+                    tile_sum += p;
+                }
+            } else {
+                // All masked, set to zero
+                for (int n = 0; n < BLOCK_N; ++n) {
+                    QK_smem[m * BLOCK_N + n] = 0.0f;
+                }
             }
             
             // Update online softmax state
             float old_max = softmax_states[m].m;
             softmax_states[m].update(tile_max, tile_sum);
             
-            // Rescale previous output accumulator
-            float rescale = expf(old_max - softmax_states[m].m);
+            // Rescale previous output accumulator (guard against -Inf)
+            float rescale = 1.0f;
+            if (old_max > -1e30f && softmax_states[m].m > -1e30f) {
+                rescale = expf(old_max - softmax_states[m].m);
+            } else if (old_max <= -1e30f) {
+                rescale = 0.0f;  // Previous was all masked, discard
+            }
+            
             #pragma unroll
             for (int d = 0; d < D; ++d) {
                 output_acc[m * D + d] *= rescale;
