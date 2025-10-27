@@ -9,9 +9,8 @@
 #include <cuda_fp16.h>
 #include <cuda/barrier>
 
-#if __CUDA_ARCH__ < 900
-#error "Phase 6 requires H100 (sm_90a)"
-#endif
+// Architecture check removed - ensured by -arch=sm_90a compilation flag
+// (CUDA_ARCH is only defined inside device code, not at global scope)
 
 constexpr int WGMMA_M = 64;
 constexpr int WGMMA_N = 64;
@@ -23,19 +22,14 @@ constexpr int THREADS_PER_BLOCK = 256;
 // CORRECTED: Descriptor with proper encoding
 // ============================================================================
 __device__ __forceinline__ 
-uint64_t make_smem_desc(const void* smem_ptr, uint32_t leading_dim, uint32_t swizzle_mode = 3) {
-    uint64_t desc = 0;
+uint64_t make_smem_desc(const void* smem_ptr, uint32_t ld_bytes) {
     uint32_t addr = __cvta_generic_to_shared(smem_ptr);
     
-    // Address bits [19:0]
-    desc |= (addr & 0xFFFFF);
-    
-    // Leading dimension in 16B units (bits [45:32])
-    uint32_t ld_units = (leading_dim * sizeof(__half)) / 16;
-    desc |= ((uint64_t)(ld_units & 0x3FFF) << 32);
-    
-    // Swizzle mode (bits [48:46]) - USE 3 for 128B swizzle (best for 64×32 layout)
-    desc |= ((uint64_t)(swizzle_mode & 0x7) << 46);
+    // CUTLASS encoding: addr[16:0] | (ld/8)[45:32] | layout[46]
+    // For FP16: ld/8 converts byte stride to descriptor units
+    uint64_t desc = ((uint64_t)(addr & 0x1FFFF)) |
+                    (((uint64_t)(ld_bytes / 8) & 0x3FFF) << 32) |
+                    ((uint64_t)0x1 << 46);  // smem layout=1
     
     return desc;
 }
@@ -55,7 +49,11 @@ void wgmma_m64n64k16_f32_f16_f16(
         " %8,  %9,  %10, %11, %12, %13, %14, %15, "
         " %16, %17, %18, %19, %20, %21, %22, %23, "
         " %24, %25, %26, %27, %28, %29, %30, %31}, "
-        "%32, %33;\n"
+        "%32, %33, "
+        "{%0,  %1,  %2,  %3,  %4,  %5,  %6,  %7, "
+        " %8,  %9,  %10, %11, %12, %13, %14, %15, "
+        " %16, %17, %18, %19, %20, %21, %22, %23, "
+        " %24, %25, %26, %27, %28, %29, %30, %31};\n"
         : "+f"(acc[0]),  "+f"(acc[1]),  "+f"(acc[2]),  "+f"(acc[3]),
           "+f"(acc[4]),  "+f"(acc[5]),  "+f"(acc[6]),  "+f"(acc[7]),
           "+f"(acc[8]),  "+f"(acc[9]),  "+f"(acc[10]), "+f"(acc[11]),
@@ -165,9 +163,9 @@ test_wgmma_single_corrected(
         // CORRECTED: Fence BEFORE descriptor creation
         wgmma_fence();
         
-        // CORRECTED: Create descriptors with swizzle mode 3 and proper leading dimension
-        uint64_t desc_a = make_smem_desc(&smem_A[0][0], 32, 3);  // ld=32, swizzle=128B
-        uint64_t desc_b = make_smem_desc(&smem_B[0][0], 32, 3);  // B is pre-transposed
+        // CUTLASS-style descriptors: ld_bytes = 32 elements * 2 bytes/element = 64 bytes
+        uint64_t desc_a = make_smem_desc(&smem_A[0][0], 64);  // 32 FP16 elements = 64 bytes
+        uint64_t desc_b = make_smem_desc(&smem_B[0][0], 64);  // B is pre-transposed
         
         // Execute WGMMA
         wgmma_m64n64k16_f32_f16_f16(acc, desc_a, desc_b);

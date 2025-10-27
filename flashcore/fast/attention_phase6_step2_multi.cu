@@ -3,9 +3,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
-#if __CUDA_ARCH__ < 900
-#error "H100 only"
-#endif
+// Architecture check removed - ensured by -arch=sm_90a compilation flag
 
 constexpr int TILE_M = 64;
 constexpr int TILE_N = 64;
