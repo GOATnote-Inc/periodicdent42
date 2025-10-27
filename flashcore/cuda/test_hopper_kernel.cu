@@ -59,9 +59,15 @@ extern "C" void launch_attention_phase4_fused(
     float scale, bool is_causal, cudaStream_t stream
 );
 
+extern "C" void launch_attention_phase4x_expert(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal, cudaStream_t stream
+);
+
 // Select which kernel to test
 #ifndef KERNEL_PHASE
-#define KERNEL_PHASE 6  // Default to Phase 4 Fused (EXPERT PATH!)
+#define KERNEL_PHASE 7  // Default to Phase 4.X EXPERT!
 #endif
 
 #if KERNEL_PHASE == 1
@@ -82,6 +88,9 @@ extern "C" void launch_attention_phase4_fused(
 #elif KERNEL_PHASE == 6
 #define launch_attention launch_attention_phase4_fused
 #define KERNEL_NAME "Phase 4 (FUSED: NO cuBLASLt, Target 5-8 TFLOPS!)"
+#elif KERNEL_PHASE == 7
+#define launch_attention launch_attention_phase4x_expert
+#define KERNEL_NAME "Phase 4.X EXPERT (WMMA + Async + Warp Reductions, Target 15-20 TFLOPS!)"
 #endif
 
 // Helper: Fill with random data
