@@ -16,10 +16,10 @@
 
 using namespace nvcuda;
 
-// Tile sizes (tuned for H100)
-constexpr int TILE_M = 64;   // Query tile size
-constexpr int TILE_N = 64;   // Key tile size  
-constexpr int TILE_K = 64;   // Head dimension (D)
+// Tile sizes (REDUCED to avoid register spill - Milestone 1 MVP!)
+constexpr int TILE_M = 32;   // Query tile size (reduced from 64)
+constexpr int TILE_N = 32;   // Key tile size (reduced from 64)
+constexpr int TILE_K = 64;   // Head dimension (D=64, full dimension)
 constexpr int WMMA_M = 16;
 constexpr int WMMA_N = 16;
 constexpr int WMMA_K = 16;
@@ -45,19 +45,22 @@ __global__ void flash_attention_fused_basic(
     __shared__ __half smem_K[TILE_N][TILE_K + 8];
     __shared__ __half smem_V[TILE_N][TILE_K + 8];
     
-    // Shared memory for accumulation (registers would spill!)
-    __shared__ float smem_O[TILE_M][TILE_K + 8];
-    __shared__ float smem_m[TILE_M];
-    __shared__ float smem_l[TILE_M];
+    // Shared memory for accumulation and softmax state
+    __shared__ float smem_O[TILE_M][TILE_K + 8];  // Output accumulator
+    __shared__ float smem_S[TILE_M][TILE_N];      // Attention scores (per tile)
+    __shared__ float smem_m[TILE_M];              // Running max
+    __shared__ float smem_l[TILE_M];              // Running sum
+    
+    const int tid = threadIdx.x;
+    const int num_threads = blockDim.x;
     
     // Initialize accumulator and softmax state
-    const int tid = threadIdx.x;
-    for (int idx = tid; idx < TILE_M * D; idx += blockDim.x) {
-        int m = idx / D;
-        int k = idx % D;
+    for (int idx = tid; idx < TILE_M * TILE_K; idx += num_threads) {
+        int m = idx / TILE_K;
+        int k = idx % TILE_K;
         smem_O[m][k] = 0.0f;
     }
-    for (int m = tid; m < TILE_M; m += blockDim.x) {
+    for (int m = tid; m < TILE_M; m += num_threads) {
         smem_m[m] = -INFINITY;
         smem_l[m] = 0.0f;
     }
@@ -71,20 +74,15 @@ __global__ void flash_attention_fused_basic(
     if (tile_m_start >= S) return;  // Out of bounds
     
     // Load Q tile (this block's query tile - reused across all K tiles)
-    {
-        const int tid = threadIdx.x;
-        const int num_threads = blockDim.x;
+    for (int idx = tid; idx < TILE_M * D; idx += num_threads) {
+        const int m = idx / D;
+        const int k = idx % D;
+        const int global_m = tile_m_start + m;
         
-        for (int idx = tid; idx < TILE_M * D; idx += num_threads) {
-            const int m = idx / D;
-            const int k = idx % D;
-            const int global_m = tile_m_start + m;
-            
-            if (global_m < S && k < D) {
-                smem_Q[m][k] = Q[qo_offset + global_m * D + k];
-            } else {
-                smem_Q[m][k] = __float2half(0.0f);
-            }
+        if (global_m < S && k < D) {
+            smem_Q[m][k] = Q[qo_offset + global_m * D + k];
+        } else {
+            smem_Q[m][k] = __float2half(0.0f);
         }
     }
     __syncthreads();
@@ -96,138 +94,117 @@ __global__ void flash_attention_fused_basic(
         const int tile_n_start = tile_n_idx * TILE_N;
         
         // Load K tile
-        {
-            const int tid = threadIdx.x;
-            const int num_threads = blockDim.x;
+        for (int idx = tid; idx < TILE_N * D; idx += num_threads) {
+            const int n = idx / D;
+            const int k = idx % D;
+            const int global_n = tile_n_start + n;
             
-            for (int idx = tid; idx < TILE_N * D; idx += num_threads) {
-                const int n = idx / D;
-                const int k = idx % D;
-                const int global_n = tile_n_start + n;
-                
-                if (global_n < S && k < D) {
-                    smem_K[n][k] = K[kv_offset + global_n * D + k];
-                } else {
-                    smem_K[n][k] = __float2half(0.0f);
-                }
+            if (global_n < S && k < D) {
+                smem_K[n][k] = K[kv_offset + global_n * D + k];
+            } else {
+                smem_K[n][k] = __float2half(0.0f);
             }
         }
         
         // Load V tile
-        {
-            const int tid = threadIdx.x;
-            const int num_threads = blockDim.x;
+        for (int idx = tid; idx < TILE_N * D; idx += num_threads) {
+            const int n = idx / D;
+            const int k = idx % D;
+            const int global_n = tile_n_start + n;
             
-            for (int idx = tid; idx < TILE_N * D; idx += num_threads) {
-                const int n = idx / D;
-                const int k = idx % D;
-                const int global_n = tile_n_start + n;
-                
-                if (global_n < S && k < D) {
-                    smem_V[n][k] = V[kv_offset + global_n * D + k];
-                } else {
-                    smem_V[n][k] = __float2half(0.0f);
-                }
+            if (global_n < S && k < D) {
+                smem_V[n][k] = V[kv_offset + global_n * D + k];
+            } else {
+                smem_V[n][k] = __float2half(0.0f);
             }
         }
         __syncthreads();
         
-        // STEP 1: Compute S_tile = Q @ K^T using WMMA (NEVER write to global memory!)
-        wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half, wmma::row_major> frag_Q;
-        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half, wmma::col_major> frag_K;  // Transposed!
-        wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> frag_S;
-        
-        // Initialize S accumulator
-        wmma::fill_fragment(frag_S, 0.0f);
-        
-        // Compute S = Q @ K^T (tile-by-tile matmul)
-        const int num_k_tiles = (D + WMMA_K - 1) / WMMA_K;
-        for (int k_tile = 0; k_tile < num_k_tiles; ++k_tile) {
-            // Load Q fragment
-            wmma::load_matrix_sync(frag_Q, &smem_Q[0][k_tile * WMMA_K], TILE_K + 8);
+        // STEP 1: Compute S_tile = Q @ K^T (NAIVE - will optimize with WMMA later!)
+        // Each thread computes part of S matrix
+        for (int idx = tid; idx < TILE_M * TILE_N; idx += num_threads) {
+            const int m = idx / TILE_N;
+            const int n = idx % TILE_N;
             
-            // Load K^T fragment (note: we load as col-major for transpose)
-            wmma::load_matrix_sync(frag_K, &smem_K[0][k_tile * WMMA_K], TILE_K + 8);
-            
-            // Multiply-accumulate: S += Q @ K^T
-            wmma::mma_sync(frag_S, frag_Q, frag_K, frag_S);
-        }
-        
-        // STEP 2: Fused Online Softmax (NEVER materialize P!)
-        // Apply softmax scale and update running max/sum
-        float S_tile[WMMA_M][WMMA_N];  // Temporary storage (registers!)
-        wmma::store_matrix_sync(&S_tile[0][0], frag_S, WMMA_N, wmma::mem_row_major);
-        
-        // Scale attention scores
-        #pragma unroll
-        for (int i = 0; i < WMMA_M; ++i) {
-            #pragma unroll
-            for (int j = 0; j < WMMA_N; ++j) {
-                S_tile[i][j] *= softmax_scale;
+            float sum = 0.0f;
+            for (int k = 0; k < D; ++k) {
+                sum += __half2float(smem_Q[m][k]) * __half2float(smem_K[n][k]);
             }
+            smem_S[m][n] = sum * softmax_scale;
         }
+        __syncthreads();
         
-        // Online softmax update (per row)
-        #pragma unroll
-        for (int i = 0; i < WMMA_M; ++i) {
-            // Find max in current tile
-            float row_max = S_tile[i][0];
-            #pragma unroll
-            for (int j = 1; j < WMMA_N; ++j) {
-                row_max = fmaxf(row_max, S_tile[i][j]);
+        // STEP 2: Fused Online Softmax + P@V (PER ROW)
+        // Each warp processes multiple rows
+        const int warp_id = tid / 32;
+        const int lane_id = tid % 32;
+        const int num_warps = num_threads / 32;
+        
+        for (int m = warp_id; m < TILE_M; m += num_warps) {
+            // Find row max (warp reduction)
+            float row_max = -INFINITY;
+            for (int n = lane_id; n < TILE_N; n += 32) {
+                row_max = fmaxf(row_max, smem_S[m][n]);
             }
+            // Warp reduce max
+            #pragma unroll
+            for (int offset = 16; offset > 0; offset /= 2) {
+                row_max = fmaxf(row_max, __shfl_down_sync(0xffffffff, row_max, offset));
+            }
+            row_max = __shfl_sync(0xffffffff, row_max, 0);  // Broadcast to all lanes
             
             // Update global max
-            float old_m = acc_m[i];
+            float old_m = smem_m[m];
             float new_m = fmaxf(old_m, row_max);
             float exp_diff_old = expf(old_m - new_m);
-            float exp_diff_new = expf(row_max - new_m);
             
-            // Rescale old output accumulator
-            #pragma unroll
-            for (int k = 0; k < TILE_K; ++k) {
-                acc_O[i][k] *= exp_diff_old;
+            // Rescale old O accumulator (each lane handles part of D)
+            for (int k = lane_id; k < D; k += 32) {
+                smem_O[m][k] *= exp_diff_old;
             }
             
-            // Compute P (attention weights) and accumulate P @ V
+            // Compute exp and sum (warp reduction)
             float row_sum = 0.0f;
+            for (int n = lane_id; n < TILE_N; n += 32) {
+                float p_val = expf(smem_S[m][n] - new_m);
+                smem_S[m][n] = p_val;  // Store P for later
+                row_sum += p_val;
+            }
+            // Warp reduce sum
             #pragma unroll
-            for (int j = 0; j < WMMA_N; ++j) {
-                float p_ij = expf(S_tile[i][j] - new_m);
-                row_sum += p_ij;
-                
-                // STEP 3: Fused P @ V (accumulate directly, NEVER materialize P!)
-                // O[i] += p_ij * V[j]
-                #pragma unroll
-                for (int k = 0; k < TILE_K; ++k) {
-                    if (k < D) {
-                        acc_O[i][k] += p_ij * __half2float(smem_V[j][k]);
-                    }
+            for (int offset = 16; offset > 0; offset /= 2) {
+                row_sum += __shfl_down_sync(0xffffffff, row_sum, offset);
+            }
+            row_sum = __shfl_sync(0xffffffff, row_sum, 0);  // Broadcast
+            
+            // STEP 3: Fused P @ V (accumulate to O)
+            // Each lane accumulates part of the output dimension
+            for (int k = lane_id; k < D; k += 32) {
+                float acc = 0.0f;
+                for (int n = 0; n < TILE_N; ++n) {
+                    acc += smem_S[m][n] * __half2float(smem_V[n][k]);
                 }
+                smem_O[m][k] += acc;
             }
             
             // Update running sum
-            acc_l[i] = acc_l[i] * exp_diff_old + row_sum * exp_diff_new;
-            acc_m[i] = new_m;
+            if (lane_id == 0) {
+                smem_l[m] = smem_l[m] * exp_diff_old + row_sum;
+                smem_m[m] = new_m;
+            }
         }
-        
-        __syncthreads();  // Sync before next tile
+        __syncthreads();
     }
     
     // Final normalization and write output
-    const int tid = threadIdx.x;
-    const int warp_id = tid / 32;
-    const int lane_id = tid % 32;
-    
-    // Each thread writes its rows
-    for (int i = warp_id; i < WMMA_M; i += blockDim.x / 32) {
-        const int global_m = tile_m_start + i;
-        if (global_m >= S) continue;
+    for (int idx = tid; idx < TILE_M * D; idx += num_threads) {
+        const int m = idx / D;
+        const int k = idx % D;
+        const int global_m = tile_m_start + m;
         
-        float inv_l = 1.0f / (acc_l[i] + 1e-6f);  // Avoid division by zero
-        
-        for (int k = lane_id; k < D; k += 32) {
-            O[qo_offset + global_m * D + k] = __float2half(acc_O[i][k] * inv_l);
+        if (global_m < S && k < D) {
+            float inv_l = 1.0f / (smem_l[m] + 1e-6f);
+            O[qo_offset + global_m * D + k] = __float2half(smem_O[m][k] * inv_l);
         }
     }
 }
