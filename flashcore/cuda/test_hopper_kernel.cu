@@ -53,9 +53,15 @@ extern "C" void launch_attention_cublaslt_splitk(
     float scale, bool is_causal, cudaStream_t stream
 );
 
+extern "C" void launch_attention_phase4_fused(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal, cudaStream_t stream
+);
+
 // Select which kernel to test
 #ifndef KERNEL_PHASE
-#define KERNEL_PHASE 5  // Default to Phase 5 Split-K (EXPERT)
+#define KERNEL_PHASE 6  // Default to Phase 4 Fused (EXPERT PATH!)
 #endif
 
 #if KERNEL_PHASE == 1
@@ -73,6 +79,9 @@ extern "C" void launch_attention_cublaslt_splitk(
 #elif KERNEL_PHASE == 5
 #define launch_attention launch_attention_cublaslt_splitk
 #define KERNEL_NAME "Phase 3C (EXPERT: Split-K + FP32 Stability)"
+#elif KERNEL_PHASE == 6
+#define launch_attention launch_attention_phase4_fused
+#define KERNEL_NAME "Phase 4 (FUSED: NO cuBLASLt, Target 5-8 TFLOPS!)"
 #endif
 
 // Helper: Fill with random data
@@ -95,7 +104,7 @@ int main(int argc, char** argv) {
     // Configuration
     int B = 16;
     int H = 16;
-    int S = 4096;  // ARCHITECT DEBUG: Test if M=4096 unlocks Tensor Cores
+    int S = 2048;  // Typical LLM inference sequence length
     int D = 64;
     
     std::cout << "========================================\n";

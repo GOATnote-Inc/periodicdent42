@@ -39,11 +39,12 @@ export LD_LIBRARY_PATH=$CUBLAS_LIB_PATH:${LD_LIBRARY_PATH:-}
 nvcc -arch=sm_90a -O3 --use_fast_math \
     -Xptxas -v,-warn-lmem-usage \
     --std=c++17 \
-    -DKERNEL_PHASE=5 \
+    -DKERNEL_PHASE=6 \
     -I. \
     flashcore/fast/attention_hopper_minimal.cu \
     flashcore/fast/attention_cublaslt_sparse.cu \
     flashcore/fast/attention_cublaslt_splitk.cu \
+    flashcore/fast/attention_phase4_fused.cu \
     flashcore/cuda/test_hopper_kernel.cu \
     -o build/bin/test_hopper \
     -L${CUBLAS_LIB_PATH} \
