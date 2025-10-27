@@ -1,5 +1,5 @@
 """
-Setup script for Autonomous R&D Intelligence Layer.
+Setup script for Autonomous R&D Intelligence Layer + FlashCore.
 
 Install with: pip install -e .
 """
@@ -7,9 +7,43 @@ Install with: pip install -e .
 from setuptools import setup, find_packages
 from pathlib import Path
 
+# FlashCore CUDA extensions (optional, requires CUDA toolkit)
+try:
+    from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+    CUDA_AVAILABLE = True
+except ImportError:
+    CUDA_AVAILABLE = False
+    print("WARNING: torch.utils.cpp_extension not available, skipping CUDA extensions")
+
 # Read README
 readme_file = Path(__file__).parent / "README.md"
 long_description = readme_file.read_text() if readme_file.exists() else ""
+
+# FlashCore CUDA extensions
+ext_modules = []
+cmdclass = {}
+
+if CUDA_AVAILABLE:
+    ext_modules.append(
+        CUDAExtension(
+            name="flashcore_sparse_pager",
+            sources=[
+                "flashcore/csrc/sparse_pager.cu",
+                "flashcore/csrc/bind_sparse_pager.cpp",
+            ],
+            extra_compile_args={
+                "cxx": ["-O3"],
+                "nvcc": [
+                    "-O3",
+                    "-U__CUDA_NO_HALF_OPERATORS__",
+                    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+                    "-gencode=arch=compute_80,code=sm_80",  # Ampere
+                    "-gencode=arch=compute_90,code=sm_90",  # Hopper
+                ]
+            },
+        )
+    )
+    cmdclass["build_ext"] = BuildExtension
 
 setup(
     name="autonomous-rd-platform",
@@ -86,5 +120,9 @@ setup(
     package_data={
         "": ["*.yaml", "*.yml", "*.json"],
     },
+    
+    # FlashCore CUDA extensions
+    ext_modules=ext_modules,
+    cmdclass=cmdclass,
 )
 
