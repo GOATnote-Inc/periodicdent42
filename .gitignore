@@ -99,3 +99,6 @@ result
 data/
 models/*.pkl
 artifact/
+
+# Archive directory (research/experimental work - keep local only)
+archive/

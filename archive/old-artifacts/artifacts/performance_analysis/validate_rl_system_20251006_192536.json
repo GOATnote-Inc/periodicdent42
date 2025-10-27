@@ -1,7 +1,0 @@
-{
-  "script": "scripts/validate_rl_system.py",
-  "duration_seconds": 0.20397067070007324,
-  "timestamp": "20251006_192536",
-  "flamegraph": "artifacts/profiling/validate_rl_system_20251006_192536.svg",
-  "args": []
-}
