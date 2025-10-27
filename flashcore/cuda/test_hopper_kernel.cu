@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <numeric>
 
-// Forward declaration - Hopper-native kernel
-extern "C" void launch_attention_hopper_128(
+// Forward declaration - Hopper minimal kernel (Phase 1)
+extern "C" void launch_attention_hopper_minimal(
     const void* Q,
     const void* K,
     const void* V,
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     
     cudaError_t err;
         for (int i = 0; i < 10; ++i) {
-            launch_attention_hopper_128(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+            launch_attention_hopper_minimal(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
             err = cudaGetLastError();
         if (err != cudaSuccess) {
             std::cerr << "❌ Kernel launch failed at iteration " << i << ": " << cudaGetErrorString(err) << "\n";
@@ -156,7 +156,7 @@ int main(int argc, char** argv) {
         cudaDeviceSynchronize();  // Ensure previous work is done
         
             cudaEventRecord(start, 0);
-            launch_attention_hopper_128(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+            launch_attention_hopper_minimal(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
             cudaEventRecord(stop, 0);
         
         cudaEventSynchronize(stop);

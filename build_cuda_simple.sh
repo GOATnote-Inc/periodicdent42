@@ -25,13 +25,13 @@ echo ""
 # Create output directory
 mkdir -p build/bin build/lib
 
-# Compile kernel + test (Hopper-native with TMA/WGMMA support)
-echo "[1/2] Compiling Hopper-native kernel (sm_90a)..."
+# Compile kernel + test (Phase 1: Minimal working kernel)
+echo "[1/2] Compiling Phase 1 minimal kernel (sm_90a)..."
 nvcc -arch=sm_90a -O3 --use_fast_math \
     -Xptxas -v,-warn-lmem-usage \
     --std=c++17 \
     -I. \
-    flashcore/fast/attention_hopper_tma.cu \
+    flashcore/fast/attention_hopper_minimal.cu \
     flashcore/cuda/test_hopper_kernel.cu \
     -o build/bin/test_hopper \
     2>&1 | tee build/compile.log | grep -E "(ptxas|error|warning)" || true

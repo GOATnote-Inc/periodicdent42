@@ -11,7 +11,7 @@ set -euo pipefail
 
 # === [CONFIG] ================================================================
 ARCH="sm_90a"
-KERNEL_SRC="flashcore/fast/attention_hopper_tma.cu"
+KERNEL_SRC="flashcore/fast/attention_hopper_minimal.cu"
 TEST_SRC="flashcore/cuda/test_hopper_kernel.cu"
 OUT_BIN="build/bin/test_hopper"
 LOG_DIR="build/logs"
@@ -26,8 +26,8 @@ echo ""
 echo "[STEP:ENV_CHECK] Checking CUDA + GPU environment..."
 if ! command -v nvcc >/dev/null; then
   # Try common CUDA paths
-  export PATH="/usr/local/cuda/bin:/usr/local/cuda-12.4/bin:$PATH"
-  export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH"
+  export PATH="/usr/local/cuda/bin:/usr/local/cuda-12.4/bin:${PATH:-}"
+  export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12.4/lib64:${LD_LIBRARY_PATH:-}"
   
   if ! command -v nvcc >/dev/null; then
     echo "[RESULT:FAIL] nvcc not found in PATH"

@@ -32,9 +32,9 @@ echo ""
 ssh -p ${RUNPOD_PORT} ${RUNPOD_USER}@${RUNPOD_IP} "mkdir -p ${REMOTE_DIR}/{flashcore/fast,flashcore/cuda,tools,build/bin}"
 
 # Deploy files
-echo "[1/2] Deploying kernel and validation system..."
+echo "[1/2] Deploying Phase 1 minimal kernel..."
 FILES=(
-    "flashcore/fast/attention_hopper_tma.cu"
+    "flashcore/fast/attention_hopper_minimal.cu"
     "flashcore/cuda/test_hopper_kernel.cu"
     "tools/validate_hopper.sh"
 )
