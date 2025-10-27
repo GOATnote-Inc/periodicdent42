@@ -47,9 +47,15 @@ extern "C" void launch_attention_cublaslt_sparse(
     const void* pager, cudaStream_t stream
 );
 
+extern "C" void launch_attention_cublaslt_splitk(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal, cudaStream_t stream
+);
+
 // Select which kernel to test
 #ifndef KERNEL_PHASE
-#define KERNEL_PHASE 4  // Default to Phase 4 cuBLASLt
+#define KERNEL_PHASE 5  // Default to Phase 5 Split-K (EXPERT)
 #endif
 
 #if KERNEL_PHASE == 1
@@ -64,6 +70,9 @@ extern "C" void launch_attention_cublaslt_sparse(
 #elif KERNEL_PHASE == 4
 #define launch_attention launch_attention_cublaslt
 #define KERNEL_NAME "Phase 3B (cuBLASLt Sparse GEMM - 320 TFLOPS Target)"
+#elif KERNEL_PHASE == 5
+#define launch_attention launch_attention_cublaslt_splitk
+#define KERNEL_NAME "Phase 3C (EXPERT: Split-K + FP32 Stability)"
 #endif
 
 // Helper: Fill with random data

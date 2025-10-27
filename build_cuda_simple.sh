@@ -29,7 +29,7 @@ mkdir -p build/bin build/lib
 echo "[1/2] Compiling Phase 3B cuBLASLt kernel (sm_90a)..."
 
 # Actual cuBLAS library path on H100 (verified!)
-CUBLAS_LIB_PATH="/usr/local/cuda-12.4/targets/x86_64-linux/lib"
+CUBLAS_LIB_PATH="/usr/local/cuda-12.4/lib64"
 
 echo "   Using cuBLAS libraries from: $CUBLAS_LIB_PATH"
 
@@ -39,15 +39,16 @@ export LD_LIBRARY_PATH=$CUBLAS_LIB_PATH:${LD_LIBRARY_PATH:-}
 nvcc -arch=sm_90a -O3 --use_fast_math \
     -Xptxas -v,-warn-lmem-usage \
     --std=c++17 \
-    -DKERNEL_PHASE=4 \
+    -DKERNEL_PHASE=5 \
     -I. \
     flashcore/fast/attention_hopper_minimal.cu \
-    flashcore/fast/attention_cublaslt.cu \
+    flashcore/fast/attention_cublaslt_sparse.cu \
+    flashcore/fast/attention_cublaslt_splitk.cu \
     flashcore/cuda/test_hopper_kernel.cu \
     -o build/bin/test_hopper \
-    ${CUBLAS_LIB_PATH}/libcublas.so.12 \
-    ${CUBLAS_LIB_PATH}/libcublasLt.so.12 \
-    -Xlinker -rpath=${CUBLAS_LIB_PATH} \
+    -L${CUBLAS_LIB_PATH} \
+    -Xlinker -rpath -Xlinker ${CUBLAS_LIB_PATH} \
+    -lcublasLt -lcublas \
     2>&1 | tee build/compile.log | grep -E "(ptxas|error|warning|libcublas)" || true
 
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
