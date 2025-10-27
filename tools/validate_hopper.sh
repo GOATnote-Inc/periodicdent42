@@ -11,14 +11,19 @@ set -euo pipefail
 
 # === [CONFIG] ================================================================
 ARCH="sm_90a"
-KERNEL_SRC="flashcore/fast/attention_hopper_minimal.cu"
+KERNEL_SRC_1="flashcore/fast/attention_hopper_minimal.cu"
+KERNEL_SRC_2="flashcore/fast/attention_cublaslt.cu"
 TEST_SRC="flashcore/cuda/test_hopper_kernel.cu"
 OUT_BIN="build/bin/test_hopper"
 LOG_DIR="build/logs"
 mkdir -p "$LOG_DIR" "build/bin"
 
+# Phase selection (default: Phase 4 cuBLASLt)
+PHASE="${KERNEL_PHASE:-4}"
+
 echo "========================================"
 echo "FLASHCORE HOPPER VALIDATION (FA3-STYLE)"
+echo "Phase: $PHASE"
 echo "========================================"
 echo ""
 
@@ -65,8 +70,10 @@ if nvcc -arch=$ARCH -O3 --use_fast_math \
     -Xptxas -v,-warn-lmem-usage \
     --std=c++17 \
     -lineinfo \
+    -DKERNEL_PHASE=$PHASE \
     -I. \
-    "$KERNEL_SRC" \
+    "$KERNEL_SRC_1" \
+    "$KERNEL_SRC_2" \
     "$TEST_SRC" \
     -o "$OUT_BIN" \
     2>&1 | tee "$COMPILE_LOG"; then
@@ -193,10 +200,21 @@ if [[ -f "$LOG_DIR/ncu_metrics.txt" ]]; then
 fi
 echo ""
 
-# Check if this is Phase 1 (correctness only)
+# Check validation status
 if grep -q "PASS" "$BENCH_LOG" && grep -q "✅" "$BENCH_LOG"; then
-  echo "[SUMMARY:STATUS] PHASE 1 PASS ✅"
-  echo "[SUMMARY:NEXT] Ready for Phase 2 (TMA integration)"
+  echo "[SUMMARY:STATUS] PHASE $PHASE PASS ✅"
+  if [[ $PHASE -eq 1 ]]; then
+    echo "[SUMMARY:NEXT] Ready for Phase 2 (Async memory pipeline)"
+  elif [[ $PHASE -eq 2 ]]; then
+    echo "[SUMMARY:NEXT] Ready for Phase 3 (WGMMA Tensor Cores)"
+  elif [[ $PHASE -eq 3 ]]; then
+    echo "[SUMMARY:NEXT] Ready for Phase 3B (cuBLASLt Sparse GEMM)"
+    echo "[SUMMARY:TARGET] 100-150 TFLOPS expected (Tensor Cores)"
+  elif [[ $PHASE -eq 4 ]]; then
+    echo "[SUMMARY:NEXT] Ready for Phase 3C (Sparse paging + SGLang)"
+    echo "[SUMMARY:TARGET] 320 TFLOPS expected (cuBLASLt + GPU-driven)"
+    echo "[SUMMARY:GOAL] 35K+ tokens/sec system throughput"
+  fi
   exit 0
 else
   echo "[SUMMARY:STATUS] VALIDATION FAILED ❌"

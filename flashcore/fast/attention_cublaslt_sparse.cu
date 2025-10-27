@@ -58,6 +58,37 @@ __global__ void kernel_convert_fp16_to_fp32(
     }
 }
 
+// Pad matrix: copy M×D to M×D_padded (zero-pad remaining columns)
+__global__ void kernel_pad_matrix(
+    const __half* __restrict__ src,  // M × D
+    __half* __restrict__ dst,        // M × D_padded (already zero-initialized)
+    int M, int D, int D_padded
+) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= M) return;
+    
+    // Copy D elements from src to dst
+    for (int d = 0; d < D; ++d) {
+        dst[row * D_padded + d] = src[row * D + d];
+    }
+    // Remaining (D_padded - D) elements already zero from cudaMemset
+}
+
+// Unpad matrix: copy M×D_padded to M×D (discard padding columns)
+__global__ void kernel_unpad_matrix(
+    const __half* __restrict__ src,  // M × D_padded
+    __half* __restrict__ dst,        // M × D
+    int M, int D, int D_padded
+) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= M) return;
+    
+    // Copy D elements from src to dst
+    for (int d = 0; d < D; ++d) {
+        dst[row * D + d] = src[row * D_padded + d];
+    }
+}
+
 // Convert FP16 to FP32 with scaling (for S_block after Q@K^T)
 __global__ void kernel_convert_fp16_to_fp32_scaled(
     const __half* __restrict__ src,
@@ -257,6 +288,16 @@ extern "C" void launch_attention_cublaslt_sparse(
     const int N = S;              // keys/values per head
     const int BH = Batches * Heads;
     const int page_cols = pager->page_cols;
+    
+    // CRITICAL FIX: H100 Tensor Cores require K ≥ 128!
+    // Pad D to next multiple of 128 for Tensor Core algorithms
+    const int D_padded = ((D + 127) / 128) * 128;  // Round up to 128
+    const bool needs_padding = (D_padded != D);
+    
+    if (needs_padding && M == S) {  // Only log once
+        std::cout << "[cuBLASLt] Padding head dimension: " << D << " → " << D_padded 
+                  << " (H100 Tensor Core requirement)\n" << std::flush;
+    }
 
     // Einstein Inversion: Use FP16 output from Q@K^T for Tensor Core algorithms!
     // Allocate small per-BH persistent state: m[M], l[M], r[M], plus S_block/P_block (M×B).
@@ -265,6 +306,12 @@ extern "C" void launch_attention_cublaslt_sparse(
     float *d_S_block = nullptr;        // FP32 converted for softmax
     float *d_P_block = nullptr;        // FP32 from softmax
     __half *d_P_block_fp16 = nullptr;  // FP16 conversion for cuBLASLt P@V
+    
+    // Padded buffers for Tensor Core alignment
+    __half *d_Q_padded = nullptr;      // M × D_padded (padded Q)
+    __half *d_K_padded = nullptr;      // N × D_padded (padded K)
+    __half *d_V_padded = nullptr;      // N × D_padded (padded V)
+    __half *d_O_padded = nullptr;      // M × D_padded (padded O)
 
     cudaMalloc(&d_m, M * sizeof(float));
     cudaMalloc(&d_l, M * sizeof(float));
@@ -275,6 +322,18 @@ extern "C" void launch_attention_cublaslt_sparse(
     cudaMalloc(&d_S_block, (size_t)M * page_cols * sizeof(float));       // FP32 for softmax
     cudaMalloc(&d_P_block, (size_t)M * page_cols * sizeof(float));
     cudaMalloc(&d_P_block_fp16, (size_t)M * page_cols * sizeof(__half));
+    
+    // Allocate padded buffers if needed
+    if (needs_padding) {
+        cudaMalloc(&d_Q_padded, (size_t)M * D_padded * sizeof(__half));
+        cudaMalloc(&d_K_padded, (size_t)N * D_padded * sizeof(__half));
+        cudaMalloc(&d_V_padded, (size_t)N * D_padded * sizeof(__half));
+        cudaMalloc(&d_O_padded, (size_t)M * D_padded * sizeof(__half));
+        cudaMemset(d_Q_padded, 0, (size_t)M * D_padded * sizeof(__half));  // Zero padding
+        cudaMemset(d_K_padded, 0, (size_t)N * D_padded * sizeof(__half));
+        cudaMemset(d_V_padded, 0, (size_t)N * D_padded * sizeof(__half));
+        cudaMemset(d_O_padded, 0, (size_t)M * D_padded * sizeof(__half));
+    }
 
     // Zero/initialize per-BH state for each head independently
     {
@@ -295,14 +354,15 @@ extern "C" void launch_attention_cublaslt_sparse(
 
     // Matrix layouts: cuBLASLt convention is (rows, cols, ld)
     // For GEMM C = A × B: A is M×K, B is K×N, C is M×N
+    // CRITICAL: Use D_padded for Tensor Core alignment!
     
-    // Q: M×D row-major → rows=M, cols=D, ld=D
+    // Q: M×D_padded row-major → rows=M, cols=D_padded, ld=D_padded
     checkCublas(cublasLtMatrixLayoutCreate(&layout_Q, 
-        CUDA_R_16F, /*rows*/ M, /*cols*/ D, /*ld*/ D), "layout_Q");
+        CUDA_R_16F, /*rows*/ M, /*cols*/ D_padded, /*ld*/ D_padded), "layout_Q");
     
-    // K_block: page_cols×D row-major → rows=page_cols, cols=D, ld=D
+    // K_block: page_cols×D_padded row-major → rows=page_cols, cols=D_padded, ld=D_padded
     checkCublas(cublasLtMatrixLayoutCreate(&layout_Kb,
-        CUDA_R_16F, /*rows*/ page_cols, /*cols*/ D, /*ld*/ D), "layout_Kb");
+        CUDA_R_16F, /*rows*/ page_cols, /*cols*/ D_padded, /*ld*/ D_padded), "layout_Kb");
     
     // S_block: M×page_cols row-major (FP16 output for Tensor Cores!)
     // Einstein Inversion: Use FP16 output to get optimized algorithms
@@ -313,13 +373,13 @@ extern "C" void launch_attention_cublaslt_sparse(
     checkCublas(cublasLtMatrixLayoutCreate(&layout_Pb,
         CUDA_R_16F, /*rows*/ M, /*cols*/ page_cols, /*ld*/ page_cols), "layout_Pb");
     
-    // V_block: page_cols×D row-major (FP16)
+    // V_block: page_cols×D_padded row-major (FP16)
     checkCublas(cublasLtMatrixLayoutCreate(&layout_Vb,
-        CUDA_R_16F, /*rows*/ page_cols, /*cols*/ D, /*ld*/ D), "layout_Vb");
+        CUDA_R_16F, /*rows*/ page_cols, /*cols*/ D_padded, /*ld*/ D_padded), "layout_Vb");
     
-    // O: M×D row-major (FP16 output from P@V)
+    // O: M×D_padded row-major (FP16 output from P@V)
     checkCublas(cublasLtMatrixLayoutCreate(&layout_O,
-        CUDA_R_16F, /*rows*/ M, /*cols*/ D, /*ld*/ D), "layout_O");
+        CUDA_R_16F, /*rows*/ M, /*cols*/ D_padded, /*ld*/ D_padded), "layout_O");
 
     // Make row-major explicit (avoid implementation-defined defaults)
     {
@@ -366,7 +426,8 @@ extern "C" void launch_attention_cublaslt_sparse(
                   << "  Q: rows=" << mQ << ", cols=" << nQ << ", ld=" << ldQ << "\n"
                   << "  K_block: rows=" << mK << ", cols=" << nK << ", ld=" << ldK << " (transposed)\n"
                   << "  S_block: rows=" << mS << ", cols=" << nS << ", ld=" << ldS << "\n"
-                  << "  Expected: (" << M << "×" << D << ") @ (" << D << "×" << page_cols << ") = (" << M << "×" << page_cols << ")\n"
+                  << "  Expected: (" << M << "×" << D_padded << ") @ (" << D_padded << "×" << page_cols << ") = (" << M << "×" << page_cols << ")\n"
+                  << "  Note: D=" << D << " padded to D_padded=" << D_padded << " for Tensor Cores\n"
                   << std::flush;
         printed_dims = true;
     }
@@ -436,6 +497,35 @@ extern "C" void launch_attention_cublaslt_sparse(
         const __half* K_ptr = static_cast<const __half*>(K) + bh * N * D;
         const __half* V_ptr = static_cast<const __half*>(V) + bh * N * D;
         __half*       O_ptr = static_cast<__half*>(O)       + bh * M * D;
+        
+        // Pad Q, K, V if needed for Tensor Core alignment
+        const __half* Q_compute = Q_ptr;
+        const __half* K_compute = K_ptr;
+        const __half* V_compute = V_ptr;
+        __half* O_compute = O_ptr;
+        
+        if (needs_padding) {
+            // Pad Q: M×D → M×D_padded
+            {
+                int tpb = 256, b = (M + tpb - 1) / tpb;
+                kernel_pad_matrix<<<b, tpb, 0, stream>>>(Q_ptr, d_Q_padded, M, D, D_padded);
+            }
+            // Pad K: N×D → N×D_padded
+            {
+                int tpb = 256, b = (N + tpb - 1) / tpb;
+                kernel_pad_matrix<<<b, tpb, 0, stream>>>(K_ptr, d_K_padded, N, D, D_padded);
+            }
+            // Pad V: N×D → N×D_padded
+            {
+                int tpb = 256, b = (N + tpb - 1) / tpb;
+                kernel_pad_matrix<<<b, tpb, 0, stream>>>(V_ptr, d_V_padded, N, D, D_padded);
+            }
+            
+            Q_compute = d_Q_padded;
+            K_compute = d_K_padded;
+            V_compute = d_V_padded;
+            O_compute = d_O_padded;
+        }
 
         // Reset (m,l,r) for this head (O will be initialized via beta=0 on first page)
         {
@@ -453,9 +543,9 @@ extern "C" void launch_attention_cublaslt_sparse(
             const int Bcols = (page_cols < (N - col_start)) ? page_cols : (N - col_start);
             if (Bcols <= 0) continue;
 
-            // Slice K,V to current page
-            const __half* K_block = K_ptr + col_start * D;        // [Bcols, D]
-            const __half* V_block = V_ptr + col_start * D;        // [Bcols, D]
+            // Slice K,V to current page (use padded dimensions!)
+            const __half* K_block = K_compute + col_start * D_padded;  // [Bcols, D_padded]
+            const __half* V_block = V_compute + col_start * D_padded;  // [Bcols, D_padded]
 
             // (1) Scores for this block: S_block = Q @ K_block^T -> [M, Bcols] FP16
             // Einstein Inversion: Output FP16 for Tensor Cores, apply scale during conversion
@@ -482,8 +572,8 @@ extern "C" void launch_attention_cublaslt_sparse(
                     g_cublaslt_handle,
                     g_desc_qk,
                     &alpha_qk,
-                    Q_ptr, layout_Q,
-                    K_block, layout_Kb,
+                    Q_compute, layout_Q,        // Use padded Q!
+                    K_block, layout_Kb,         // Use padded K_block!
                     &beta_qk,
                     d_S_block_fp16, layout_Sb,  // FP16 output!
                     d_S_block_fp16, layout_Sb,
@@ -515,7 +605,8 @@ extern "C" void launch_attention_cublaslt_sparse(
             // CRITICAL FIX: Skip on first page to avoid touching uninitialized O (0×NaN = NaN!)
             if (!first_page) {
                 int tpb = 256, b = (M + tpb - 1) / tpb;
-                kernel_scale_rows_half<<<b, tpb, 0, stream>>>(O_ptr, d_r, M, D);
+                // Use padded D dimension for rescaling!
+                kernel_scale_rows_half<<<b, tpb, 0, stream>>>(O_compute, d_r, M, D_padded);
             }
 
             // (4) Accumulate current block contribution: O += P_block @ V_block
@@ -540,10 +631,10 @@ extern "C" void launch_attention_cublaslt_sparse(
                     g_desc_pv,
                     &alpha_pv,
                     d_P_block_fp16, layout_Pb,   // [M,Bcols] FP16
-                    V_block,        layout_Vb,   // [Bcols,D] FP16
+                    V_block,        layout_Vb,   // [Bcols,D_padded] FP16 (padded!)
                     &beta_pv,
-                    O_ptr,          layout_O,    // [M,D] FP16
-                    O_ptr,          layout_O,
+                    O_compute,      layout_O,    // [M,D_padded] FP16 (padded!)
+                    O_compute,      layout_O,
                     algo_pv,
                     d_ws, ws_pv,
                     stream
@@ -553,6 +644,12 @@ extern "C" void launch_attention_cublaslt_sparse(
             
             first_page = false; // Subsequent pages use beta=1
         } // pages
+        
+        // Unpad O: M×D_padded → M×D
+        if (needs_padding) {
+            int tpb = 256, b = (M + tpb - 1) / tpb;
+            kernel_unpad_matrix<<<b, tpb, 0, stream>>>(O_compute, O_ptr, M, D, D_padded);
+        }
     } // bh
 
     // Cleanup
@@ -571,6 +668,14 @@ extern "C" void launch_attention_cublaslt_sparse(
     cudaFree(d_P_block);
     cudaFree(d_P_block_fp16);
     if (d_ws) cudaFree(d_ws);
+    
+    // Cleanup padded buffers
+    if (needs_padding) {
+        cudaFree(d_Q_padded);
+        cudaFree(d_K_padded);
+        cudaFree(d_V_padded);
+        cudaFree(d_O_padded);
+    }
 }
 
 //------------------------------------------------------------------------------

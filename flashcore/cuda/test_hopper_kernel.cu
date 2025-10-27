@@ -9,17 +9,62 @@
 #include <algorithm>
 #include <numeric>
 
-// Forward declaration - Hopper minimal kernel (Phase 1)
+// Forward declarations
 extern "C" void launch_attention_hopper_minimal(
-    const void* Q,
-    const void* K,
-    const void* V,
-    void* O,
+    const void* Q, const void* K, const void* V, void* O,
     int B, int H, int S, int D,
-    float scale,
-    bool is_causal,
-    cudaStream_t stream
+    float scale, bool is_causal, cudaStream_t stream
 );
+
+extern "C" void launch_attention_phase2_async(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal, cudaStream_t stream
+);
+
+extern "C" void launch_attention_phase2_aggressive(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal, cudaStream_t stream
+);
+
+extern "C" void launch_attention_phase3_wgmma(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal, cudaStream_t stream
+);
+
+extern "C" void launch_attention_cublaslt(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal, cudaStream_t stream
+);
+
+extern "C" void launch_attention_cublaslt_sparse(
+    const void* Q, const void* K, const void* V, void* O,
+    int B, int H, int S, int D,
+    float scale, bool is_causal,
+    const void* pager, cudaStream_t stream
+);
+
+// Select which kernel to test
+#ifndef KERNEL_PHASE
+#define KERNEL_PHASE 4  // Default to Phase 4 cuBLASLt
+#endif
+
+#if KERNEL_PHASE == 1
+#define launch_attention launch_attention_hopper_minimal
+#define KERNEL_NAME "Phase 1 (Minimal Baseline)"
+#elif KERNEL_PHASE == 2
+#define launch_attention launch_attention_phase2_aggressive
+#define KERNEL_NAME "Phase 2 (Async + Coalesced + Tiling)"
+#elif KERNEL_PHASE == 3
+#define launch_attention launch_attention_phase3_wgmma
+#define KERNEL_NAME "Phase 3A (WGMMA Tensor Cores)"
+#elif KERNEL_PHASE == 4
+#define launch_attention launch_attention_cublaslt
+#define KERNEL_NAME "Phase 3B (cuBLASLt Sparse GEMM - 320 TFLOPS Target)"
+#endif
 
 // Helper: Fill with random data
 void fill_random(__half* data, int size) {
@@ -41,11 +86,12 @@ int main(int argc, char** argv) {
     // Configuration
     int B = 16;
     int H = 16;
-    int S = 2048;
+    int S = 4096;  // ARCHITECT DEBUG: Test if M=4096 unlocks Tensor Cores
     int D = 64;
     
     std::cout << "========================================\n";
     std::cout << "FLASHCORE HOPPER KERNEL TEST\n";
+    std::cout << "Kernel: " << KERNEL_NAME << "\n";
     std::cout << "========================================\n\n";
     
     // Print GPU info
@@ -115,7 +161,7 @@ int main(int argc, char** argv) {
     
     cudaError_t err;
         for (int i = 0; i < 10; ++i) {
-            launch_attention_hopper_minimal(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+            launch_attention(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
             err = cudaGetLastError();
         if (err != cudaSuccess) {
             std::cerr << "❌ Kernel launch failed at iteration " << i << ": " << cudaGetErrorString(err) << "\n";
@@ -156,7 +202,7 @@ int main(int argc, char** argv) {
         cudaDeviceSynchronize();  // Ensure previous work is done
         
             cudaEventRecord(start, 0);
-            launch_attention_hopper_minimal(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
+            launch_attention(d_Q, d_K, d_V, d_O, B, H, S, D, scale, true, 0);
             cudaEventRecord(stop, 0);
         
         cudaEventSynchronize(stop);
