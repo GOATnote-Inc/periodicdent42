@@ -21,7 +21,7 @@ chem = [
 bete = [
     "pymatgen==2024.3.1",     # Crystal structure loading and Materials Project API
     "matplotlib==3.8.2",      # α²F(ω) plot generation
-    "typer==0.9.0",           # CLI tool
+    "typer==0.20.0",           # CLI tool
     "rich==13.7.0",           # CLI pretty printing
     "tqdm==4.66.1",           # Progress bars
 ]
@@ -35,7 +35,7 @@ htc = [
     "statsmodels==0.14.0",    # Statistical modeling
     "pandas==2.1.4",          # Data manipulation (shared with dev)
     "gitpython==3.1.40",      # Git provenance tracking
-    "typer==0.9.0",           # Calibration CLI tool (Tier 1)
+    "typer==0.20.0",           # Calibration CLI tool (Tier 1)
     "scikit-optimize==0.9.0", # v0.5.0: Bayesian optimization (pinned for determinism)
     "pyyaml>=6.0",            # v0.5.0: μ* config persistence
 ]
