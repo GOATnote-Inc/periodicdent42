@@ -39,35 +39,56 @@ struct KernelConfig {
     static_assert(SMEM_TOTAL <= 227 * 1024, "Exceeds H100 SMEM limit");
 };
 
-// Specializations for common head dims
+// Specializations for common head dims (conservative sizes for Phase 1)
 template<> struct KernelConfig<64> {
-    static constexpr int BLOCK_M = 128;
-    static constexpr int BLOCK_N = 256;
-    static constexpr int BLOCK_K = 128;
-    static constexpr int NUM_STAGES = 3;
+    static constexpr int BLOCK_M = 64;
+    static constexpr int BLOCK_N = 64;
+    static constexpr int BLOCK_K = 64;
+    static constexpr int NUM_STAGES = 2;  // Double buffering
     static constexpr int WARPS_LOADER = 1;
     static constexpr int WARPS_COMPUTE = 2;
     static constexpr int THREADS = 96;
+    static constexpr int HEAD_DIM = 64;
+    // SMEM: K=64*64*2*2=16KB, V=64*64*2*2=16KB, Q=64*64*2=8KB, Total=40KB+16KB=56KB ✓
+    static constexpr int SMEM_K = BLOCK_N * BLOCK_K * sizeof(__half) * NUM_STAGES;
+    static constexpr int SMEM_V = BLOCK_N * HEAD_DIM * sizeof(__half) * NUM_STAGES;
+    static constexpr int SMEM_Q = BLOCK_M * HEAD_DIM * sizeof(__half);
+    static constexpr int SMEM_TOTAL = SMEM_K + SMEM_V + SMEM_Q + 16*1024;
+    static_assert(SMEM_TOTAL <= 227 * 1024, "Exceeds H100 SMEM limit");
 };
 
 template<> struct KernelConfig<128> {
     static constexpr int BLOCK_M = 64;
-    static constexpr int BLOCK_N = 256;
+    static constexpr int BLOCK_N = 64;
     static constexpr int BLOCK_K = 128;
-    static constexpr int NUM_STAGES = 4;
+    static constexpr int NUM_STAGES = 2;  // Double buffering
     static constexpr int WARPS_LOADER = 1;
     static constexpr int WARPS_COMPUTE = 2;
     static constexpr int THREADS = 96;
+    static constexpr int HEAD_DIM = 128;
+    // SMEM: K=64*128*2*2=32KB, V=64*128*2*2=32KB, Q=64*128*2=16KB, Total=80KB+16KB=96KB ✓
+    static constexpr int SMEM_K = BLOCK_N * BLOCK_K * sizeof(__half) * NUM_STAGES;
+    static constexpr int SMEM_V = BLOCK_N * HEAD_DIM * sizeof(__half) * NUM_STAGES;
+    static constexpr int SMEM_Q = BLOCK_M * HEAD_DIM * sizeof(__half);
+    static constexpr int SMEM_TOTAL = SMEM_K + SMEM_V + SMEM_Q + 16*1024;
+    static_assert(SMEM_TOTAL <= 227 * 1024, "Exceeds H100 SMEM limit");
 };
 
 template<> struct KernelConfig<256> {
     static constexpr int BLOCK_M = 64;
-    static constexpr int BLOCK_N = 128;
-    static constexpr int BLOCK_K = 64;
-    static constexpr int NUM_STAGES = 4;
+    static constexpr int BLOCK_N = 64;
+    static constexpr int BLOCK_K = 256;
+    static constexpr int NUM_STAGES = 2;  // Double buffering
     static constexpr int WARPS_LOADER = 1;
     static constexpr int WARPS_COMPUTE = 3;
     static constexpr int THREADS = 128;
+    static constexpr int HEAD_DIM = 256;
+    // SMEM: K=64*256*2*2=64KB, V=64*256*2*2=64KB, Q=64*256*2=32KB, Total=160KB+16KB=176KB ✓
+    static constexpr int SMEM_K = BLOCK_N * BLOCK_K * sizeof(__half) * NUM_STAGES;
+    static constexpr int SMEM_V = BLOCK_N * HEAD_DIM * sizeof(__half) * NUM_STAGES;
+    static constexpr int SMEM_Q = BLOCK_M * HEAD_DIM * sizeof(__half);
+    static constexpr int SMEM_TOTAL = SMEM_K + SMEM_V + SMEM_Q + 16*1024;
+    static_assert(SMEM_TOTAL <= 227 * 1024, "Exceeds H100 SMEM limit");
 };
 
 //==============================================================================
