@@ -36,7 +36,7 @@ htc = [
     "pandas==2.1.4",          # Data manipulation (shared with dev)
     "gitpython==3.1.40",      # Git provenance tracking
     "typer==0.9.0",           # Calibration CLI tool (Tier 1)
-    "scikit-optimize==0.9.0", # v0.5.0: Bayesian optimization (pinned for determinism)
+    "scikit-optimize==0.10.2", # v0.5.0: Bayesian optimization (pinned for determinism)
     "pyyaml>=6.0",            # v0.5.0: μ* config persistence
 ]
 # Development and testing
