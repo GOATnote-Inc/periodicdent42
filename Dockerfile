@@ -35,7 +35,9 @@ RUN if [ -f requirements.txt ]; then pip3 install --no-cache-dir -r requirements
 RUN pip3 install --no-cache-dir \
     torch==2.4.1 \
     triton==3.0.0 \
-    numpy
+    numpy \
+    fastapi \
+    uvicorn[standard]
 
 # Clone and setup CUTLASS 4.3.0 (main branch)
 RUN git clone https://github.com/NVIDIA/cutlass.git /opt/cutlass && \
@@ -50,9 +52,9 @@ ENV CPATH=${CUTLASS_HOME}/include:${CPATH}
 RUN nvcc --version && \
     python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA Available: {torch.cuda.is_available()}')"
 
-# Expose default port for HTTP endpoints
+# Expose port for HTTP API (RunPod health check)
 EXPOSE 8000
 
-# Default command - can be overridden by RunPod
-CMD ["bash", "-c", "nvcc --version && nvidia-smi && python3 main.py"]
+# Start FastAPI server directly (no bash wrapper)
+CMD ["python3", "main.py"]
 
