@@ -1,0 +1,113 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Cursor IDE
+.cursor/
+
+# Documentation (not needed in container)
+docs/*.md
+*.md
+!README.md
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.ptx
+*.cubin
+build/
+profiling_results/
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Deployment scripts (not needed in container)
+deploy_*.sh
+execute_*.sh
+cleanup_*.sh
+run_*.sh
+EXECUTE_*.sh
+INSTALL_*.sh
+SETUP_*.sh
+RUN_*.sh
+DEPLOY_*.sh
+VALIDATE_*.sh
+BUILD_*.sh
+PROFILE_*.sh
+NATIVE_*.sh
+AUTOMATE_*.sh
+BLEEDING_*.sh
+COMPLETE_*.sh
+CUDA_*.sh
+ITERATE_*.sh
+SSHFS_*.sh
+
+# Dev container config (not needed in production)
+.devcontainer/
+
+# Utility scripts
+scripts/build_*.sh
+scripts/deploy_*.sh
+scripts/run_*.sh
+scripts/utilities/*.sh
+
+# Validation results
+*_RESULTS.md
+*_SUMMARY.md
+*_REPORT.md
+*_STATUS.md
+*_COMPLETE.md
+*_VALIDATION*.md
+*_INSTRUCTIONS.md
+*_DOCUMENTATION.md
+
+# Test data
+*.json
+test_*
+triton_*_results.json
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary test files
+tma-fix-kit/
+tma-issue-6638-reproducer/
+triton-issue-6638/
+
