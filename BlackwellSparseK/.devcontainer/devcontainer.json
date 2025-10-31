@@ -1,0 +1,31 @@
+{
+  "name": "BlackwellSparseK Dev",
+  "image": "cuda13.0-cutlass4.3:latest",
+  "postStartCommand": "make heal",
+  "runArgs": [
+    "--gpus", "all",
+    "-v", "${localWorkspaceFolder}:/workspace",
+    "--shm-size=2g"
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "C_Cpp.default.compilerPath": "/usr/local/cuda/bin/nvcc",
+        "C_Cpp.default.includePath": [
+          "/usr/local/cuda/include",
+          "/opt/cutlass/include",
+          "${workspaceFolder}/src"
+        ]
+      },
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.makefile-tools",
+        "NVIDIA.nsight-vscode-edition",
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  }
+}
+

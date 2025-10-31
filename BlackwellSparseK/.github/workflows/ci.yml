@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install linters
+        run: |
+          pip install ruff black mypy
+      
+      - name: Run ruff
+        run: |
+          ruff check src/ tests/ benchmarks/
+      
+      - name: Run black
+        run: |
+          black --check src/ tests/ benchmarks/
+      
+      - name: Run mypy
+        run: |
+          mypy src/ --ignore-missing-imports || true
+
+  test-cpu:
+    runs-on: ubuntu-latest
+    container:
+      image: blackwell-sparsek:ci
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run CPU tests
+        run: |
+          pytest tests/ -v \
+            --ignore=tests/test_kernels.py \
+            -m "not gpu" \
+            --cov=src/blackwell_sparsek \
+            --cov-report=xml
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  test-gpu:
+    runs-on: [self-hosted, gpu, h100]
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build dev container
+        run: |
+          docker build \
+            -f docker/blackwell-sparsek-dev.dockerfile \
+            -t bsk:dev-${{ github.sha }} \
+            .
+      
+      - name: Run GPU tests
+        run: |
+          docker run --gpus all --rm \
+            -v $(pwd):/workspace/BlackwellSparseK \
+            bsk:dev-${{ github.sha }} \
+            bash -c "cd /workspace/BlackwellSparseK && pytest tests/ -v --capture=no"
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rmi bsk:dev-${{ github.sha }} || true
+
+  benchmark:
+    runs-on: [self-hosted, gpu, h100]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build dev container
+        run: |
+          docker build \
+            -f docker/blackwell-sparsek-dev.dockerfile \
+            -t bsk:bench-${{ github.sha }} \
+            .
+      
+      - name: Run benchmarks
+        run: |
+          docker run --gpus all --rm \
+            -v $(pwd)/results:/workspace/results \
+            bsk:bench-${{ github.sha }} \
+            python benchmarks/perf.py --save-results
+      
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: results/
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rmi bsk:bench-${{ github.sha }} || true
+

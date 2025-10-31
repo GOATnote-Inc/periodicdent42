@@ -1,0 +1,166 @@
+# BlackwellSparseK Requirements
+# Last Updated: October 29, 2025
+# Pinned to absolute latest stable versions
+
+# ===================================================================
+# Core Dependencies (Production)
+# ===================================================================
+
+# PyTorch with CUDA 13.0 support
+torch==2.9.0
+torchvision==0.19.0
+torchaudio==2.4.0
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+# xFormers (source-built for CUDA 13.0)
+# Note: 0.0.29.post1 available but requires source build
+# Current 0.0.22.post2 is stable and tested
+xformers==0.0.29.post1  # UPGRADED per architect spec
+
+# vLLM for LLM serving
+vllm==0.11.0
+
+# FlashAttention-3 for baseline comparison (REQUIRED for benchmarking)
+flash-attn>=3.0.0  # Official FA3 from Dao-AILab
+
+# CUTLASS Python bindings (CUTLASS 4.3.0)
+nvidia-cutlass-dsl==4.3.0
+
+# CUDA toolkit utilities
+nvidia-cuda-runtime-cu13==13.0.2
+nvidia-cuda-cupti-cu13==13.0.2
+
+# ===================================================================
+# Build & Compilation
+# ===================================================================
+
+# Build tools
+cmake==3.28.1
+ninja==1.11.1.1
+setuptools==69.0.3
+wheel==0.42.0
+packaging==23.2
+
+# CUDA compilation
+pybind11==2.11.1
+
+# ===================================================================
+# Numerics & ML
+# ===================================================================
+
+numpy==1.26.4
+scipy==1.12.0
+
+# ===================================================================
+# Profiling & Benchmarking
+# ===================================================================
+
+# PyTorch profiling
+tensorboard==2.15.1
+
+# Progress bars
+tqdm==4.66.1
+
+# Data visualization
+matplotlib==3.8.2
+seaborn==0.13.1
+pandas==2.1.4
+
+# ===================================================================
+# Testing & Quality
+# ===================================================================
+
+# Testing framework
+pytest==7.4.4
+pytest-cov==4.1.0
+pytest-benchmark==4.0.0
+pytest-xdist==3.5.0
+
+# Code quality
+black==23.12.1
+ruff==0.1.9
+mypy==1.8.0
+isort==5.13.2
+
+# ===================================================================
+# Development Tools
+# ===================================================================
+
+# Jupyter for interactive development
+jupyter==1.0.0
+ipython==8.19.0
+ipykernel==6.28.0
+
+# Documentation
+sphinx==7.2.6
+sphinx-rtd-theme==2.0.0
+myst-parser==2.0.0
+
+# ===================================================================
+# Production Deployment
+# ===================================================================
+
+# FastAPI for serving (if building custom API)
+fastapi==0.109.0
+uvicorn==0.27.0
+pydantic==2.5.3
+
+# ===================================================================
+# Optional: Additional GPU Tools
+# ===================================================================
+
+# Triton for kernel development (optional)
+triton==2.2.0
+
+# cuDNN Python wrapper (optional)
+nvidia-cudnn-cu13==8.9.7.29
+
+# ===================================================================
+# Version Notes
+# ===================================================================
+
+# CUDA 13.0.2: Released August 20, 2025
+# - Native Blackwell (sm_100) support
+# - FP8 E4M3/E5M2 types
+# - Improved Hopper (sm_90a) performance
+
+# CUTLASS 4.3.0: Released October 2025
+# - CuTe DSL improvements
+# - Block-scaled data types (NVFP4, MXFP4, MXFP6, MXFP8)
+# - Blackwell SM100 support
+# - Persistent blockwise GEMM
+
+# PyTorch 2.9.0: Released October 2025
+# - CUDA 13.0 wheels available
+# - Native FlashAttention-3 backend
+# - Improved torch.compile
+
+# xFormers 0.0.22.post2: Released September 2025
+# - CUDA 13.0 compatibility
+# - Source build required for cu130 (no wheels yet)
+# - AttentionBias improvements
+
+# vLLM 0.11.0: Released October 2025
+# - V1 API only (V0 deprecated)
+# - PagedAttention v2
+# - Prefix caching improvements
+
+# ===================================================================
+# Installation Notes
+# ===================================================================
+
+# For xFormers source build:
+# export TORCH_CUDA_ARCH_LIST="90;100"  # H100 + B200
+# export XFORMERS_BUILD_TYPE=Release
+# pip install git+https://github.com/facebookresearch/xformers.git@v0.0.22.post2
+
+# For CUTLASS:
+# CUTLASS 4.3.0 is used as header-only library
+# Python bindings via nvidia-cutlass-dsl package
+# Full source at: https://github.com/NVIDIA/cutlass/tree/v4.3.0
+
+# For custom kernel compilation:
+# Requires CUDA 13.0.2 toolkit installed system-wide
+# nvcc must be in PATH
+# Compile flags: -arch=sm_90a,sm_100 --use_fast_math -O3
+

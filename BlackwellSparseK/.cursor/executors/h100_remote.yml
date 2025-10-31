@@ -1,0 +1,94 @@
+# Cursor Remote Executor Configuration
+# H100 Pod: related_cyan_clownfish
+
+name: "H100 Remote (related_cyan_clownfish)"
+
+executor:
+  type: ssh
+  host: 157.66.254.40
+  port: 17322
+  user: root
+  shell: /bin/bash
+  workingDirectory: /workspace/BlackwellSparseK
+  
+  # SSH key authentication
+  identity_file: ~/.ssh/id_ed25519
+  
+  # Environment variables (auto-set on connection)
+  env:
+    CUDA_HOME: /usr/local/cuda-13.0
+    PATH: /usr/local/cuda-13.0/bin:$PATH
+    LD_LIBRARY_PATH: /usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
+    CUTLASS_HOME: /opt/cutlass
+    TORCH_CUDA_ARCH_LIST: "8.9"
+    FORCE_CUDA: "1"
+  
+  # Auto-source bootstrap on connect
+  init_commands:
+    - "source /workspace/BlackwellSparseK/scripts/bootstrap_env.sh"
+    - "echo '✓ CUDA 13.0 + CUTLASS 4.3.0 active'"
+
+# Pod details
+pod:
+  name: "related_cyan_clownfish"
+  id: "aNu7ud7eyBb41x"
+  provider: "RunPod GPU Cloud"
+  region: "EUR-IS-3"
+  
+hardware:
+  gpu: "NVIDIA H100 80GB HBM3"
+  architecture: "sm_90a (Hopper)"
+  driver: "570.133.20"
+  vcpu: 20
+  ram: "2.0TB"
+  storage: "30GB"
+
+software:
+  os: "Ubuntu 24.04.3 LTS"
+  cuda_toolkit: "13.0.88"
+  cuda_runtime: "12.8"
+  pytorch: "2.8.0+cu128"
+  python: "3.12.3"
+  cutlass: "4.3.0 (8afb19d)"
+
+# Connection methods
+connection:
+  ssh_standard:
+    command: "ssh root@157.66.254.40 -p 17322"
+    
+  ssh_with_key:
+    command: "ssh root@157.66.254.40 -p 17322 -i ~/.ssh/id_ed25519"
+    
+  ssh_runpod_proxy:
+    command: "ssh aNu7ud7eyBb41x-64411d1@ssh.runpod.io -i ~/.ssh/id_ed25519"
+
+# Status
+status:
+  created: "2025-10-30T17:30:00Z"
+  bootstrapped: "2025-10-30T17:38:00Z"
+  active: true
+
+# Previous pod (for reference)
+previous_pod:
+  name: "tender_turquoise_herring"
+  host: "154.57.34.98"
+  port: 30577
+  driver: "550.163.01"
+  status: "terminated (error)"
+  note: "Driver 550 too old for cu130 runtime"
+
+# Notes
+notes: |
+  This pod has driver 570.133.20 (better than previous 550.163).
+  Still below 580.95 required for cu130 runtime, so using hybrid:
+  - CUDA 13.0 toolkit for compilation
+  - CUDA 12.8 runtime for PyTorch
+  
+  Bootstrap scripts:
+  - /workspace/BlackwellSparseK/scripts/bootstrap_env.sh
+  - /workspace/pod_setup.sh (self-restoring)
+  
+  Verification:
+  - nvcc --version → V13.0.88
+  - python -c "import torch; print(torch.cuda.is_available())" → True
+

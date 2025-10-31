@@ -1,0 +1,9 @@
+{
+  "projectRules": {
+    "enforceDocker": true,
+    "denyPackages": ["triton", "torch", "xformers", "flash-attn", "faiss"],
+    "requiredFiles": ["Dockerfile", "Makefile", "scripts/preflight.sh"],
+    "compileCommand": "docker build -t sparsek-h100 . && docker run --gpus all --rm sparsek-h100 ./sparse_h100",
+    "lintOnly": false
+  }
+}

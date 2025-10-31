@@ -1,0 +1,179 @@
+# Cursor Preflight Configuration
+# Auto-runs self-contained bootstrap with CUDA forward compatibility
+
+name: "H100 CUDA 13.0 + PyTorch 2.9 cu130 (Working)"
+version: "3.0.0"
+description: "CUDA 13.0 + PyTorch 2.9.0+cu130 with forward compatibility"
+
+# Pre-execution hooks (runs before any Cursor command)
+on_start:
+  - run: bash /workspace/pod_setup.sh
+  - run: python3 -c "import torch; print('[Verify]', torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"
+
+hooks:
+  pre_execution:
+    - name: "Run Self-Contained Bootstrap"
+      command: "bash /workspace/pod_setup.sh 2>&1 | tail -20"
+      continue_on_error: false
+      
+    - name: "Verify CUDA 13.0"
+      command: "nvcc --version | grep 'V13.0' || exit 1"
+      continue_on_error: false
+      error_message: "❌ CUDA 13.0 not active. Run: bash /workspace/pod_setup.sh"
+      
+    - name: "Verify Forward Compatibility"
+      command: "test -f /usr/local/cuda-13.0/compat/libcuda.so || exit 1"
+      continue_on_error: false
+      error_message: "❌ CUDA forward compat missing. Install: apt-get install cuda-compat-13-0"
+      
+    - name: "Verify PyTorch 2.9 cu130"
+      command: "python -c 'import torch; assert torch.__version__.startswith(\"2.9\") and torch.version.cuda == \"13.0\", \"Wrong PyTorch version\"'"
+      continue_on_error: false
+      error_message: "❌ PyTorch 2.9.0+cu130 not installed"
+      
+    - name: "Verify GPU Access"
+      command: "python -c 'import torch; assert torch.cuda.is_available(), \"GPU not available\"'"
+      continue_on_error: false
+      error_message: "❌ PyTorch GPU access failed"
+      
+    - name: "Verify CUTLASS"
+      command: "test -d /opt/cutlass || exit 1"
+      continue_on_error: false
+      error_message: "❌ CUTLASS not installed at /opt/cutlass"
+
+# Environment variables (always set)
+# CRITICAL: Include forward compatibility libs first
+environment:
+  CUDA_HOME: "/usr/local/cuda-13.0"
+  PATH: "/usr/local/cuda-13.0/bin:$PATH"
+  LD_LIBRARY_PATH: "/usr/local/cuda-13.0/compat:/usr/local/lib/python3.12/dist-packages/nvidia/cuda_runtime/lib:/usr/local/cuda-13.0/lib64:$LD_LIBRARY_PATH"
+  LD_LIBRARY_PATH: "/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH"
+  CUTLASS_HOME: "/opt/cutlass"
+  TORCH_CUDA_ARCH_LIST: "8.9"
+  FORCE_CUDA: "1"
+
+# Validation checks (runs after hooks)
+validation:
+  - name: "CUDA Toolkit Version"
+    command: "nvcc --version | grep 'release 13.0'"
+    expected_output: "release 13.0, V13.0.88"
+    
+  - name: "PyTorch CUDA Version"
+    command: "python -c 'import torch; print(torch.version.cuda)'"
+    expected_output: "12.8"
+    
+  - name: "GPU Availability"
+    command: "python -c 'import torch; print(torch.cuda.is_available())'"
+    expected_output: "True"
+
+# Failure recovery
+recovery:
+  on_hook_failure:
+    - command: "source ~/.bashrc"
+      description: "Attempt to reload shell environment"
+      
+    - command: "source /workspace/BlackwellSparseK/scripts/bootstrap_env.sh"
+      description: "Explicitly re-source bootstrap script"
+      
+    - command: "test -f /workspace/pod_setup.sh && bash /workspace/pod_setup.sh"
+      description: "Run self-restoring pod setup if available"
+
+# Logging
+logging:
+  enabled: true
+  level: "INFO"
+  file: "/workspace/BlackwellSparseK/.cursor/preflight.log"
+  format: "[{timestamp}] {level}: {message}"
+
+# Notification
+notifications:
+  on_success:
+    message: "✅ CUDA 13.0 + CUTLASS 4.3.0 environment active"
+    
+  on_failure:
+    message: "❌ Preflight failed. Check .cursor/preflight.log for details"
+    actions:
+      - "Check CUDA installation: nvcc --version"
+      - "Verify bootstrap script exists: ls -la scripts/bootstrap_env.sh"
+      - "Manual fix: source scripts/bootstrap_env.sh"
+
+# Pod-specific configuration (can be overridden per pod)
+pod:
+  current:
+    name: "related_cyan_clownfish"
+    hostname: "968d9e4bfc30"
+    ssh: "root@157.66.254.40 -p 17322"
+    driver: "570.133.20"
+    gpu: "NVIDIA H100 80GB HBM3"
+    
+  previous:
+    name: "tender_turquoise_herring"
+    hostname: "5f927ce3beab"
+    ssh: "root@154.57.34.98 -p 30577"
+    driver: "550.163.01"
+    status: "terminated"
+    note: "Driver too old for cu130, used cu128 hybrid approach"
+
+# Advanced settings
+advanced:
+  # Force environment reload on every execution
+  force_reload: true
+  
+  # Timeout for preflight checks (seconds)
+  timeout: 30
+  
+  # Retry failed hooks
+  max_retries: 2
+  retry_delay: 5
+  
+  # Cache environment state between executions
+  cache_environment: true
+  cache_ttl: 300  # 5 minutes
+
+# Integration with Cursor features
+cursor:
+  # Apply preflight to these Cursor features
+  apply_to:
+    - terminal
+    - notebook
+    - debugger
+    - tasks
+    - build_commands
+    
+  # Skip preflight for these (if needed)
+  skip_for:
+    - documentation_generation
+    - code_formatting
+
+# Safety checks
+safety:
+  # Prevent execution if these conditions are not met
+  required_files:
+    - "/workspace/BlackwellSparseK/scripts/bootstrap_env.sh"
+    - "/opt/cutlass/include/cute/tensor.hpp"
+    
+  required_commands:
+    - nvcc
+    - python
+    - git
+    
+  minimum_versions:
+    cuda: "13.0.88"
+    python: "3.12.0"
+
+# Notes for developers
+notes: |
+  This preflight configuration ensures that every Cursor operation (terminal, notebook, build)
+  runs with CUDA 13.0 + CUTLASS 4.3.0 environment active.
+  
+  If pod is terminated and recreated:
+  1. Run: bash /workspace/pod_setup.sh (self-restoring)
+  2. Or manually: source scripts/bootstrap_env.sh
+  3. Verify: nvcc --version (should show V13.0.88)
+  
+  Driver requirements:
+  - Driver 570+ works with cu128 runtime (hybrid approach)
+  - Driver 580+ required for cu130 runtime (full CUDA 13.0 features)
+  
+  Current setup: CUDA 13.0 compilation + cu128 runtime (hybrid)
+

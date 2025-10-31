@@ -1,0 +1,4 @@
+dram_bw: 45.20
+sm_active: 72.30
+tensor_core: 65.80
+

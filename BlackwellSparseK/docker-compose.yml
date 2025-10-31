@@ -1,0 +1,186 @@
+# ============================================================================
+# BlackwellSparseK Docker Compose Configuration
+# ============================================================================
+# Orchestrates development, production, benchmark, and CI services
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # Development Environment
+  # ==========================================================================
+  dev:
+    build:
+      context: .
+      dockerfile: docker/blackwell-sparsek-dev.dockerfile
+    image: blackwell-sparsek:dev
+    container_name: sparsek-dev
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - CUTLASS_PATH=/opt/cutlass
+      - BSK_DEBUG=0
+      - BSK_PROFILE=0
+    volumes:
+      - .:/workspace/BlackwellSparseK
+      - ./data:/data
+      - ./results:/results
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    shm_size: '8gb'
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    networks:
+      - sparsek-net
+
+  # ==========================================================================
+  # Production vLLM Server
+  # ==========================================================================
+  vllm-server:
+    build:
+      context: .
+      dockerfile: docker/blackwell-sparsek-prod.dockerfile
+    image: blackwell-sparsek:prod
+    container_name: sparsek-vllm
+    runtime: nvidia
+    ports:
+      - "8000:8000"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - VLLM_ATTENTION_BACKEND=SPARSEK_XFORMERS
+      - CUTLASS_PATH=/opt/cutlass
+    volumes:
+      - ./models:/models
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    shm_size: '16gb'
+    command: >
+      python -m vllm.entrypoints.openai.api_server
+      --model meta-llama/Llama-3.1-70B
+      --max-model-len 4096
+      --attention-backend SPARSEK_XFORMERS
+      --tensor-parallel-size 1
+      --gpu-memory-utilization 0.9
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - sparsek-net
+    profiles:
+      - production
+
+  # ==========================================================================
+  # Benchmark Runner
+  # ==========================================================================
+  benchmark:
+    build:
+      context: .
+      dockerfile: docker/blackwell-sparsek-bench.dockerfile
+    image: blackwell-sparsek:bench
+    container_name: sparsek-bench
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - CUTLASS_PATH=/opt/cutlass
+    volumes:
+      - ./results:/workspace/results
+      - ./benchmarks:/workspace/benchmarks
+    cap_add:
+      - SYS_ADMIN  # Required for Nsight Compute profiling
+    shm_size: '8gb'
+    command: python perf.py --save-results
+    networks:
+      - sparsek-net
+    profiles:
+      - benchmark
+
+  # ==========================================================================
+  # CI Test Runner
+  # ==========================================================================
+  ci:
+    build:
+      context: .
+      dockerfile: docker/blackwell-sparsek-ci.dockerfile
+    image: blackwell-sparsek:ci
+    container_name: sparsek-ci
+    volumes:
+      - .:/ci
+      - ./coverage:/ci/coverage
+    command: >
+      bash -c "
+      echo '🧪 Running BlackwellSparseK CI Tests' &&
+      ruff check src/ tests/ &&
+      black --check src/ tests/ &&
+      pytest tests/ -v --cov=src/blackwell_sparsek --cov-report=html --cov-report=term
+      "
+    networks:
+      - sparsek-net
+    profiles:
+      - test
+
+  # ==========================================================================
+  # Jupyter Notebook Server (for analysis)
+  # ==========================================================================
+  jupyter:
+    build:
+      context: .
+      dockerfile: docker/blackwell-sparsek-bench.dockerfile
+    image: blackwell-sparsek:bench
+    container_name: sparsek-jupyter
+    runtime: nvidia
+    ports:
+      - "8888:8888"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - .:/workspace/BlackwellSparseK
+      - ./notebooks:/workspace/notebooks
+      - ./results:/workspace/results
+    command: >
+      jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --NotebookApp.token=''
+      --NotebookApp.password=''
+    networks:
+      - sparsek-net
+    profiles:
+      - analysis
+
+networks:
+  sparsek-net:
+    driver: bridge
+
+# ============================================================================
+# USAGE EXAMPLES
+# ============================================================================
+#
+# Development:
+#   docker-compose up dev
+#
+# Production vLLM server:
+#   docker-compose --profile production up vllm-server
+#
+# Run benchmarks:
+#   docker-compose --profile benchmark up benchmark
+#
+# Run CI tests:
+#   docker-compose --profile test up ci
+#
+# Jupyter analysis:
+#   docker-compose --profile analysis up jupyter
+#
+# Build all images:
+#   docker-compose build
+#
+# ============================================================================
+

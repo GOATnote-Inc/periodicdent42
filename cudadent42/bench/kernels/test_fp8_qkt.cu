@@ -1,4 +1,4 @@
-// Minimal test: Q@K^T only (no softmax, no attention)
+  // Minimal test: Q@K^T only (no softmax, no attention)
 // Goal: Isolate FP8 dequantization bug
 
 #include <cuda_runtime.h>
