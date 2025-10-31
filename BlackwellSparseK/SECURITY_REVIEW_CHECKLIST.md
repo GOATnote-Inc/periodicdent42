@@ -16,7 +16,7 @@
   - Status: ⏳ Pending scan
 
 - [ ] **No IP addresses in code**
-  - Check: `154.57.34.90`, `157.66.254.40` (RunPod IPs)
+  - Check: RunPod IPs, cloud instance addresses
   - Tools: `grep -r "[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}" .`
   - Status: ⏳ Pending scan
 
