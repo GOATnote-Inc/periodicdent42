@@ -1,0 +1,181 @@
+name: Shadow Nsight Benchmark
+
+on:
+  push:
+    branches: [ main, feature/* ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup CUDA 13.0
+      run: |
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+        sudo dpkg -i cuda-keyring_1.1-1_all.deb
+        sudo apt-get update
+        sudo apt-get -y install cuda-toolkit-13-0 libssl-dev
+    
+    - name: Verify CUDA Installation
+      run: |
+        export PATH=/usr/local/cuda-13.0/bin:$PATH
+        nvcc --version
+        which nvcc
+    
+    - name: Build Benchmark Harness
+      run: |
+        export PATH=/usr/local/cuda-13.0/bin:$PATH
+        export CUDA_HOME=/usr/local/cuda-13.0
+        cd benchmarks
+        nvcc -O3 -std=c++17 -arch=sm_90a -lineinfo \
+          -I/usr/local/cuda-13.0/include \
+          -o bench_kernel bench_kernel_events.cu \
+          -lcudart -lcrypto
+        ls -lh bench_kernel
+    
+    - name: Run Benchmark (CPU mode - timing only)
+      run: |
+        cd benchmarks
+        # Note: This will fail without GPU, but demonstrates CI structure
+        # In production, use self-hosted GPU runner
+        ./bench_kernel || echo "⚠️  No GPU available (use self-hosted runner for actual benchmarks)"
+    
+    - name: Validate JSON Report
+      run: |
+        if [ -f reports/sparse_bsr_spmm_ncu_shadow.json ]; then
+          echo "✅ JSON report found"
+          cat reports/sparse_bsr_spmm_ncu_shadow.json
+          
+          # Check for required fields
+          jq -e '.kernel' reports/sparse_bsr_spmm_ncu_shadow.json
+          jq -e '.performance.tflops' reports/sparse_bsr_spmm_ncu_shadow.json
+          jq -e '.validation.deterministic' reports/sparse_bsr_spmm_ncu_shadow.json
+          
+          # Check variance threshold
+          VARIANCE=$(jq -r '.timing.variance_pct' reports/sparse_bsr_spmm_ncu_shadow.json)
+          if (( $(echo "$VARIANCE > 2.0" | bc -l) )); then
+            echo "❌ FAIL: Variance too high ($VARIANCE% > 2%)"
+            exit 1
+          fi
+          
+          # Check determinism
+          DETERM=$(jq -r '.validation.deterministic' reports/sparse_bsr_spmm_ncu_shadow.json)
+          if [ "$DETERM" != "true" ]; then
+            echo "❌ FAIL: Kernel is nondeterministic"
+            exit 1
+          fi
+          
+          echo "✅ All validation checks passed"
+        else
+          echo "⚠️  No JSON report (expected without GPU)"
+        fi
+    
+    - name: Upload Benchmark Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: benchmark-report
+        path: |
+          reports/*.json
+          benchmarks/bench_kernel
+        retention-days: 30
+    
+    - name: Comment PR with Results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const reportPath = 'reports/sparse_bsr_spmm_ncu_shadow.json';
+          
+          if (!fs.existsSync(reportPath)) {
+            console.log('No benchmark report found');
+            return;
+          }
+          
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          
+          const comment = `## 🚀 Shadow Nsight Benchmark Results
+          
+          **Kernel:** \`${report.kernel}\`
+          **Device:** ${report.device}
+          
+          ### Performance Metrics
+          | Metric | Value |
+          |--------|-------|
+          | Avg Time | ${report.timing.avg_ms.toFixed(3)} ms (±${report.timing.std_ms.toFixed(3)} ms) |
+          | TFLOPS | ${report.performance.tflops.toFixed(1)} |
+          | GB/s | ${report.performance.gbs.toFixed(1)} |
+          | SM Utilization | ${report.performance.sm_util_est_pct.toFixed(1)}% |
+          | DRAM Utilization | ${report.performance.dram_util_est_pct.toFixed(1)}% |
+          | Variance | ${report.timing.variance_pct.toFixed(2)}% |
+          
+          ### Validation
+          - **Deterministic:** ${report.validation.deterministic ? '✅' : '❌'}
+          - **Checksum:** \`${report.validation.checksum.substring(0, 16)}...\`
+          
+          ${report.timing.variance_pct < 2.0 ? '✅ Low variance (< 2%)' : '⚠️ High variance'}
+          ${report.validation.deterministic ? '✅ Reproducible' : '❌ Nondeterministic'}
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  benchmark-gpu:
+    runs-on: [self-hosted, gpu, h100]
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[benchmark]')
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Verify GPU
+      run: |
+        nvidia-smi
+        nvcc --version
+    
+    - name: Build & Run Benchmark
+      run: |
+        export PATH=/usr/local/cuda-13.0/bin:$PATH
+        export LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:$LD_LIBRARY_PATH
+        
+        cd benchmarks
+        nvcc -O3 -std=c++17 -arch=sm_90a -lineinfo \
+          -I/usr/local/cuda-13.0/include \
+          -o bench_kernel bench_kernel_events.cu \
+          -lcudart -lcrypto
+        
+        ./bench_kernel
+    
+    - name: Validate Results
+      run: |
+        cat reports/sparse_bsr_spmm_ncu_shadow.json
+        
+        TFLOPS=$(jq -r '.performance.tflops' reports/sparse_bsr_spmm_ncu_shadow.json)
+        echo "Measured: $TFLOPS TFLOPS"
+        
+        # Check against baseline (600 TFLOPS ±5%)
+        if (( $(echo "$TFLOPS < 570" | bc -l) )); then
+          echo "❌ FAIL: Performance regression ($TFLOPS < 570 TFLOPS)"
+          exit 1
+        fi
+        
+        echo "✅ Performance meets baseline"
+    
+    - name: Upload GPU Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: gpu-benchmark-report
+        path: reports/*.json
+        retention-days: 90
+
