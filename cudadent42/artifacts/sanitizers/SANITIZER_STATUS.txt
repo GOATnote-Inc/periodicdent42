@@ -1,7 +1,0 @@
-⚠️  compute-sanitizer not in PATH (CUDA 12.8 toolkit PATH configuration issue)
-
-EVIDENCE (Code Inspection):
-1. Lane-exclusive SMEM accumulation: fa_s512_v3.cu:330-332, 364-371
-2. Each lane owns d indices where d %% 32 == lane_id (no cross-lane writes, no atomics)
-3. Monotonic norm assertion: DEBUG_V3 flag enabled (lines 373-379)
-4. Bank conflict padding: 32-float pad added to SharedMemory (line 87)
