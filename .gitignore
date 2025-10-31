@@ -1,9 +1,63 @@
+# TriageAttention .gitignore
+# Professional build and development artifacts
+
+# ==============================================================================
+# Build Artifacts
+# ==============================================================================
+build/
+build_*/
+.build/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+*.cmake
+!CMakeLists.txt
+!cmake/**/*.cmake
+
+# ==============================================================================
+# CUDA / GPU
+# ==============================================================================
+*.fatbin
+*.cubin
+*.ptx
+*.i
+*.ii
+*.gpu
+*.sm_*
+
+# Nsight
+*.ncu-rep
+*.nsys-rep
+*.nvvp
+*.qdrep
+
+# CUDA profiler logs
+*.log
+*.nvlog
+
+# ==============================================================================
 # Python
+# ==============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -21,84 +75,139 @@ wheels/
 *.egg
 MANIFEST
 
-# Rust
-target/
-Cargo.lock
-**/*.rs.bk
+# PyTorch
+*.pt
+*.pth
+*.ckpt
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
 
-# IDEs
+# ==============================================================================
+# IDE / Editor
+# ==============================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
+*.sublime-*
+*.code-workspace
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.hypothesis/
+# Cursor AI
+.cursor/
+!.cursor/rules.md
 
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb
+# ==============================================================================
+# Test / Benchmark Results
+# ==============================================================================
+results/
+*.json
+!config/*.json
+*.csv
+*.png
+*.pdf
+*.svg
 
+# Profiling
+gmon.out
+cachegrind.out.*
+callgrind.out.*
+perf.data
+perf.data.old
+
+# ==============================================================================
 # Logs
+# ==============================================================================
 *.log
 logs/
+*.err
+*.warn
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# ==============================================================================
+# Archives
+# ==============================================================================
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tgz
+*.zip
+*.7z
 
-# Environment variables
-.env
-.env.local
-
-# Node.js (for UI)
-node_modules/
-.next/
-out/
-npm-debug.log*
-
-# Data files
-data/
-!app/src/data/
-!rust/core/src/data/
-experiments/
-results/
-!cuda_reboot/benchmarks/results/
-*.hdf5
-*.h5
-
-# Temporary files
+# ==============================================================================
+# Temporary Files
+# ==============================================================================
 tmp/
 temp/
 *.tmp
-.cache/
+*.bak
+*.cache
+*.swp
 
-# macOS
+# ==============================================================================
+# Documentation Build
+# ==============================================================================
+docs/_build/
+docs/generated/
+site/
+
+# ==============================================================================
+# System Files
+# ==============================================================================
 .DS_Store
-.AppleDouble
-.LSOverride
+Thumbs.db
+desktop.ini
 
-*.api-key
-*.service-url
-cloud-sql-proxy
-.benchmarks/
-result
+# ==============================================================================
+# Dependencies (use git submodules or package managers)
+# ==============================================================================
+third_party/*/
+!third_party/README.md
+
+# ==============================================================================
+# Credentials & Secrets
+# ==============================================================================
+*.pem
+*.key
+*.crt
+*.p12
+.env
+.env.local
+secrets/
+credentials/
+
+# ==============================================================================
+# Large Files / Data
+# ==============================================================================
+*.h5
+*.hdf5
+*.npy
+*.npz
 data/
-models/*.pkl
-artifact/
+datasets/
+models/*.pth
+models/*.onnx
 
-# Archive directory (research/experimental work - keep local only)
-archive/
+# ==============================================================================
+# CI/CD
+# ==============================================================================
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+# Project Specific
+# ==============================================================================
+.archive/
+*_OLD/
+*_BACKUP/
+*_deprecated/
+
+# But track empty .archive/ directory structure
+!.archive/.gitkeep
+!.archive/*/.gitkeep
