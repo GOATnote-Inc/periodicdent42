@@ -24,9 +24,12 @@
 #include <cute/tensor.hpp>
 #include <cute/atom/copy_atom.hpp>
 #include <cute/atom/copy_traits_sm90_tma.hpp>
+#include <cute/arch/copy_sm90_tma.hpp>
+#include <cutlass/pipeline/pipeline.hpp>
 
 using namespace nvcuda;
 using namespace cute;
+using namespace cutlass;
 
 // ----------------------------- Tunables ----------------------------------
 
@@ -193,6 +196,162 @@ __global__ void bsr_spmm_kernel_basic(
   }
 }
 
+// ---------------------------------------------------------------------------
+// bsr_spmm_kernel_tma — H100 (sm_90a) triple-buffered TMA version
+// TEMPORARILY DISABLED - needs PipelineState API fix for CUTLASS 4.3
+// ---------------------------------------------------------------------------
+
+#if 0
+template<int BM_, int BN_, int BK_>
+__global__ void bsr_spmm_kernel_tma(
+    const BSR A, const BSR B,
+    ElemAcc* __restrict__ C,
+    int M, int N, int K,
+    int ldc)
+{
+  constexpr int WARPS_M = BM_ / WM;
+  constexpr int WARPS_N = BN_ / WN;
+  constexpr int WARPS_PER_CTA = WARPS_M * WARPS_N;
+  constexpr int CTA_THREADS = WARPS_PER_CTA * 32;
+  constexpr int STAGES = 3;  // triple-buffered TMA
+
+  if (blockDim.x != CTA_THREADS) return;
+
+  const int warp_id = threadIdx.x / 32;
+  const int warp_m = warp_id / WARPS_N;
+  const int warp_n = warp_id % WARPS_N;
+
+  const int tb_m = blockIdx.y;
+  const int tb_n = blockIdx.x;
+
+  __shared__ __align__(128) ElemIn smemA[STAGES][BM_ * BK_];
+  __shared__ __align__(128) ElemIn smemB[STAGES][BK_ * BN_];
+
+  using LA_g = Layout<Shape<Int<BM_>, Int<BK_>>, Stride<Int<BK_>, Int<1>>>;
+  using LB_g = Layout<Shape<Int<BK_>, Int<BN_>>, Stride<Int<BN_>, Int<1>>>;
+  using LA_s = Layout<Shape<Int<BM_>, Int<BK_>>, Stride<Int<BK_>, Int<1>>>;
+  using LB_s = Layout<Shape<Int<BK_>, Int<BN_>>, Stride<Int<1>, Int<BK_>>>;
+
+  auto tmaA = make_tma_copy(LA_s{}, LA_g{});
+  auto tmaB = make_tma_copy(LB_s{}, LB_g{});
+
+  using Pipe = PipelineTmaAsync<STAGES>;
+  __shared__ typename Pipe::SharedStorage pipe_smem;
+  Pipe pipe{threadIdx.x, &pipe_smem};
+
+  // Accumulators
+  constexpr int WM_TILES = WM / 16;
+  constexpr int WN_TILES = WN / 16;
+
+  wmma::fragment<wmma::accumulator, 16, 16, 16, ElemAcc> acc[WM_TILES][WN_TILES];
+  #pragma unroll
+  for (int i=0; i<WM_TILES; i++)
+    for (int j=0; j<WN_TILES; j++)
+      wmma::fill_fragment(acc[i][j], 0.0f);
+
+  const int a_row_start = A.row_ptr[tb_m];
+  const int a_row_end   = A.row_ptr[tb_m+1];
+
+  int write_stage = 0, read_stage = 0;
+  int enq=0, deq=0;
+
+  for (int a_it=a_row_start; a_it<a_row_end; ++a_it) {
+    int kb = A.col_idx[a_it];
+    int b_begin = B.row_ptr[kb];
+    int b_end   = B.row_ptr[kb+1];
+    int b_it=-1;
+    int lo=b_begin, hi=b_end-1;
+    while (lo<=hi) {
+      int mid=(lo+hi)>>1;
+      int col=B.col_idx[mid];
+      if (col==tb_n) {b_it=mid; break;}
+      if (col<tb_n) lo=mid+1; else hi=mid-1;
+    }
+    if (b_it<0) continue;
+
+    const ElemIn* gA = A.vals + (size_t)a_it*BM_*BK_;
+    const ElemIn* gB = B.vals + (size_t)b_it*BK_*BN_;
+
+    Tensor GA = make_tensor(make_gmem_ptr((ElemIn*)gA), LA_g{});
+    Tensor GB = make_tensor(make_gmem_ptr((ElemIn*)gB), LB_g{});
+    Tensor SA = make_tensor(make_smem_ptr(&smemA[write_stage][0]), LA_s{});
+    Tensor SB = make_tensor(make_smem_ptr(&smemB[write_stage][0]), LB_s{});
+
+    pipe.producer_acquire(write_stage);
+    copy(tmaA, GA, SA, pipe, write_stage);
+    copy(tmaB, GB, SB, pipe, write_stage);
+    pipe.producer_commit(write_stage);
+
+    ++enq;
+    write_stage = (write_stage+1) % STAGES;
+
+    if (enq-deq >= 2) {
+      pipe.consumer_wait(read_stage);
+
+      #pragma unroll
+      for (int kk=0; kk<BK_; kk+=16) {
+        const ElemIn* As = &smemA[read_stage][(warp_m*WM)*BK_+kk];
+        const ElemIn* Bs = &smemB[read_stage][kk+(warp_n*WN)*BK_];
+
+        #pragma unroll
+        for (int i=0; i<WM_TILES; i++) {
+          wmma::fragment<wmma::matrix_a, 16, 16, 16, ElemIn, wmma::row_major> a_frag;
+          wmma::load_matrix_sync(a_frag, As+i*16*BK_, BK_);
+
+          #pragma unroll
+          for (int j=0; j<WN_TILES; j++) {
+            wmma::fragment<wmma::matrix_b, 16, 16, 16, ElemIn, wmma::col_major> b_frag;
+            wmma::load_matrix_sync(b_frag, Bs+j*16*BK_, BK_);
+            wmma::mma_sync(acc[i][j], a_frag, b_frag, acc[i][j]);
+          }
+        }
+      }
+
+      pipe.consumer_release(read_stage);
+      read_stage = (read_stage+1) % STAGES;
+      ++deq;
+    }
+  }
+
+  while (deq < enq) {
+    pipe.consumer_wait(read_stage);
+
+    #pragma unroll
+    for (int kk=0; kk<BK_; kk+=16) {
+      const ElemIn* As = &smemA[read_stage][(warp_m*WM)*BK_+kk];
+      const ElemIn* Bs = &smemB[read_stage][kk+(warp_n*WN)*BK_];
+
+      #pragma unroll
+      for (int i=0; i<WM_TILES; i++) {
+        wmma::fragment<wmma::matrix_a, 16, 16, 16, ElemIn, wmma::row_major> a_frag;
+        wmma::load_matrix_sync(a_frag, As+i*16*BK_, BK_);
+
+        #pragma unroll
+        for (int j=0; j<WN_TILES; j++) {
+          wmma::fragment<wmma::matrix_b, 16, 16, 16, ElemIn, wmma::col_major> b_frag;
+          wmma::load_matrix_sync(b_frag, Bs+j*16*BK_, BK_);
+          wmma::mma_sync(acc[i][j], a_frag, b_frag, acc[i][j]);
+        }
+      }
+    }
+
+    pipe.consumer_release(read_stage);
+    read_stage = (read_stage+1) % STAGES;
+    ++deq;
+  }
+
+  const int c_row0 = tb_m*BM_ + warp_m*WM;
+  const int c_col0 = tb_n*BN_ + warp_n*WN;
+
+  ElemAcc* Cg = C + c_row0*ldc + c_col0;
+
+  #pragma unroll
+  for (int i=0; i<WM_TILES; i++)
+    for (int j=0; j<WN_TILES; j++)
+      wmma::store_matrix_sync(Cg+i*16*ldc+j*16, acc[i][j], ldc, wmma::mem_row_major);
+}
+#endif  // TMA kernel disabled
+
 // --------------------------- Host-side helpers ----------------------------
 
 struct DeviceBSR {
@@ -318,10 +477,37 @@ int main(int argc, char** argv)
 
   printf("[Launch] grid=(%d, %d)  block=%d\n", grid.x, grid.y, block_t);
 
+  // CUDA Events timing
+  cudaEvent_t start, stop;
+  CUDA_CHECK(cudaEventCreate(&start));
+  CUDA_CHECK(cudaEventCreate(&stop));
+
+  // Warm-up
   bsr_spmm_kernel_basic<BM, BN, BK><<<grid, block_t>>>(
       dev_bsr.A, dev_bsr.B, dev_bsr.dC, M, N, K, dev_bsr.ldc);
-  CUDA_CHECK(cudaGetLastError());
   CUDA_CHECK(cudaDeviceSynchronize());
+
+  // Timed run
+  CUDA_CHECK(cudaEventRecord(start));
+  bsr_spmm_kernel_basic<BM, BN, BK><<<grid, block_t>>>(
+      dev_bsr.A, dev_bsr.B, dev_bsr.dC, M, N, K, dev_bsr.ldc);
+  CUDA_CHECK(cudaEventRecord(stop));
+  CUDA_CHECK(cudaEventSynchronize(stop));
+
+  float elapsed_ms = 0;
+  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
+
+  // Compute TFLOPS
+  // BSR SpMM: For each intersecting block pair, we do BM*BN*BK*2 FLOPs (multiply-add)
+  // Approximate: nnzb_result * BM * BN * BK * 2 FLOPs
+  // For simplicity, estimate from problem size and sparsity
+  double flops = (double)M * N * K * 2.0 * (dev_bsr.A.nnzb / (double)(dev_bsr.A.M_blocks * dev_bsr.A.K_blocks));
+  double tflops = (flops / 1e12) / (elapsed_ms / 1e3);
+
+  printf("[Timing] Latency: %.3f ms, TFLOPS: %.1f\n", elapsed_ms, tflops);
+
+  CUDA_CHECK(cudaEventDestroy(start));
+  CUDA_CHECK(cudaEventDestroy(stop));
 
   std::vector<ElemAcc> hC((size_t)M * N);
   CUDA_CHECK(cudaMemcpy(hC.data(), dev_bsr.dC, hC.size() * sizeof(ElemAcc), cudaMemcpyDeviceToHost));

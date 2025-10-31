@@ -1,0 +1,81 @@
+# BlackwellSparseK Production Profiling Container
+# CUDA 13.0 + Driver R580+ + Nsight Compute 2025.3 + CUTLASS 4.3.0
+# Purpose: Reproducible H100/B200 profiling with clock locking and CUDA Events
+
+FROM nvidia/cuda:13.0.0-devel-ubuntu22.04
+
+# Pin versions
+ARG CUDA_VERSION=13.0.0
+ARG CUTLASS_VERSION=v4.3.0
+ARG NSIGHT_VERSION=2025.3.0
+
+# Disable interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CUDA_HOME=/usr/local/cuda-13.0
+ENV PATH=/usr/local/cuda-13.0/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:$LD_LIBRARY_PATH
+ENV NVIDIA_TF32_OVERRIDE=0
+
+# Install build tools + Python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-dev \
+    ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Nsight Compute 2025.3 (CLI)
+RUN wget -qO- https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb && \
+    dpkg -i /tmp/cuda-keyring.deb && \
+    apt-get update && \
+    apt-get install -y nsight-compute-2025.3 && \
+    rm -rf /var/lib/apt/lists/* /tmp/cuda-keyring.deb
+
+# Clone CUTLASS 4.3.0
+RUN git clone --depth=1 --branch ${CUTLASS_VERSION} https://github.com/NVIDIA/cutlass.git /opt/cutlass || \
+    git clone --depth=1 https://github.com/NVIDIA/cutlass.git /opt/cutlass
+
+ENV CUTLASS_PATH=/opt/cutlass
+
+# Install Python deps for benchmarking
+RUN pip3 install --no-cache-dir \
+    torch==2.4.0 \
+    numpy \
+    pandas \
+    matplotlib \
+    tqdm
+
+# Create workspace
+WORKDIR /workspace
+
+# Copy source
+COPY src/ /workspace/src/
+COPY scripts/ /workspace/scripts/
+COPY Makefile /workspace/
+COPY benchmarks/ /workspace/benchmarks/
+
+# Make scripts executable
+RUN chmod +x /workspace/scripts/*.sh
+
+# Build kernel
+RUN cd /workspace && make kernel
+
+# Environment check script
+RUN echo '#!/bin/bash\n\
+echo "=== Environment Check ==="\n\
+echo "CUDA Version: $(nvcc --version | grep release)"\n\
+echo "Driver Version: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader)"\n\
+echo "Nsight Compute: $(ncu --version 2>&1 | head -1)"\n\
+echo "CUTLASS: $(cd /opt/cutlass && git describe --tags 2>/dev/null || echo "main branch")"\n\
+echo "GPU: $(nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader)"\n\
+echo "========================"\n\
+' > /usr/local/bin/check_env && chmod +x /usr/local/bin/check_env
+
+# Default command
+CMD ["/workspace/scripts/bench.sh"]
+

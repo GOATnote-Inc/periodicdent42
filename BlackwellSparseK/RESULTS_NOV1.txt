@@ -1,0 +1,39 @@
+Performance Results (Nov 1, 2025 - ACTIVE SESSION)
+===================================================
+
+BASELINE:
+  Latency:    619 μs
+  TFLOPS:     111.1
+  Method:     Cooperative loads + WMMA m16n16k16
+  Config:     BM=128, BN=128, BK=32, WM=64, WN=64, 4 warps
+
+CUTLASS REFERENCE (Example 88 - FlashAttention):
+  TFLOPS:     603.0
+  Gap from baseline: 5.4×
+
+=== PHASE 1: OCCUPANCY ✅ ===
+  Latency:    539 μs  (-13%)
+  TFLOPS:     127.5   (+15%)
+  Method:     Increased warps (4 → 8), BM=256
+  Gap:        4.7×
+
+=== PHASE 2: CP.ASYNC ✅ ===
+  Latency:    299 μs  (-45% from Phase 1, -52% from baseline)
+  TFLOPS:     230.2   (+81% from Phase 1, +107% from baseline!)
+  Method:     Asynchronous memory transfer (cp.async.cg.shared.global)
+  Details:    - 16-byte aligned loads
+              - Transpose B in shared memory after load
+              - Eliminated blocking memory waits
+  Gap:        2.6× (603 / 230.2)
+
+PROGRESS SUMMARY:
+  Baseline → Phase 1:  +15% (occupancy tuning)
+  Phase 1 → Phase 2:   +81% (cp.async)
+  Baseline → Phase 2:  +107% (2.07× total speedup!)
+
+REMAINING GAP: 2.6× to CUTLASS FlashAttention
+
+NEXT: Phase 3 - Warp Specialization (producer/consumer warps)
+      Target: 300+ TFLOPS (1.3× from current 230)
+      Approach: Dedicate warps to loading, others to compute
+      Expected: Hide remaining memory latency

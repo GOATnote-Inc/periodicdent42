@@ -20,7 +20,7 @@ SRC := src/sparse_bsr_gemm_h100.cu
 TARGET := build/sparse_h100
 endif
 
-.PHONY: all clean kernel verify profile baseline
+.PHONY: all clean kernel verify bench bench-full baseline container
 
 all: kernel
 
@@ -34,19 +34,33 @@ verify: kernel
 	@echo "Running verification..."
 	@$(TARGET)
 
-profile: kernel
-	@echo "Profiling $(TARGET)..."
-	@ncu --metrics sm__warps_active.avg.pct_of_peak_sustained_elapsed,\
-sm__pipe_tensor_op_hmma_cycles_active.avg.pct_of_peak_sustained_elapsed,\
-dram__throughput.avg.pct_of_peak_sustained_elapsed \
-		--target-processes all $(TARGET) 2>&1 | tee artifacts/profile.log
+# Quick benchmark (10 trials, 30s warmup)
+bench: kernel
+	@echo "Quick benchmark..."
+	@TRIALS=10 WARMUP=30 BINARY=$(TARGET) bash scripts/bench.sh
+
+# Full benchmark (30 trials, 60s warmup, Nsight profiling)
+bench-full: kernel
+	@echo "Full benchmark with profiling..."
+	@TRIALS=30 WARMUP=60 PROFILE=1 BINARY=$(TARGET) bash scripts/bench.sh
 
 baseline: kernel
 	@echo "Establishing baseline metrics..."
-	@python3 scripts/extract_baseline.py --output ci/baseline/nsight_baseline.norm.txt
+	@TRIALS=30 WARMUP=60 PROFILE=1 BINARY=$(TARGET) bash scripts/bench.sh
+	@python3 scripts/extract_baseline.py \
+		--log artifacts/ncu.log \
+		--output ci/baseline/nsight_baseline.norm.txt
+	@echo "✅ Baseline established: ci/baseline/nsight_baseline.norm.txt"
+	@cat ci/baseline/nsight_baseline.norm.txt
+
+# Build profiling container
+container:
+	@echo "Building profiling container..."
+	docker build -f Dockerfile.profiling -t blackwellsparsek:profiling .
+	@echo "✅ Container ready: blackwellsparsek:profiling"
 
 clean:
-	rm -rf build/*.o build/sparse_h100* artifacts/*.log artifacts/*.csv artifacts/*.ncu-rep
+	rm -rf build/*.o build/sparse_h100* artifacts/*.log artifacts/*.csv artifacts/*.ncu-rep artifacts/*.txt
 
 help:
 	@echo "BlackwellSparseK Makefile"
