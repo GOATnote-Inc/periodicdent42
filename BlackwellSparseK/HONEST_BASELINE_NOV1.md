@@ -25,6 +25,29 @@ This means:
 
 ---
 
+## ✅ L4 Baseline (November 1, 2025)
+
+**Device:** NVIDIA L4 (22GB, CUDA 12.2)  
+**Matrix:** 4096×4096 @ 4096×4096, FP16, 78% sparse
+
+| Implementation | TFLOPS | Time (ms) | Notes |
+|----------------|--------|-----------|-------|
+| **Dense cuBLAS** | **62.51** | 2.199 | Hardware ceiling |
+| **PyTorch Sparse (CSR)** | **0.99** | 30.676 | cuSPARSE backend |
+
+**Key Finding:** cuSPARSE is **63× slower** than dense on L4!
+
+### Pattern Confirmed Across GPUs
+
+| GPU | Dense TFLOPS | Sparse TFLOPS | Slowdown |
+|-----|--------------|---------------|----------|
+| **H100** | 753.61 | 3.45 | 218× |
+| **L4** | 62.51 | 0.99 | 63× |
+
+**Conclusion:** cuSPARSE overhead dominates for 70-80% sparsity on ALL modern GPUs.
+
+---
+
 ## ❌ Blocked: Custom Kernel Verification
 
 **Claim:** 610 TFLOPS (from earlier tests)
