@@ -223,8 +223,16 @@ Advantage:         +47.3%
 **Confidence:** **LOW** (needs hardening)
 
 **Claim:** "Beats FlashAttention-3"  
-**Evidence:** ❌ NOT TESTED (different operation)  
-**Confidence:** **NONE** (irrelevant comparison)
+**Evidence:** ❌ NOT TESTED (different operation - FA3 does attention, we do sparse GEMM)  
+**Confidence:** **NONE** (apples-to-oranges comparison)
+
+**Claim:** "Faster than PyTorch sparse"  
+**Evidence:** ❌ NOT TESTED (correctness only, not performance)  
+**Confidence:** **UNKNOWN** (benchmark created, pending H100 run)
+
+**Claim:** "Faster than cuSPARSE"  
+**Evidence:** ❌ NOT TESTED (NVIDIA's official sparse library)  
+**Confidence:** **UNKNOWN** (critical baseline missing)
 
 ### Critical Questions
 
@@ -336,10 +344,14 @@ This code is confidential and proprietary. Unauthorized distribution, reproducti
 ## Appendix: Validation Timeline
 
 **Week of Nov 4, 2025:**
-- [ ] Monday: Nsight Compute profiling on internal H100
-- [ ] Tuesday: Security audit (static analysis)
-- [ ] Wednesday: Expanded correctness suite
-- [ ] Thursday: Multi-configuration benchmarks
+- [x] **Nov 1:** Baseline measurements on H100 ([Results](HONEST_BASELINE_NOV1.md))
+  - Dense cuBLAS: 753.61 TFLOPS ✅
+  - PyTorch Sparse: 3.45 TFLOPS ✅ (218× slower than dense!)
+  - Custom kernel: BLOCKED (CUDA version mismatch)
+- [ ] Monday: Rebuild kernel for CUDA 12.8 or get CUDA 13 pod
+- [ ] Tuesday: Head-to-head validation vs PyTorch sparse
+- [ ] Wednesday: Nsight Compute profiling
+- [ ] Thursday: Security audit
 - [ ] Friday: Team review + decision
 
 **Week of Nov 11, 2025:**
