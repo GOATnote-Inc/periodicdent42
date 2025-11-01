@@ -395,6 +395,11 @@ attention_kernel_tma_wgmma(
         const int num_tiles_n = (S + TILE_N - 1) / TILE_N;
         const int compute_warp_id = warp_id - 4;
         
+        // Each warp computes subset of rows (hoist to function scope)
+        const int rows_per_warp = (TILE_M + 3) / 4;
+        const int row_start = compute_warp_id * rows_per_warp;
+        const int row_end = min(row_start + rows_per_warp, TILE_M);
+        
         for (int tile_n_idx = 0; tile_n_idx < num_tiles_n; ++tile_n_idx) {
             int stage = tile_n_idx % NUM_STAGES;
             
@@ -408,11 +413,6 @@ attention_kernel_tma_wgmma(
             // ================================================================
             // Q @ K^T (Optimized loop - WGMMA in production)
             // ================================================================
-            
-            // Each warp computes subset of rows
-            const int rows_per_warp = (TILE_M + 3) / 4;
-            const int row_start = compute_warp_id * rows_per_warp;
-            const int row_end = min(row_start + rows_per_warp, TILE_M);
             
             for (int m = row_start; m < row_end; ++m) {
                 int global_m = tile_m_start + m;
