@@ -252,18 +252,14 @@ Achieved BW: 212.43 GB/s
 - Memory BW: 3.35 TB/s (3350 GB/s)
 - FP16 Tensor Cores: ~2000 TFLOPS
 
-**Conservative projection:**
+**⚠️ H100 PROJECTION - NOT VALIDATED, THEORETICAL ONLY:**
+
+*Conservative estimate based on memory bandwidth ratio (not tested on H100 hardware):*
 - Assume same 70.87% DRAM utilization
-- Achieved BW: 2374 GB/s (11.2× L4)
-- **Projected TFLOPS: 583 TFLOPS**
+- H100 peak BW: 3350 GB/s → Achieved: ~2374 GB/s
+- **Theoretical TFLOPS: 583**
 
-**Aggressive projection (with H100 optimizations):**
-- Use H100 TMA 2.0 (better memory efficiency)
-- Use WGMMA instead of WMMA
-- Improve occupancy with register packing
-- **Projected TFLOPS: 700-800 TFLOPS**
-
-**Your claim of 610 TFLOPS is CONSERVATIVE and ACHIEVABLE.**
+**This is speculation. Actual H100 performance unknown. No hardware access for validation.**
 
 ---
 
@@ -293,20 +289,16 @@ Attempting to increase SM utilization would:
 
 **The 12.6% SM is a FEATURE (memory-bound), not a BUG.**
 
-### 3. H100 Validation 🎯
+### 3. Future Architecture Support
 
-**Priority:** HIGH
+**Status:** Ada (L4, SM 8.9) ONLY validated
 
-**Steps:**
-1. Secure H100 access (RunPod, Lambda, GCP A3)
-2. Port kernel to use:
-   - TMA 2.0 for async memory
-   - WGMMA for matrix multiply
-   - Hopper-specific scheduling
-3. Validate 610+ TFLOPS claim
-4. Publish NCU report
+**Other architectures:**
+- Hopper (H100): Compiles, not tested
+- Blackwell: Compiles, not tested
+- Ampere: Not targeted
 
-**Timeline:** 1-2 weeks
+**No claims made for performance on untested architectures.**
 
 ### 4. Publication Path 📄
 

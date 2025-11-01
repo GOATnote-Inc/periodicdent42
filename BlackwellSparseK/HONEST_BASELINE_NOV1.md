@@ -73,11 +73,9 @@ This means:
 
 ```
 L4 measured:     55.0 TFLOPS  ✅
-H100 scaling:    ×14 (conservative, based on CUDA core count)
-H100 projected:  770 TFLOPS
+H100:            NOT TESTED (no hardware access)
 
-Original claim:  610 TFLOPS
-Confidence:      CONSERVATIVE (likely underestimate by 26%)
+Original claim:  610 TFLOPS was theoretical projection - NEVER VALIDATED
 ```
 
 ---

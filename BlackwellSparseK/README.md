@@ -40,17 +40,12 @@ High-performance sparse block-structured matrix multiplication for NVIDIA GPUs.
 
 **Methodology:** Full NCU report available in [NCU_ANALYSIS_PRODUCTION.md](NCU_ANALYSIS_PRODUCTION.md)
 
-### H100 Measurements (Not Yet Validated ⏳)
+### Other Architectures
 
-**Status:** Kernel compiles for sm_90a but not yet tested on H100 hardware.
+**H100 (Hopper, SM 9.0a):** Kernel compiles for sm_90a but not tested.  
+**A100 (Ampere, SM 8.0):** Not targeted. Use CUTLASS baseline for Ampere.
 
-**Projected Performance:** 580-700 TFLOPS (based on L4 scaling, memory bandwidth ratio)
-
-**Validation Required:**
-- [ ] Benchmark on actual H100 hardware
-- [ ] NCU profiling on sm_90a
-- [ ] Correctness validation
-- [ ] Comparison vs CUTLASS 4.3 Hopper kernels
+**This kernel is optimized for Ada (SM 8.9). Performance on other architectures is unknown.**
 
 ---
 
@@ -292,10 +287,6 @@ python compare_all_baselines.py
 
 ### What We Don't Know (Need Validation ⏳)
 
-**Claim:** "580-700 TFLOPS on H100"  
-**Evidence:** Theoretical projection (not measured)  
-**Confidence:** MEDIUM (need hardware validation)
-
 **Claim:** "Scales to larger matrices"  
 **Evidence:** Only tested 8K×8K  
 **Confidence:** LOW (need testing)
@@ -311,17 +302,12 @@ python compare_all_baselines.py
    - Need: Test 10+ problem sizes
    - Action: Planned for next validation phase
 
-2. **What about H100 performance?**
-   - Status: Kernel compiles but not tested
-   - Need: Access to H100 hardware
-   - Timeline: Pending hardware availability
-
-3. **Memory efficiency on larger problems?**
+2. **Memory efficiency on larger problems?**
    - Current: 8K×8K fits in L2 cache
    - Unknown: Performance on 32K×32K, 64K×64K
    - Need: Cache-miss analysis
 
-4. **Numerical precision guarantees?**
+3. **Numerical precision guarantees?**
    - Current: Max diff 0.002 vs PyTorch FP32
    - Unknown: Acceptable threshold per application
    - Need: Define correctness criteria
@@ -332,10 +318,9 @@ python compare_all_baselines.py
 
 ### Immediate (< 1 month)
 
-- [ ] H100 validation (projected 580-700 TFLOPS)
 - [ ] Matrix size sweep (4K, 8K, 16K, 32K)
 - [ ] Sparsity pattern sweep (50%, 70%, 90%, 95%)
-- [ ] Comparison vs Hopper-optimized CUTLASS
+- [ ] Comparison vs Hopper-optimized CUTLASS (if H100 access obtained)
 
 ### Medium-term (1-3 months)
 
@@ -403,5 +388,5 @@ See [LICENSE](LICENSE) for full terms.
 ---
 
 **Last Updated:** November 1, 2025  
-**Status:** Research prototype - L4 validation complete, H100 validation pending  
-**Version:** 0.9.0
+**Status:** Research prototype - L4 (Ada, SM 8.9) validation complete  
+**Version:** 1.0.0

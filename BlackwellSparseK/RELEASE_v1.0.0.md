@@ -148,9 +148,9 @@ bsr_spmm_async<256, 128, 32><<<grid, block>>>(A, B, C, M, N, K, ldc);
 ## Roadmap
 
 ### v1.1.0 (Week 2)
-- [ ] H100 validation and optimization
 - [ ] Auto-tuning for variable block sizes
-- [ ] FP8 precision support (Hopper+)
+- [ ] Matrix size sweep (4K-32K)
+- [ ] Sparsity pattern sweep (50%-95%)
 
 ### v1.2.0 (Month 2)
 - [ ] Variable sparsity patterns
