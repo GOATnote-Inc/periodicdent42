@@ -19,6 +19,7 @@ ext_modules = [
         sources=[
             'python/bsk_bindings.cpp',
             'src/sparse_h100_async.cu',
+            'src/kernel_launch.cu',
         ],
         include_dirs=[
             f'{cuda_home}/include',
@@ -31,6 +32,7 @@ ext_modules = [
                 '-std=c++17',
                 '--expt-relaxed-constexpr',
                 '-lineinfo',
+                '-arch=sm_89',  # L4 (Ada) - change to sm_90a for H100
             ]
         },
     )

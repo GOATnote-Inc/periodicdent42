@@ -84,8 +84,35 @@ def sparse_mm(
         else:
             config = _default_config(M, N, K1)
         
+        # Extract BSR tensors
+        # PyTorch BSR format: crow_indices, col_indices, values
+        if hasattr(A_bsr, 'crow_indices'):
+            A_row_ptr = A_bsr.crow_indices()
+            A_col_idx = A_bsr.col_indices()
+            A_vals = A_bsr.values()
+        else:
+            raise NotImplementedError("BSR format extraction not implemented for this PyTorch version")
+        
+        # For now, assume B is dense (convert sparse B to dense)
+        if B.is_sparse:
+            B_dense = B.to_dense()
+        else:
+            B_dense = B
+        
+        # Create dummy BSR for B (treat as dense with full blocks)
+        # TODO: Support sparse B
+        B_blocks = (K1 // block_size) * (N // block_size)
+        B_row_ptr = torch.arange(0, K1 // block_size + 1, device=A.device, dtype=torch.int32) * (N // block_size)
+        B_col_idx = torch.arange(0, B_blocks, device=A.device, dtype=torch.int32)
+        B_vals = B_dense.reshape(-1, block_size, block_size).contiguous()
+        
         # Call CUDA kernel
-        return _C.sparse_mm_bsr(A_bsr, B, config)
+        return _C.sparse_mm_bsr(
+            A_row_ptr, A_col_idx, A_vals,
+            B_row_ptr, B_col_idx, B_vals,
+            M, N, K1,
+            config['BM'], config['BN'], config['BK']
+        )
     
     else:
         # Fallback to PyTorch sparse (slow)
