@@ -2,18 +2,26 @@
 
 High-performance sparse block-structured matrix multiplication for NVIDIA GPUs.
 
-## Performance Summary
+## Status: Correctness Bug Found - Do Not Use
 
-### H100 (Hopper, SM 9.0a) - Validated ✅
+**CRITICAL:** Custom WMMA kernel has numerical correctness bug (only stores partial results). 
+
+Use CUTLASS 4.3.0 Example 62 instead:
+- Correctness: ✅ Validated
+- Performance: 270-564 TFLOPS (H100)  
+- APIs: OpClassSparseTensorOp, CollectiveBuilder, CuTe DSL
+
+## CUTLASS 4.3.0 Baseline (H100, Validated ✅)
 
 **Measured on NVIDIA H100 PCIe 80GB - November 1, 2025**
 
-| Implementation | TFLOPS | Latency (ms) | Speedup |
-|----------------|--------|--------------|---------|
-| **BlackwellSparseK** | **1966.3** | **0.559** | **3.1×** |
-| cuBLAS Dense | 627.4 | 1.75 | 1.0× |
+| Matrix Size | CUTLASS Sparse | Dense GEMM | Speedup |
+|-------------|----------------|------------|---------|
+| 8192³ | 270 TFLOPS (4.08 ms) | 250 TFLOPS (4.39 ms) | 1.08× |
+| 4096³ | 564 TFLOPS (0.24 ms) | 423 TFLOPS (0.32 ms) | 1.33× |
+| 16384³ | 231 TFLOPS (38.1 ms) | 212 TFLOPS (41.4 ms) | 1.09× |
 
-**Configuration:** 8192×8192, FP16, 87.5% sparsity (Block Sparse Row format)
+**Configuration:** 2:4 structured sparsity, FP16, modern Hopper APIs
 
 ### L4 (Ada, SM 8.9) - Validated ✅
 

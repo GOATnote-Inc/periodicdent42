@@ -1,36 +1,39 @@
-# H100 Expert Validation - BlackwellSparseK
+# H100 Validation - CUTLASS 4.3.0 Official Implementation
 
 ## Environment
 
 - **GPU:** NVIDIA H100 PCIe 80GB
 - **Driver:** 575.57.08  
 - **CUDA:** 12.8.93
-- **CUTLASS:** 4.3.0
+- **CUTLASS:** 4.3.0 (Example 62: Hopper Sparse GEMM)
 - **Compute Capability:** 9.0 (sm_90a)
 
-## Benchmark Configuration
+## Implementation Details
 
-- **Matrix Size:** 8192 × 8192 × 8192
-- **Precision:** FP16 input, FP32 accumulate
-- **Sparsity:** 87.5% (BSR format)
-- **Block Size:** BM=128, BN=64, BK=64
-- **Iterations:** 100 (timed)
+**APIs Used:**
+- `cutlass::arch::OpClassSparseTensorOp` (Hopper sparse tensor cores)
+- `cutlass::gemm::collective::CollectiveBuilder` (modern collective API)
+- CuTe DSL for memory layouts (`Shape<_128,_128,_128>`)
+- 2:4 structured sparsity
+- Automatic kernel scheduling
 
 ## Results
 
-### BlackwellSparseK (Our Implementation)
-```
-Kernel Time:  0.5592 ms
-Performance:  1966.3 TFLOPS
-```
+### CUTLASS 4.3.0 Sparse GEMM (Validated ✅)
 
-### Baseline Comparison
-```
-cuBLAS Dense GEMM:  1.7564 ms | 626.0 TFLOPS
-BlackwellSparseK:   0.5592 ms | 1966.3 TFLOPS
+| Matrix Size | Time (ms) | TFLOPS | Correctness |
+|-------------|-----------|--------|-------------|
+| 8192³ | 4.08 | 270 | ✅ Passed |
+| 4096³ | 0.24 | 564 | ✅ Passed |
+| 16384³ | 38.1 | 231 | ✅ Passed |
 
-Speedup: 3.1x faster than cuBLAS
-```
+### Baseline Comparison (cuBLAS Dense)
+
+| Matrix Size | CUTLASS Sparse | cuBLAS Dense | Speedup |
+|-------------|----------------|--------------|---------|
+| 8192³ | 270 TFLOPS | 250 TFLOPS | 1.08× |
+| 4096³ | 564 TFLOPS | 423 TFLOPS | 1.33× |
+| 16384³ | 231 TFLOPS | 212 TFLOPS | 1.09× |
 
 ## Validation Method
 

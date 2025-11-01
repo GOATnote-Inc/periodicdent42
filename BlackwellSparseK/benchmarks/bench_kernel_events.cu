@@ -231,6 +231,26 @@ int main() {
     cudaMemcpy(dBcol, Bcol.data(), nnzb_B * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemset(dC, 0, M * N * sizeof(float));
     
+    // Initialize matrices with random data
+    std::vector<half> hA(nnzb_A * BM * BK);
+    std::vector<half> hB(nnzb_B * BK * BN);
+    for (auto& x : hA) x = __float2half((float)std::rand() / RAND_MAX);
+    for (auto& x : hB) x = __float2half((float)std::rand() / RAND_MAX);
+    cudaMemcpy(dA, hA.data(), nnzb_A * BM * BK * sizeof(half), cudaMemcpyHostToDevice);
+    cudaMemcpy(dB, hB.data(), nnzb_B * BK * BN * sizeof(half), cudaMemcpyHostToDevice);
+    
+    printf("DEBUG: Generated sparse structure:\n");
+    printf("  A: %dx%d blocks, nnzb=%d (%.1f%% dense)\n", Mb, Kb, nnzb_A, 100.0 * nnzb_A / (Mb * Kb));
+    printf("  B: %dx%d blocks, nnzb=%d (%.1f%% dense)\n", Kb, Nb, nnzb_B, 100.0 * nnzb_B / (Kb * Nb));
+    printf("\n");
+    
+    // Check for CUDA errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error during setup: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    
     // Warmup
     printf("Warming up (5 iterations)...\n");
     for (int i = 0; i < 5; i++)
@@ -238,6 +258,14 @@ int main() {
                               dB, dBrow, dBcol, Kb, Nb, nnzb_B,
                               dC, M, N, K, 0);
     cudaDeviceSynchronize();
+    
+    // Check for kernel launch errors
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch error: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    printf("✅ Warmup complete\n");
     
     // Benchmark with CUDA Events
     printf("Benchmarking (100 iterations)...\n");
