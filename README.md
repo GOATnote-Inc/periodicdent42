@@ -87,23 +87,25 @@ bsr_spmm_async<256, 128, 32><<<grid, block>>>(A, B, C, M, N, K, ldc);
 
 ---
 
-## Technical Highlights
+## Technical Details (NCU Validated)
 
-### Kernel Optimizations
-1. **WMMA tensor cores** - 16×16×16 FP16 matrix multiply-accumulate
-2. **2-stage pipeline** - overlaps GMEM→SMEM with computation
-3. **cp.async** - asynchronous memory transfers (11× faster than explicit copy)
-4. **Zero branch divergence** - 100% branch efficiency (Nsight validated)
-5. **Optimal occupancy** - 99.22% of theoretical maximum
+### Measured Performance (L4, SM89)
+- **TFLOPS:** 52.1 (1.74× faster than CUTLASS 4.3.0)
+- **Latency:** 1.54 ms (8192×8192 @ 78% sparsity)
+- **SM Throughput:** 12.63%
+- **Achieved Occupancy:** 16.54% (99.22% of theoretical 16.67%)
+- **DRAM Utilization:** 70.87%
+- **Branch Efficiency:** 100% (zero divergence)
+- **L2 Hit Rate:** 93.64%
 
-### Nsight Compute Metrics (L4)
-- SM Throughput: 12.63%
-- Achieved Occupancy: 16.54% (99.22% of theoretical 16.67%)
-- DRAM Utilization: 70.87%
-- Branch Efficiency: 100%
-- L2 Hit Rate: 93.64%
+### Why It's Fast
+1. **WMMA tensor cores** - 16×16×16 FP16 accumulation
+2. **cp.async** - 11× faster than explicit copy
+3. **2-stage pipeline** - overlaps memory with compute
+4. **Zero branches** - 100% efficiency (NCU validated)
+5. **Optimal occupancy** - 99.22% of theoretical max
 
-Full report: [BlackwellSparseK/NCU_ANALYSIS_PRODUCTION.md](BlackwellSparseK/NCU_ANALYSIS_PRODUCTION.md)
+**Full NCU report:** [BlackwellSparseK/NCU_ANALYSIS_PRODUCTION.md](BlackwellSparseK/NCU_ANALYSIS_PRODUCTION.md)
 
 ---
 
@@ -140,9 +142,9 @@ python3 compare_all_baselines.py --size 8192
 
 ```
 periodicdent42/
-├── BlackwellSparseK/          # Production-ready sparse GEMM ✅
+├── BlackwellSparseK/          # ✅ ONLY VALIDATED KERNEL
 │   ├── src/
-│   │   └── sparse_h100_async.cu    # Core kernel (52.1 TFLOPS on L4)
+│   │   └── sparse_h100_async.cu    # 52.1 TFLOPS on L4 (NCU validated)
 │   ├── benchmarks/
 │   │   ├── compare_all_baselines.py # vs PyTorch/CUTLASS/cuSPARSE
 │   │   └── bench_kernel_events.cu   # Nsight-free profiling
@@ -155,25 +157,24 @@ periodicdent42/
 │   ├── RELEASE_v1.0.0.md           # Release notes
 │   └── deploy_production.sh        # One-command deployment
 │
-├── CUTLASS_FMHA_L4_SUCCESS.md      # CUTLASS attention (27.6 TFLOPS, 2.1× vs PyTorch)
-├── TRIAGEATTENTION_VERDICT.md      # TriageAttention audit (broken, Hopper-only)
+├── .archive/                        # Experiments (not production)
+├── csrc/kernels/                   # TriageAttention (broken, Hopper-only)
+├── TRIAGEATTENTION_VERDICT.md      # Why TriageAttention doesn't work
 └── README.md                        # This file
 ```
 
 ---
 
-## Other Kernels
+## What's Actually Validated
 
-### CUTLASS FMHA (Attention)
-**Status:** Validated on L4  
-**Performance:** 27.6 TFLOPS (2.1× faster than PyTorch SDPA)  
-**Location:** `cutlass-latest/examples/41_fused_multi_head_attention/`  
-**Details:** [CUTLASS_FMHA_L4_SUCCESS.md](CUTLASS_FMHA_L4_SUCCESS.md)
+**BlackwellSparseK sparse GEMM only.**
 
-### TriageAttention
-**Status:** Architecture mismatch (Hopper-only, broken on L4)  
-**Location:** `csrc/kernels/attention_bleeding_edge_tma.cu`  
-**Details:** [TRIAGEATTENTION_VERDICT.md](TRIAGEATTENTION_VERDICT.md)
+Everything else in this repo is either:
+- Archived experiments (not production-ready)
+- NVIDIA reference code (CUTLASS examples)
+- Broken kernels (TriageAttention - architecture mismatch)
+
+For details on what didn't work: [TRIAGEATTENTION_VERDICT.md](TRIAGEATTENTION_VERDICT.md)
 
 ---
 
