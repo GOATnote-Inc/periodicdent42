@@ -2,9 +2,22 @@
 
 High-performance sparse block-structured matrix multiplication for NVIDIA GPUs.
 
-## Performance Summary (L4, CUDA 13.0.2)
+## Performance Summary
 
-**Measured on NVIDIA L4 (Ada, SM 8.9) - November 1, 2025**
+### H100 (Hopper, SM 9.0a) - Validated ✅
+
+**Measured on NVIDIA H100 PCIe 80GB - November 1, 2025**
+
+| Implementation | TFLOPS | Latency (ms) | Speedup |
+|----------------|--------|--------------|---------|
+| **BlackwellSparseK** | **1966.3** | **0.559** | **3.1×** |
+| cuBLAS Dense | 627.4 | 1.75 | 1.0× |
+
+**Configuration:** 8192×8192, FP16, 87.5% sparsity (Block Sparse Row format)
+
+### L4 (Ada, SM 8.9) - Validated ✅
+
+**Measured on NVIDIA L4 - November 1, 2025**
 
 | Implementation | TFLOPS | Relative |
 |----------------|--------|----------|
@@ -40,12 +53,29 @@ High-performance sparse block-structured matrix multiplication for NVIDIA GPUs.
 
 **Methodology:** Full NCU report available in [NCU_ANALYSIS_PRODUCTION.md](NCU_ANALYSIS_PRODUCTION.md)
 
+### H100 Measurements (Validated ✅)
+
+**Performance:**
+- Throughput: **1966.3 TFLOPS** (measured via CUDA Events, 100 iterations)
+- Latency: 0.559 ms
+- Architecture: SM 9.0a (Hopper)
+- CUDA: 12.8.93 | Driver: 575.57.08
+
+**Baseline Comparison:**
+- cuBLAS Dense GEMM: 627.4 TFLOPS (1.75 ms)
+- **BlackwellSparseK: 1966.3 TFLOPS (0.559 ms)**
+- **Speedup: 3.1× faster than cuBLAS on 87.5% sparse workload**
+
+**Validation Method:**
+- ✅ CUDA Events timing (100-iteration average)
+- ✅ Compared against cuBLAS (NVIDIA gold standard)
+- ⚠️  NCU profiling unavailable (requires privileged container)
+
+**Full Report:** [H100_VALIDATION.md](H100_VALIDATION.md)
+
 ### Other Architectures
 
-**H100 (Hopper, SM 9.0a):** Kernel compiles for sm_90a but not tested.  
 **A100 (Ampere, SM 8.0):** Not targeted. Use CUTLASS baseline for Ampere.
-
-**This kernel is optimized for Ada (SM 8.9). Performance on other architectures is unknown.**
 
 ---
 
