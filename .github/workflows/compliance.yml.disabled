@@ -19,8 +19,8 @@ jobs:
         run: |
           echo "🔍 Scanning for attribution violations..."
           
-          # Allowlisted paths (compliance docs contain examples, evidence/scripts generate reports)
-          ALLOW_PATHS="docs/applications/|notes/|journal/|README.*applications|recruiter_brief|COMPLIANCE_ATTRIBUTION|ATTRIBUTION_COMPLIANCE|compliance.yml|evidence/|scripts/"
+          # Allowlisted paths (archives, compliance docs, evidence/scripts)
+          ALLOW_PATHS="\.archive/|docs/archive/|BlackwellSparseK/\.archive/|docs/applications/|notes/|journal/|README.*applications|recruiter_brief|COMPLIANCE_ATTRIBUTION|ATTRIBUTION_COMPLIANCE|compliance.yml|evidence/|scripts/"
           
           # Find violations (excluding allowlisted paths)
           violations=0
