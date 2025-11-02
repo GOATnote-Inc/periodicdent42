@@ -1,0 +1,18 @@
+[package]
+name = "burn-sparse"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burn = { version = "0.18", features = ["cuda", "ndarray"] }
+burn-cubecl = "0.18"
+burn-jit = "0.18"
+cuda-sys = "0.3"
+libc = "0.2"
+
+[build-dependencies]
+cc = "1.0"
+
+[lib]
+name = "burn_sparse"
+path = "src/lib.rs"
