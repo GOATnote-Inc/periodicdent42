@@ -1,67 +1,38 @@
 # periodicdent42
 
-GPU kernel optimization research.
+GPU kernel optimization research by Brandon Dent, MD.
 
 ---
 
-## BlackwellSparseK - Sparse GEMM Kernel
+## Optimized GEMM (H100)
 
-**52.1 TFLOPS on L4 (1.74× faster than CUTLASS 4.3.0)**
+**550.8 TFLOPS** - 88% of cuBLAS using CUTLASS 4.3.0 CollectiveBuilder
 
-Sparse Block Sparse Row (BSR) GEMM optimized for NVIDIA Ada architecture.
+Dense FP16 GEMM optimized for NVIDIA H100 (Hopper).
 
-**Performance (L4, SM89):**
-- 52.1 TFLOPS (vs CUTLASS 4.3.0: ~30 TFLOPS)
-- 1.74× speedup over CUTLASS baseline
-- 63× faster than cuSPARSE
-- Full Nsight Compute validation
-
-**[→ Full documentation](BlackwellSparseK/)**
+**[→ Documentation](BlackwellSparseK/)**
 
 ---
 
-## Quick Start
+## Results
 
-```bash
-git clone https://github.com/GOATnote-Inc/periodicdent42.git
-cd periodicdent42/BlackwellSparseK
-pip install -e .
-```
+| Kernel | TFLOPS | Hardware |
+|--------|--------|----------|
+| This work | 550.8 | H100 80GB |
+| cuBLAS | 622.8 | H100 80GB |
+| CUTLASS 4.3 | 406.8 | H100 80GB |
 
-**Usage:**
-```python
-import blackwellsparsek as bsk
+**Method:** TileShape 128×256×64, ClusterShape 2×1×1
 
-# Drop-in replacement for torch.sparse.mm (1.74× faster than CUTLASS)
-C = bsk.sparse_mm(A_sparse, B_dense)
-```
+**Verification:** CUDA Events, 5 runs, ±0.3% variance
 
 ---
 
-## Repository Structure
+## Contact
 
-```
-BlackwellSparseK/       # Validated sparse GEMM kernel (52.1 TFLOPS on L4)
-├── src/                # Core kernel implementation
-├── benchmarks/         # Performance validation
-├── python/             # PyTorch bindings
-└── README.md           # Full documentation
-
-.archive/               # Experimental code (not production)
-csrc/kernels/           # Research kernels (incomplete)
-docs/                   # Technical notes
-```
+Brandon Dent, MD  
+b@thegoatnote.com
 
 ---
 
-## Author
-
-**Brandon Dent, MD**  
-Former Emergency Medicine Professor → GPU Kernel Engineer
-
-**Contact:** b@thegoatnote.com  
-**License:** BSD-3-Clause
-
----
-
-**[BlackwellSparseK Documentation](BlackwellSparseK/) | [NCU Analysis](BlackwellSparseK/NCU_ANALYSIS_PRODUCTION.md) | [Release Notes](BlackwellSparseK/RELEASE_v1.0.0.md)**
+**License:** BSD 3-Clause
