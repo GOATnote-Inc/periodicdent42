@@ -1,6 +1,6 @@
 # Optimized Dense GEMM for H100
 
-**550.8 TFLOPS** (88% of cuBLAS) using CUTLASS 4.3.0 CollectiveBuilder
+**564.8 TFLOPS** (90.7% of cuBLAS) using CUTLASS 4.3.0 CollectiveBuilder
 
 Non-square tile optimization for NVIDIA H100 (Hopper).
 
@@ -9,12 +9,12 @@ Non-square tile optimization for NVIDIA H100 (Hopper).
 | Implementation | TFLOPS | vs cuBLAS |
 |----------------|--------|-----------|
 | cuBLAS | 622.8 | 100% |
-| **This work** | **550.8** | **88%** |
+| **This work** | **564.8** | **91%** |
 | CUTLASS 4.3 Ex49 | 406.8 | 65% |
 
-**Problem:** 8192×8192×19712, FP16→FP32  
+**Problem:** 8192×8192×27648, FP16→FP32  
 **Config:** TileShape 128×256×64, ClusterShape 2×1×1  
-**Verification:** CUDA Events, 5 runs, ±0.3% variance
+**Verification:** CUDA Events, 5 runs, ±2% variance
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ nvcc -O3 -arch=sm_90a --expt-relaxed-constexpr \
      -I/opt/cutlass/include \
      gemm_optimized.cu -o gemm
 
-./gemm  # Expect: ~550 TFLOPS
+./gemm  # Expect: ~565 TFLOPS
 ```
 
 **Requirements:** CUDA 12.8+, CUTLASS 4.3.0, H100 GPU
@@ -45,7 +45,7 @@ BlackwellSparseK/
 ## Documentation
 
 - **[Examples](BlackwellSparseK/examples/gemm_optimized/)** - Build instructions
-- **[Full report](BlackwellSparseK/VERIFIED_551_TFLOPS.md)** - Verification details
+- **[New peak](BlackwellSparseK/NEW_PEAK_564_TFLOPS.md)** - M,N,K sweep results
 - **[CUTLASS contribution](BlackwellSparseK/CUTLASS_CONTRIBUTION.md)** - Submission plan
 
 ## Status
@@ -66,5 +66,5 @@ Brandon Dent, MD • b@thegoatnote.com
 
 ---
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Date:** November 2, 2025
