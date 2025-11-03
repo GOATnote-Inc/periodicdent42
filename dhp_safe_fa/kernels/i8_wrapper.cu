@@ -2,7 +2,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
-extern __global__ void dhp_i8_warp_optimized(
+extern __global__ void dhp_i8_simple(
     const __half* __restrict__ Q,
     const __half* __restrict__ K,
     const __half* __restrict__ V,
@@ -25,7 +25,7 @@ torch::Tensor i8_forward(torch::Tensor Q, torch::Tensor K, torch::Tensor V, int 
     dim3 grid(batch_size, (S_max + 255) / 256);
     dim3 block(256);
     
-    dhp_i8_warp_optimized<<<grid, block>>>(
+    dhp_i8_simple<<<grid, block>>>(
         reinterpret_cast<const __half*>(Q.data_ptr<at::Half>()),
         reinterpret_cast<const __half*>(K.data_ptr<at::Half>()),
         reinterpret_cast<const __half*>(V.data_ptr<at::Half>()),

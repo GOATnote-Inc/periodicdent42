@@ -1,0 +1,20 @@
+# Brev configuration for efficient development
+# Persistent volume mount: /home/shadeform/dhp_safe_fa
+
+[sync]
+local = /Users/kiteboard/periodicdent42/dhp_safe_fa
+remote = /home/shadeform/dhp_safe_fa
+watch = true
+exclude = [
+    "*.pyc",
+    "__pycache__",
+    "build",
+    ".git",
+    "*.tar.gz"
+]
+
+[environment]
+cuda_home = /usr/local/cuda-13.0
+cutlass_home = /opt/cutlass
+torch_cuda_arch_list = 90a
+

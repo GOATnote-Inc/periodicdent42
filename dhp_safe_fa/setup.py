@@ -100,11 +100,11 @@ setup(
                 ]
             }
         ),
-        # I8: Warp-optimized deterministic kernel
+        # I8: Warp-optimized deterministic kernel  
         CUDAExtension(
             name='dhp_i8_kernel',
             sources=[
-                'kernels/i8_warp_optimized.cu',
+                'kernels/i8_simple.cu',
                 'kernels/i8_wrapper.cu',
             ],
             include_dirs=[
