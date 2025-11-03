@@ -54,6 +54,52 @@ setup(
                 ]
             }
         ),
+        # I6: Block-parallel kernel
+        CUDAExtension(
+            name='dhp_i6_kernel',
+            sources=[
+                'kernels/i6_real.cu',
+                'kernels/i6_simple_wrapper.cu',
+            ],
+            include_dirs=[
+                'include',
+                os.path.join(cuda_home, 'include'),
+            ],
+            extra_compile_args={
+                'cxx': ['-O3'],
+                'nvcc': [
+                    '-O3',
+                    '-std=c++17',
+                    '-arch=sm_90a',
+                    '--ptxas-options=-v',
+                    '--use_fast_math',
+                    '-lineinfo',
+                ]
+            }
+        ),
+        # I7: WMMA Tensor Core kernel
+        CUDAExtension(
+            name='dhp_i7_kernel',
+            sources=[
+                'kernels/i7_wmma.cu',
+                'kernels/i7_wrapper.cu',
+            ],
+            include_dirs=[
+                'include',
+                os.path.join(cuda_home, 'include'),
+            ],
+            extra_compile_args={
+                'cxx': ['-O3'],
+                'nvcc': [
+                    '-O3',
+                    '-std=c++17',
+                    '-arch=sm_90a',
+                    '--ptxas-options=-v',
+                    '--use_fast_math',
+                    '-lineinfo',
+                ]
+            }
+        ),
     ],
     cmdclass={
         'build_ext': BuildExtension
