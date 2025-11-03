@@ -123,6 +123,30 @@ setup(
                 ]
             }
         ),
+        # I9: cuBLAS accelerated (path to 90% FA3)
+        CUDAExtension(
+            name='dhp_i9_kernel',
+            sources=[
+                'kernels/i9_cublas.cu',
+                'kernels/i9_wrapper.cu',
+            ],
+            include_dirs=[
+                'include',
+                os.path.join(cuda_home, 'include'),
+            ],
+            libraries=['cublas'],
+            extra_compile_args={
+                'cxx': ['-O3', '-std=c++17'],
+                'nvcc': [
+                    '-O3',
+                    '-std=c++17',
+                    '-arch=sm_90a',
+                    '--ptxas-options=-v',
+                    '--use_fast_math',
+                    '-lineinfo',
+                ]
+            }
+        ),
     ],
     cmdclass={
         'build_ext': BuildExtension
