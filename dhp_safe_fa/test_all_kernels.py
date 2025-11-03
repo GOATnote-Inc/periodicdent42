@@ -62,6 +62,7 @@ kernels = [
     ("I7", "dhp_i7_kernel", lambda k: lambda: k.forward(Q, K, V, S, S)),
     ("I8", "dhp_i8_kernel", lambda k: lambda: k.forward(Q, K, V, S, S)),
     ("I9", "dhp_i9_kernel", lambda k: lambda: k.forward(Q, K, V, S, S)),
+    ("I10", "dhp_i10_kernel", lambda k: lambda: k.forward(Q, K, V, S, S)),
 ]
 
 results = []

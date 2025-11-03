@@ -147,6 +147,31 @@ setup(
                 ]
             }
         ),
+        # I10: CUTLASS 3.x Tensor Core GEMM (TARGET: 90% FA3)
+        CUDAExtension(
+            name='dhp_i10_kernel',
+            sources=[
+                'kernels/i10_cutlass_real.cu',
+                'kernels/i10_wrapper.cu',
+            ],
+            include_dirs=[
+                'include',
+                os.path.join(cuda_home, 'include'),
+                '/opt/cutlass/include',
+            ],
+            extra_compile_args={
+                'cxx': ['-O3', '-std=c++17'],
+                'nvcc': [
+                    '-O3',
+                    '-std=c++17',
+                    '-arch=sm_90a',
+                    '--ptxas-options=-v',
+                    '--use_fast_math',
+                    '-lineinfo',
+                    '--expt-relaxed-constexpr',
+                ]
+            }
+        ),
     ],
     cmdclass={
         'build_ext': BuildExtension
