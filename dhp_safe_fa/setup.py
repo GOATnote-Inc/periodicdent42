@@ -100,6 +100,29 @@ setup(
                 ]
             }
         ),
+        # I8: Warp-optimized deterministic kernel
+        CUDAExtension(
+            name='dhp_i8_kernel',
+            sources=[
+                'kernels/i8_warp_optimized.cu',
+                'kernels/i8_wrapper.cu',
+            ],
+            include_dirs=[
+                'include',
+                os.path.join(cuda_home, 'include'),
+            ],
+            extra_compile_args={
+                'cxx': ['-O3'],
+                'nvcc': [
+                    '-O3',
+                    '-std=c++17',
+                    '-arch=sm_90a',
+                    '--ptxas-options=-v',
+                    '--use_fast_math',
+                    '-lineinfo',
+                ]
+            }
+        ),
     ],
     cmdclass={
         'build_ext': BuildExtension
