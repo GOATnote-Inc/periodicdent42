@@ -2,7 +2,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
-extern __global__ void dhp_i7_wmma(
+extern __global__ void dhp_i7_minimal(
     const __half* __restrict__ Q,
     const __half* __restrict__ K,
     const __half* __restrict__ V,
@@ -22,12 +22,11 @@ torch::Tensor i7_forward(torch::Tensor Q, torch::Tensor K, torch::Tensor V, int 
     
     auto out = torch::empty_like(Q);
     
-    const int BM = 64;
-    const int num_tiles = (S_max + BM - 1) / BM;
-    dim3 grid(batch_size, num_tiles);
-    dim3 block(128);  // 4 warps
+    // One warp (32 threads) per row
+    dim3 grid(batch_size, (S_max + 255) / 256);
+    dim3 block(256);  // 8 warps
     
-    dhp_i7_wmma<<<grid, block>>>(
+    dhp_i7_minimal<<<grid, block>>>(
         reinterpret_cast<const __half*>(Q.data_ptr<at::Half>()),
         reinterpret_cast<const __half*>(K.data_ptr<at::Half>()),
         reinterpret_cast<const __half*>(V.data_ptr<at::Half>()),
@@ -36,12 +35,12 @@ torch::Tensor i7_forward(torch::Tensor Q, torch::Tensor K, torch::Tensor V, int 
     );
     
     cudaError_t err = cudaGetLastError();
-    TORCH_CHECK(err == cudaSuccess, "I7 WMMA kernel failed: ", cudaGetErrorString(err));
+    TORCH_CHECK(err == cudaSuccess, "I7 kernel failed: ", cudaGetErrorString(err));
     
     return out;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("forward", &i7_forward, "I7 WMMA Tensor Core Attention");
+    m.def("forward", &i7_forward, "I7 Deterministic Attention");
 }
 

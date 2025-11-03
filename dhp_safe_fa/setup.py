@@ -77,11 +77,11 @@ setup(
                 ]
             }
         ),
-        # I7: WMMA Tensor Core kernel
+        # I7: Deterministic kernel (correctness focus)
         CUDAExtension(
             name='dhp_i7_kernel',
             sources=[
-                'kernels/i7_wmma.cu',
+                'kernels/i7_minimal.cu',
                 'kernels/i7_wrapper.cu',
             ],
             include_dirs=[
